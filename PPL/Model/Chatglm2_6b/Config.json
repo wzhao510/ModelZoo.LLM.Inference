@@ -1,0 +1,26 @@
+{
+    "model_type": "chatglm",
+    "convert_to_pmx": {
+        "origin_model_dir": "/home/shanma/jiangjunqiao/Chatglm2_6b/chatglm2_6b/",
+        "enable_using_safetensors": false,
+        "pmx_model_output_dir": "/home/shanma/jiangjunqiao/Chatglm2_6b/chatglm2_6b-pmx/"
+    },
+    "pmx_model_test": {
+        "num_gpu": 1,
+        "pmx_model_dir": "/home/shanma/jiangjunqiao/Chatglm2_6b/chatglm2_6b-pmx/",
+        "origin_model_tokenizer_dir": "/home/shanma/jiangjunqiao/Chatglm2_6b/chatglm2_6b/",
+        "seqlen_scale_up": 1,
+        "max_gen_len": 256,
+        "dump_steps": "0,1,255",
+        "dump_tensor_path": "/home/shanma/jiangjunqiao/Chatglm2_6b/chatglm2_6b-pmx-dump/",
+        "batch_size": 1,
+        "cache_layout": 3
+    },
+    "convert_to_onnx": {
+        "num_gpu": 1,
+        "pmx_model_dir": "/home/shanma/jiangjunqiao/Chatglm2_6b/chatglm2_6b-pmx/",
+        "origin_model_tokenizer_dir": "/home/shanma/jiangjunqiao/Chatglm2_6b/chatglm2_6b/",
+        "onnx_model_output_dir": "/home/shanma/jiangjunqiao/Chatglm2_6b/chatglm2_6b-onnx/",
+        "cache_layout": 3
+    }
+}

@@ -1,0 +1,64 @@
+{
+    "model_type": "llama",
+    "convert_to_pmx": {
+        "origin_model_dir": "/home/$USER/Llama/llama-7b-hf",
+        "enable_using_safetensors": false,
+        "pmx_model_output_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/pmx-model/"
+    },
+    "split_pmx_model": {
+        "pmx_model_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/pmx-model/",
+        "number_of_shards": 2,
+        "split_model_output_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/pmx-model-split/"
+    },
+    "merge_pmx_model": {
+        "split_model_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/pmx-model-split/",
+        "num_of_shards": 2,
+        "merged_model_output_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/pmx-model-merged/"
+    },
+    "pmx_model_test": {
+        "num_gpu": 1,
+        "pmx_model_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/pmx-model/",
+        "origin_model_tokenizer_dir": "/home/$USER/Llama/llama-7b-hf",
+        "seqlen_scale_up": 1,
+        "max_gen_len": 256,
+        "dump_steps": "0,1,255",
+        "dump_tensor_path": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/pmx-dump/",
+        "batch_size": 1,
+        "cache_layout": 3
+    },
+    "convert_to_onnx": {
+        "num_gpu": 1,
+        "pmx_model_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/pmx-model/",
+        "origin_model_tokenizer_dir": "/home/$USER/Llama/llama-7b-hf",
+        "onnx_model_output_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-model/",
+        "cache_layout": 3
+    },
+    "onnx_accuracy_test": {
+        "step": 0,
+        "ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/",
+        "test_data_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/pmx-dump/",
+        "onnx_model_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-model/",
+        "out_put_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-accuracy-test-result/"
+    },
+    "onnx_performance_test": {
+        "model_name": "llama7b",
+        "ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/",
+        "onnx_model_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-model/",
+        "onnx_model_param_path": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-model/params.json",
+        "tensor_parallel_size": 1,
+        "top_p": 0.0,
+        "top_k": 1,
+        "temperature": 1.0,
+        "warmup_loops": 2,
+        "benchmark_loops": 2,
+        "input_file_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Input/",
+        "input_file_base": "tokens_input",
+        "input_token_list": "8",
+        "output_token_list": "256",
+        "batch_size_list": "1,2,4,8,16,32,64,128,256",
+        "do_tracer": false,
+        "enable_output_logs": false,
+        "log_path": "",
+        "output_result_json_path": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-performance-test-result/result.json"
+    }
+}
