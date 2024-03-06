@@ -1,0 +1,19 @@
+{
+    "ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/",
+    "server_config": {
+	"model_type": "chatglm",
+	"model_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Chatglm2_6b/onnx-model/",
+	"model_param_path": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Chatglm2_6b/onnx-model/params.json",
+	"tokenizer_path": "/home/$USER/chatglm2_6b/tokenizer.model",
+	"tensor_parallel_size": 1,
+	"top_p": 0.0,
+	"top_k": 1,
+	"quant_method": "none",
+	"max_tokens_scale": 0.6,
+	"max_tokens_per_request": 4096,
+	"max_running_batch": 1024,
+	"max_tokens_per_step": 8192,
+	"host": "0.0.0.0",
+	"port": 23333
+    }
+}

@@ -2,6 +2,8 @@ import os
 import subprocess
 import json
 import sys
+import tempfile
+import signal
 
 def ConvertWeightToPmx(config_str):
     config = json.loads(config_str).get('convert_to_pmx')
@@ -10,25 +12,28 @@ def ConvertWeightToPmx(config_str):
         convert_cmd = 'python ./src/{}/ConvertWeightToPMX.py --input_dir {} --output_dir {} --use_safetensors True'.format(model_type, config['origin_model_dir'], config['pmx_model_output_dir'])
     else:
         convert_cmd = 'python ./src/{}/ConvertWeightToPMX.py --input_dir {} --output_dir {}'.format(model_type, config['origin_model_dir'], config['pmx_model_output_dir'])
-
     ret = subprocess.Popen(convert_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
     ret.wait()
 
 def SplitPmxModel(config_str):
     config = json.loads(config_str).get('split_pmx_model')
-    split_cmd = 'python ./src/Split.py --input_dir {} --num_shards {} --output_dir {}'.format(config['pmx_model_dir'], config['number_of_shards'], config['split_model_output_dir'])
+    model_type = json.loads(config_str).get('model_type')
+    split_cmd = 'python ./src/{}/Split.py --input_dir {} --num_shards {} --output_dir {}'.format(model_type, config['pmx_model_dir'], config['number_of_shards'], config['split_model_output_dir'])
     ret = subprocess.Popen(split_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
     ret.wait()
 
 def MergePmxModel(config_str):
     config = json.loads(config_str).get('merge_pmx_model')
-    merge_cmd = 'python ./src/Merge.py --input_dir {} --num_shards {} --output_dir {}'.format(config['split_model_dir'], config['num_of_shards'], config['merged_model_output_dir'])
+    model_type = json.loads(config_str).get('model_type')
+    merge_cmd = 'python ./src/{}/Merge.py --input_dir {} --num_shards {} --output_dir {}'.format(model_type, config['split_model_dir'], config['num_of_shards'], config['merged_model_output_dir'])
     ret = subprocess.Popen(merge_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
     ret.wait()
 
 def PmxModelTest(config_str):
     config = json.loads(config_str).get('pmx_model_test')
     model_type = json.loads(config_str).get('model_type')
+    if len(config['dump_steps'].split(",")) == 1 and config['dump_steps'][-1] != ",":
+        config['dump_steps'] += ","
     test_cmd = 'OMP_NUM_THREADS=1 torchrun --nproc_per_node {} ./src/{}/Demo.py --ckpt_dir {} --tokenizer_path {}/tokenizer.model --fused_qkv 1 --fused_kvcache 1\
                 --auto_causal 1 --quantized_cache 1 --dynamic_batching 1 --seqlen_scale_up {} --max_gen_len {} --dump_steps {} --dump_tensor_path {} --batch {}\
                 --cache_layout {}'.format(config['num_gpu'], model_type, config['pmx_model_dir'], config['origin_model_tokenizer_dir'], config['seqlen_scale_up'],\
@@ -49,26 +54,12 @@ def ConvertPmxToOnnx(config_str):
 
 def OnnxModelAccuracyTest(config_str):
     config = json.loads(config_str).get('onnx_accuracy_test')
-    mpi_localrankid = 0
-    device_id = 0
     step = config['step']
-    test_data_dir = '{}/rank_0/'.format(config['test_data_dir'])
-    token_ids = subprocess.Popen('ls {}/step{}_token_ids-*'.format(test_data_dir, step), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8').stdout.read()[:-1]
-    attn_mask = subprocess.Popen('ls {}/step{}_attn_mask-*'.format(test_data_dir, step), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8').stdout.read()[:-1]
-    seqstarts = subprocess.Popen('ls {}/step{}_seqstarts-*'.format(test_data_dir, step), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8').stdout.read()[:-1]
-    kvstarts = subprocess.Popen('ls {}/step{}_kvstarts-*'.format(test_data_dir, step), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8').stdout.read()[:-1]
-    cachestarts = subprocess.Popen('ls {}/step{}_cachestarts-*'.format(test_data_dir, step), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8').stdout.read()[:-1]
-    decoding_batches = subprocess.Popen('ls {}/step{}_decoding_batches-*'.format(test_data_dir, step), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8').stdout.read()[:-1]
-    start_pos = subprocess.Popen('ls {}/step{}_start_pos-*'.format(test_data_dir, step), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8').stdout.read()[:-1]
-    max_seqlen = subprocess.Popen('ls {}/step{}_max_seqlen-*'.format(test_data_dir, step), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8').stdout.read()[:-1]
-    max_kvlen = subprocess.Popen('ls {}/step{}_max_kvlen-*'.format(test_data_dir, step), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8').stdout.read()[:-1]
-    kv_cache = subprocess.Popen('ls {}/step{}_kv_cache-*'.format(test_data_dir, step), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8').stdout.read()[:-1]
-    kv_scale = subprocess.Popen('ls {}/step{}_kv_scale-*'.format(test_data_dir, step), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8').stdout.read()[:-1]
-    test_inputs='{},{},{},{},{},{},{},{},{},{},{}'.format(token_ids, attn_mask, seqstarts, kvstarts, cachestarts, decoding_batches, start_pos, max_seqlen, max_kvlen, kv_cache, kv_scale)
-    input_devices='device,device,device,device,device,host,device,host,host,device,device'
-    test_cmd = '{}/bin/pplnn_llm --use-llm-cuda --onnx-model {}/model_slice_{}/model.onnx --shaped-input-files {} --save-outputs --device-id {} --save-data-dir {} --in-devices {}\
-                --enable-profiling --min-profiling-seconds 3 --warmup-iterations 10'.format(config['ppl_serving_dir'], config['onnx_model_dir'], mpi_localrankid, test_inputs,\
-                device_id, config['out_put_dir'], input_devices)
+    num_gpu = config['num_gpu']
+    if num_gpu > 1:
+        test_cmd = '{}/ompi/bin/mpirun -np {} bash ./src/benchmark.sh {} {} {} {} {}'.format(config['maca_path'], num_gpu, step, config['onnx_model_dir'], config['out_put_dir'], config['test_data_dir'], config['ppl_serving_dir'])
+    else:
+        test_cmd = 'bash ./src/benchmark.sh {} {} {} {} {}'.format(step, config['onnx_model_dir'], config['out_put_dir'], config['test_data_dir'], config['ppl_serving_dir'])
     ret = subprocess.Popen(test_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
     ret.wait()
 
@@ -162,7 +153,15 @@ def OnnxModelPerformanceTest(config_str):
             os.makedirs(result_dir)
         with open(result_json, 'w', encoding='utf-8') as f:
             f.write(json.dumps(result_benchmark, indent=4))
-    
+
+def StartLLMServer(config_str, config_file):
+    server_dir = json.loads(config_str).get('ppl_serving_dir')
+    general_config = json.loads(config_str).get('server_config')
+    with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=True, prefix='server_config_', dir=os.path.dirname(os.path.abspath(config_file))) as tmp_file:
+        json.dump(general_config, tmp_file)
+        tmp_file.seek(0)
+        start_server_cmd = '{}/bin/ppl_llm_server {}'.format(server_dir, tmp_file.name)
+        ret = subprocess.run(start_server_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
 
 if __name__ == "__main__":
 
@@ -175,8 +174,8 @@ if __name__ == "__main__":
         config_str = f.read()
     
     model_type = json.loads(config_str).get('model_type')
-    if model_type != 'llama' and model_type != 'chatglm' and model_type != 'internlm' and model_type != 'baichuan':
-        print('unknown model type, please use llama / chatglm / internlm / baichuan')
+    if model_type != 'llama' and model_type != 'chatglm' and model_type != 'internlm' and model_type != 'baichuan' and model_cmd != 'start_llm_server':
+        print('unknown model type: %s, please use llama / chatglm / internlm / baichuan' %(model_type))
         sys.exit()
 
     if model_cmd == 'convert_to_pmx':
@@ -193,5 +192,8 @@ if __name__ == "__main__":
         OnnxModelAccuracyTest(config_str)
     elif model_cmd == 'onnx_performance_test':
         OnnxModelPerformanceTest(config_str)
-
-
+    elif model_cmd == 'start_llm_server':
+        StartLLMServer(config_str, sys.argv[2])
+    else:
+        print('Unknown command: %s' %(model_cmd))
+        sys.exit()
