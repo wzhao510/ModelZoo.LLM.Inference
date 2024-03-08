@@ -1,0 +1,13 @@
+{
+    "model_config":{
+        "ori_path":"/PDE-AI/Models/stable-diffusion-onnx/sd-2-1_fp16/",
+        "dataset":"./data/PartiPrompts.tsv",
+        "seed": 21,
+        "num_inference_steps": 50,
+        "text_encoder":"model_sim_fp16.onnx",
+        "unet": "model_sim_fp16.onnx",
+        "vae_decoder":"model_sim_fp16.onnx",
+        "outputs_size":"512#512",
+        "scheduler":"DDIM"
+    }
+}

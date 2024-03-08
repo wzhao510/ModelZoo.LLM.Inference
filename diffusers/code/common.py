@@ -8,6 +8,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 
 SchedulerMap = {
+    "DDIM" : DDIMScheduler,
     "PNDM" : PNDMScheduler,
     "EulerA" : EulerAncestralDiscreteScheduler,
 }
@@ -82,7 +83,7 @@ class Text2ImgModel:
         
         return status
 
-    def infer(self, prompt, params):
+    def infer(self, prompts, params):
         status_ret = self.refresh_para(params)
         if status_ret == -1:
             return None
@@ -97,5 +98,5 @@ class Text2ImgModel:
                         safety_checker=None,
                         feature_extractor=None,
                         requires_safety_checker=False)
-        image = self.pipe(prompt, generator=self.generator, num_inference_steps=params["num_inference_steps"]).images[0]
+        image = self.pipe(prompts, generator=self.generator, num_inference_steps=params["num_inference_steps"])
         return image

@@ -8,14 +8,19 @@ import time
 def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca", th_num="8"):
     params = get_params(modelname)
     model = Text2ImgModel(params)
-    prompt = "a photo of an astronaut riding a horse on mars"
+    prompt = ["a photo of an astronaut riding a horse on mars",
+            ]
+    # prompt = ["a photo of an astronaut riding a horse on mars",
+    #         "A majestic lion jumping from a big stone at night"]
     print("Warm up")
-    image = model.infer(prompt, params)
+    images = model.infer(prompt, params)
     print("Start Inference")
     start = time.time()
-    image = model.infer(prompt, params)
+    output = model.infer(prompt, params)
     print(f"Cost time: {time.time() - start}")
-    image.save(f"generated_image.png")
+    output.images[0].save(f"generated_image.png")
+    # output.images[1].save(f"generated_image2.png")
+    # image.save(f"generated_image.png")
 
 
 
