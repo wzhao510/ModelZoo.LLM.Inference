@@ -42,7 +42,7 @@ TEST_INPUTS="$TOKEN_IDS,$ATTN_MASK,$SEQSTARTS,$KVSTARTS,$CACHESTARTS,$DECODING_B
 INPUT_DEVICES="device,device,device,device,device,host,device,host,host,device,device"
 
 PPL_SERVER_DIR=$5
-CMD="${PPL_SERVER_DIR}/bin/pplnn_llm --use-llm-cuda \
+CMD="${PPL_SERVER_DIR}/pplnn_llm --use-llm-cuda \
 --onnx-model $MODEL_PATH \
 --shaped-input-files $TEST_INPUTS \
 --save-outputs \

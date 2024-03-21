@@ -1,10 +1,10 @@
 {
-    "ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/",
+    "ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/bin/",
     "server_config": {
         "model_type": "codellama",
 	"model_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/CodeLlama_7b/onnx-model/",
 	"model_param_path": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/CodeLlama_7b/onnx-model/params.json",
-	"tokenizer_path": "/home/$USER/CodeLlama/CodeLlama-7B-fp16/tokenizer.model",
+	"tokenizer_path": "/home/$USER/CodeLlama_7b/tokenizer.model",
 	"tensor_parallel_size": 1,
 	"top_p": 0.0,
 	"top_k": 1,
@@ -15,5 +15,10 @@
 	"max_tokens_per_step": 8192,
 	"host": "0.0.0.0",
 	"port": 23333
+    },
+    "enable_http_server": true,
+    "http_server_config": {
+        "host": "0.0.0.0",
+        "port": "23334"
     }
 }

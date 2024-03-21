@@ -37,14 +37,14 @@
         "step": 0,
         "num_gpu": 1,
         "maca_path": "/opt/maca",
-	"ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/",
+	"ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/bin/",
         "test_data_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_13b/pmx-dump/",
         "onnx_model_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_13b/onnx-model/",
         "out_put_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_13b/onnx-accuracy-test-result/"
     },
     "onnx_performance_test": {
         "model_name": "llama_13b",
-        "ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/",
+        "ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/bin/",
         "onnx_model_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_13b/onnx-model/",
         "onnx_model_param_path": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_13b/onnx-model/params.json",
         "tensor_parallel_size": 1,

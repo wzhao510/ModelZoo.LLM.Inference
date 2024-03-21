@@ -88,7 +88,7 @@ def OnnxModelPerformanceTest(config_str):
                 input_file = '{}/{}_{}'.format(config['input_file_dir'], config['input_file_base'], input_token)
                 cur_log = '{}/input_{}_output_{}_batch_{}.log'.format(model_log_dir, input_token, output_token, batch_size)
                 if config['do_tracer']:
-                    llama_benchmark_cmd = 'mcTracer --name Tracers/Tracer_{}_bs{}_input{}_output{}_new_lib {}/bin/benchmark_llama --model-type llama --model-dir {} --model-param-path {} \
+                    llama_benchmark_cmd = 'mcTracer --name Tracers/Tracer_{}_bs{}_input{}_output{}_new_lib {}/benchmark_llama --model-type llama --model-dir {} --model-param-path {} \
                     --tensor-parallel-size {} --top-p {} --top-k {} --temperature {} --warmup-loops {} --generation-len {} \
                     --benchmark-loops {} --input-file {} --batch-size {} 2>&1'.format(
                         config['model_name'], batch_size, input_token, output_token, config['ppl_serving_dir'], config['onnx_model_dir'],
@@ -98,7 +98,7 @@ def OnnxModelPerformanceTest(config_str):
                     if config['enable_output_logs']:
                         llama_benchmark_cmd += ' | tee {}'.format(cur_log)
                 else:
-                    llama_benchmark_cmd = '{}/bin/benchmark_llama --model-type llama --model-dir {} --model-param-path {} \
+                    llama_benchmark_cmd = '{}/benchmark_llama --model-type llama --model-dir {} --model-param-path {} \
                     --tensor-parallel-size {} --top-p {} --top-k {} --temperature {} --warmup-loops {} --generation-len {} \
                     --benchmark-loops {} --input-file {} --batch-size {} 2>&1'.format(
                         config['ppl_serving_dir'], config['onnx_model_dir'], config['onnx_model_param_path'],
@@ -154,14 +154,27 @@ def OnnxModelPerformanceTest(config_str):
         with open(result_json, 'w', encoding='utf-8') as f:
             f.write(json.dumps(result_benchmark, indent=4))
 
-def StartLLMServer(config_str, config_file):
+def StartServer(config_str, config_file):
+    processes = []
+
     server_dir = json.loads(config_str).get('ppl_serving_dir')
     general_config = json.loads(config_str).get('server_config')
     with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=True, prefix='server_config_', dir=os.path.dirname(os.path.abspath(config_file))) as tmp_file:
         json.dump(general_config, tmp_file)
         tmp_file.seek(0)
-        start_server_cmd = '{}/bin/ppl_llm_server {}'.format(server_dir, tmp_file.name)
-        ret = subprocess.run(start_server_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
+        start_server_cmd = '{}/ppl_llm_server {}'.format(server_dir, tmp_file.name)
+        ret = subprocess.Popen(start_server_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
+        
+        processes.append(ret)
+
+        if json.loads(config_str).get('enable_http_server'):
+            start_server_cmd = 'python ./src/http/http_to_grpc.py --host {} --port {} --grpc_server {}:{}'.format(json.loads(config_str).get('http_server_config')['host'], json.loads(config_str).get('http_server_config')['port'], json.loads(config_str).get('server_config')['host'], json.loads(config_str).get('server_config')['port'])
+            ret = subprocess.Popen(start_server_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
+            processes.append(ret)
+
+        for process in processes:
+            process.wait()
+
 
 if __name__ == "__main__":
 
@@ -172,11 +185,12 @@ if __name__ == "__main__":
     model_cmd = sys.argv[1]
     with open(sys.argv[2], 'r') as f:
         config_str = f.read()
-    
-    model_type = json.loads(config_str).get('model_type')
-    if model_type != 'llama' and model_type != 'chatglm' and model_type != 'internlm' and model_type != 'baichuan' and model_cmd != 'start_llm_server':
-        print('unknown model type: %s, please use llama / chatglm / internlm / baichuan' %(model_type))
-        sys.exit()
+   
+    if model_cmd != 'start_llm_server':
+        model_type = json.loads(config_str).get('model_type')
+        if model_type != 'llama' and model_type != 'chatglm' and model_type != 'internlm' and model_type != 'baichuan':
+            print('unknown model type: %s, please use llama / chatglm / internlm / baichuan' %(model_type))
+            sys.exit()
 
     if model_cmd == 'convert_to_pmx':
         ConvertWeightToPmx(config_str)
@@ -193,7 +207,7 @@ if __name__ == "__main__":
     elif model_cmd == 'onnx_performance_test':
         OnnxModelPerformanceTest(config_str)
     elif model_cmd == 'start_llm_server':
-        StartLLMServer(config_str, sys.argv[2])
+        StartServer(config_str, sys.argv[2])
     else:
         print('Unknown command: %s' %(model_cmd))
         sys.exit()
