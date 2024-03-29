@@ -3,9 +3,10 @@ import grpc
 import llm_pb2
 import llm_pb2_grpc
 from flask import Flask, request, jsonify
-from waitress import serve
+from flask_socketio import SocketIO
 
 _app = Flask(__name__)
+socketio = SocketIO(_app, async_mode='threading')
 _grpc_server = ''
 
 @_app.route("/ppl_llm_server", methods=['POST'])
@@ -39,4 +40,5 @@ if __name__ == '__main__':
     parser.add_argument("--grpc_server")
     args = parser.parse_args()
     _grpc_server = args.grpc_server
-    serve(_app, host=args.host, port=args.port)
+    #_app.run(debug=True, host=args.host, port=int(args.port))
+    socketio.run(_app, host=args.host, port=int(args.port))

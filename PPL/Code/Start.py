@@ -5,27 +5,43 @@ import sys
 import tempfile
 import signal
 
+_dir = ""
+
+def get_folder_names(directory):
+    folder_names = []
+    with os.scandir(directory) as entries:
+        for entry in entries:
+            if entry.is_dir():
+                folder_names.append(entry.name)
+    return folder_names
+
+def check_model_type(config_str):
+    model_type = json.loads(config_str).get('model_type')
+    if model_type not in get_folder_names(f"{_dir}/src/"):
+        print('unknown model type: %s' %(model_type))
+        sys.exit()
+
 def ConvertWeightToPmx(config_str):
     config = json.loads(config_str).get('convert_to_pmx')
     model_type = json.loads(config_str).get('model_type')
     if config['enable_using_safetensors']:
-        convert_cmd = 'python ./src/{}/ConvertWeightToPMX.py --input_dir {} --output_dir {} --use_safetensors True'.format(model_type, config['origin_model_dir'], config['pmx_model_output_dir'])
+        convert_cmd = 'python {}/src/{}/ConvertWeightToPMX.py --input_dir {} --output_dir {} --use_safetensors True'.format(_dir, model_type, config['origin_model_dir'], config['pmx_model_output_dir'])
     else:
-        convert_cmd = 'python ./src/{}/ConvertWeightToPMX.py --input_dir {} --output_dir {}'.format(model_type, config['origin_model_dir'], config['pmx_model_output_dir'])
+        convert_cmd = 'python {}/src/{}/ConvertWeightToPMX.py --input_dir {} --output_dir {}'.format(_dir, model_type, config['origin_model_dir'], config['pmx_model_output_dir'])
     ret = subprocess.Popen(convert_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
     ret.wait()
 
 def SplitPmxModel(config_str):
     config = json.loads(config_str).get('split_pmx_model')
     model_type = json.loads(config_str).get('model_type')
-    split_cmd = 'python ./src/{}/Split.py --input_dir {} --num_shards {} --output_dir {}'.format(model_type, config['pmx_model_dir'], config['number_of_shards'], config['split_model_output_dir'])
+    split_cmd = 'python {}/src/{}/Split.py --input_dir {} --num_shards {} --output_dir {}'.format(_dir, model_type, config['pmx_model_dir'], config['number_of_shards'], config['split_model_output_dir'])
     ret = subprocess.Popen(split_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
     ret.wait()
 
 def MergePmxModel(config_str):
     config = json.loads(config_str).get('merge_pmx_model')
     model_type = json.loads(config_str).get('model_type')
-    merge_cmd = 'python ./src/{}/Merge.py --input_dir {} --num_shards {} --output_dir {}'.format(model_type, config['split_model_dir'], config['num_of_shards'], config['merged_model_output_dir'])
+    merge_cmd = 'python {}/src/{}/Merge.py --input_dir {} --num_shards {} --output_dir {}'.format(_dir, model_type, config['split_model_dir'], config['num_of_shards'], config['merged_model_output_dir'])
     ret = subprocess.Popen(merge_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
     ret.wait()
 
@@ -34,9 +50,9 @@ def PmxModelTest(config_str):
     model_type = json.loads(config_str).get('model_type')
     if len(config['dump_steps'].split(",")) == 1 and config['dump_steps'][-1] != ",":
         config['dump_steps'] += ","
-    test_cmd = 'OMP_NUM_THREADS=1 torchrun --nproc_per_node {} ./src/{}/Demo.py --ckpt_dir {} --tokenizer_path {}/tokenizer.model --fused_qkv 1 --fused_kvcache 1\
+    test_cmd = 'OMP_NUM_THREADS=1 torchrun --nproc_per_node {} {}/src/{}/Demo.py --ckpt_dir {} --tokenizer_path {}/tokenizer.model --fused_qkv 1 --fused_kvcache 1\
                 --auto_causal 1 --quantized_cache 1 --dynamic_batching 1 --seqlen_scale_up {} --max_gen_len {} --dump_steps {} --dump_tensor_path {} --batch {}\
-                --cache_layout {}'.format(config['num_gpu'], model_type, config['pmx_model_dir'], config['origin_model_tokenizer_dir'], config['seqlen_scale_up'],\
+                --cache_layout {}'.format(config['num_gpu'], _dir, model_type, config['pmx_model_dir'], config['origin_model_tokenizer_dir'], config['seqlen_scale_up'],\
                 config['max_gen_len'], config['dump_steps'], config['dump_tensor_path'], config['batch_size'], config['cache_layout'])
     ret = subprocess.Popen(test_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
     ret.wait()
@@ -44,10 +60,10 @@ def PmxModelTest(config_str):
 def ConvertPmxToOnnx(config_str):
     config = json.loads(config_str).get('convert_to_onnx')
     model_type = json.loads(config_str).get('model_type')
-    convert_cmd = 'OMP_NUM_THREADS=1 torchrun --nproc_per_node {} ./src/{}/Export.py --ckpt_dir {} --fused_qkv 1\
+    convert_cmd = 'OMP_NUM_THREADS=1 torchrun --nproc_per_node {} {}/src/{}/Export.py --ckpt_dir {} --fused_qkv 1\
                      --fused_kvcache 1 --auto_causal 1 --quantized_cache 1 --dynamic_batching 1 --export_path {} --cache_layout {}'.format(config['num_gpu'],\
-                     model_type, config['pmx_model_dir'], config['onnx_model_output_dir'], config['cache_layout'])
-    if model_type != 'chatglm':
+                     _dir, model_type, config['pmx_model_dir'], config['onnx_model_output_dir'], config['cache_layout'])
+    if not model_type.startswith('chatglm') and model_type != 'qwen':
         convert_cmd += ' --tokenizer_path {}/tokenizer.model'.format(config['origin_model_tokenizer_dir'])                     
     ret = subprocess.Popen(convert_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
     ret.wait()
@@ -57,9 +73,13 @@ def OnnxModelAccuracyTest(config_str):
     step = config['step']
     num_gpu = config['num_gpu']
     if num_gpu > 1:
-        test_cmd = '{}/ompi/bin/mpirun -np {} bash ./src/benchmark.sh {} {} {} {} {}'.format(config['maca_path'], num_gpu, step, config['onnx_model_dir'], config['out_put_dir'], config['test_data_dir'], config['ppl_serving_dir'])
+        maca_path = os.environ.get('MACA_PATH')
+        if not maca_path:
+            print("$MACA_PATH is not set.")
+            sys.exit()
+        test_cmd = '{}/ompi/bin/mpirun -np {} bash {}/src/benchmark.sh {} {} {} {} {}'.format(maca_path, num_gpu, _dir, step, config['onnx_model_dir'], config['out_put_dir'], config['test_data_dir'], config['ppl_serving_dir'])
     else:
-        test_cmd = 'bash ./src/benchmark.sh {} {} {} {} {}'.format(step, config['onnx_model_dir'], config['out_put_dir'], config['test_data_dir'], config['ppl_serving_dir'])
+        test_cmd = 'bash {}/src/benchmark.sh {} {} {} {} {}'.format(_dir, step, config['onnx_model_dir'], config['out_put_dir'], config['test_data_dir'], config['ppl_serving_dir'])
     ret = subprocess.Popen(test_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
     ret.wait()
 
@@ -168,7 +188,7 @@ def StartServer(config_str, config_file):
         processes.append(ret)
 
         if json.loads(config_str).get('enable_http_server'):
-            start_server_cmd = 'python ./src/http/http_to_grpc.py --host {} --port {} --grpc_server {}:{}'.format(json.loads(config_str).get('http_server_config')['host'], json.loads(config_str).get('http_server_config')['port'], json.loads(config_str).get('server_config')['host'], json.loads(config_str).get('server_config')['port'])
+            start_server_cmd = 'python {}/src/http/http_to_grpc.py --host {} --port {} --grpc_server {}:{}'.format(_dir, json.loads(config_str).get('http_server_config')['host'], json.loads(config_str).get('http_server_config')['port'], json.loads(config_str).get('server_config')['host'], json.loads(config_str).get('server_config')['port'])
             ret = subprocess.Popen(start_server_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
             processes.append(ret)
 
@@ -178,33 +198,34 @@ def StartServer(config_str, config_file):
 
 if __name__ == "__main__":
 
+    _dir = os.path.dirname(os.path.abspath(__file__))
+
     if len(sys.argv) != 3:
         print('use like this:\n python Start.py COMMAND config_file_path')
         sys.exit()
 
     model_cmd = sys.argv[1]
     with open(sys.argv[2], 'r') as f:
-        config_str = f.read()
-   
-    if model_cmd != 'start_llm_server':
-        model_type = json.loads(config_str).get('model_type')
-        if model_type != 'llama' and model_type != 'chatglm' and model_type != 'internlm' and model_type != 'baichuan':
-            print('unknown model type: %s, please use llama / chatglm / internlm / baichuan' %(model_type))
-            sys.exit()
+        config_str = f.read()        
 
     if model_cmd == 'convert_to_pmx':
+        check_model_type(config_str)
         ConvertWeightToPmx(config_str)
     elif model_cmd == 'split_pmx_model':
         SplitPmxModel(config_str)
     elif model_cmd == 'merge_pmx_model':
         MergePmxModel(config_str)
     elif model_cmd == 'pmx_model_test':
+        check_model_type(config_str)
         PmxModelTest(config_str)
     elif model_cmd == 'convert_to_onnx':
+        check_model_type(config_str)
         ConvertPmxToOnnx(config_str)
     elif model_cmd == 'onnx_accuracy_test':
+        check_model_type(config_str)
         OnnxModelAccuracyTest(config_str)
     elif model_cmd == 'onnx_performance_test':
+        check_model_type(config_str)
         OnnxModelPerformanceTest(config_str)
     elif model_cmd == 'start_llm_server':
         StartServer(config_str, sys.argv[2])

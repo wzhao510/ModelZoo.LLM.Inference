@@ -1,7 +1,7 @@
 import argparse
 import macaPMX
 
-from macaPMX.model_zoo.chatglm.huggingface import write_pmx_model
+from macaPMX.model_zoo.qwen.huggingface import write_pmx_model
 
 def main():
     parser = argparse.ArgumentParser()
@@ -21,3 +21,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

@@ -36,8 +36,7 @@
     "onnx_accuracy_test": {
         "step": 0,
         "num_gpu": 1,
-        "maca_path": "/opt/maca",
-	"ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/bin/",
+        "ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/bin/",
         "test_data_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_13b/pmx-dump/",
         "onnx_model_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_13b/onnx-model/",
         "out_put_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_13b/onnx-accuracy-test-result/"

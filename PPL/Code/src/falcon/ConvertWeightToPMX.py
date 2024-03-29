@@ -1,7 +1,7 @@
 import argparse
 import macaPMX
 
-from macaPMX.model_zoo.chatglm.huggingface import write_pmx_model
+from macaPMX.model_zoo.falcon.huggingface import write_pmx_model
 
 def main():
     parser = argparse.ArgumentParser()
@@ -13,10 +13,17 @@ def main():
         "--output_dir",
         help="Location to write PMX model",
     )
+    # parser.add_argument(
+        # "--use_safetensors",
+        # type=bool,
+        # default=False,
+        # help="whether using safetensors for original input file",
+    # )
     args = parser.parse_args()
     write_pmx_model(
         model_path=args.output_dir,
         input_base_path=args.input_dir,
+        # use_safetensors=args.use_safetensors
     )
 
 if __name__ == "__main__":
