@@ -50,9 +50,9 @@ def PmxModelTest(config_str):
     model_type = json.loads(config_str).get('model_type')
     if len(config['dump_steps'].split(",")) == 1 and config['dump_steps'][-1] != ",":
         config['dump_steps'] += ","
-    test_cmd = 'OMP_NUM_THREADS=1 torchrun --nproc_per_node {} {}/src/{}/Demo.py --ckpt_dir {} --tokenizer_path {}/tokenizer.model --fused_qkv 1 --fused_kvcache 1\
+    test_cmd = 'OMP_NUM_THREADS=1 torchrun --nproc_per_node {} {}/src/{}/Demo.py --ckpt_dir {} --tokenizer_path {} --fused_qkv 1 --fused_kvcache 1\
                 --auto_causal 1 --quantized_cache 1 --dynamic_batching 1 --seqlen_scale_up {} --max_gen_len {} --dump_steps {} --dump_tensor_path {} --batch {}\
-                --cache_layout {}'.format(config['num_gpu'], _dir, model_type, config['pmx_model_dir'], config['origin_model_tokenizer_dir'], config['seqlen_scale_up'],\
+                --cache_layout {}'.format(config['num_gpu'], _dir, model_type, config['pmx_model_dir'], config['origin_model_tokenizer_path'], config['seqlen_scale_up'],\
                 config['max_gen_len'], config['dump_steps'], config['dump_tensor_path'], config['batch_size'], config['cache_layout'])
     ret = subprocess.Popen(test_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
     ret.wait()
@@ -64,7 +64,7 @@ def ConvertPmxToOnnx(config_str):
                      --fused_kvcache 1 --auto_causal 1 --quantized_cache 1 --dynamic_batching 1 --export_path {} --cache_layout {}'.format(config['num_gpu'],\
                      _dir, model_type, config['pmx_model_dir'], config['onnx_model_output_dir'], config['cache_layout'])
     if not model_type.startswith('chatglm') and model_type != 'qwen':
-        convert_cmd += ' --tokenizer_path {}/tokenizer.model'.format(config['origin_model_tokenizer_dir'])                     
+        convert_cmd += ' --tokenizer_path {}/tokenizer.model'.format(config['origin_model_tokenizer_path'])                     
     ret = subprocess.Popen(convert_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
     ret.wait()
 
@@ -188,7 +188,7 @@ def StartServer(config_str, config_file):
         processes.append(ret)
 
         if json.loads(config_str).get('enable_http_server'):
-            start_server_cmd = 'python {}/src/http/http_to_grpc.py --host {} --port {} --grpc_server {}:{}'.format(_dir, json.loads(config_str).get('http_server_config')['host'], json.loads(config_str).get('http_server_config')['port'], json.loads(config_str).get('server_config')['host'], json.loads(config_str).get('server_config')['port'])
+            start_server_cmd = 'python {}/src/http/http_to_grpc.py --host {} --port {} --threads {} --grpc_server {}:{}'.format(_dir, json.loads(config_str).get('http_server_config')['host'], json.loads(config_str).get('http_server_config')['port'], json.loads(config_str).get('http_server_config')['threads'], json.loads(config_str).get('server_config')['host'], json.loads(config_str).get('server_config')['port'])
             ret = subprocess.Popen(start_server_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
             processes.append(ret)
 

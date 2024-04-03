@@ -2,9 +2,9 @@
     "ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/bin/",
     "server_config": {
         "model_type": "",
-        "model_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Falcon/onnx-model/",
-        "model_param_path": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Falcon/onnx-model/params.json",
-        "tokenizer_path": "/home/$USER/Falcon/tokenizer.model",
+        "model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Falcon/onnx-model/",
+        "model_param_path": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Falcon/onnx-model/params.json",
+        "tokenizer_path": "/external/models/Falcon/tokenizer.model",
         "tensor_parallel_size": 1,
         "top_p": 0.0,
         "top_k": 1,
@@ -19,6 +19,7 @@
     "enable_http_server": true,
     "http_server_config": {
         "host": "0.0.0.0",
-        "port": "23334"
+        "port": 23334,
+        "threads": 50
     }
 }

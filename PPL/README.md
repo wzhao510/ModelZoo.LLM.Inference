@@ -62,9 +62,9 @@
 
     配置文件说明：
     "convert_to_pmx": {
-        "origin_model_dir": "/home/$USER/Llama_7b",                                                 #   LLM原始权重模型路径
+        "origin_model_dir": "/external/models/Llama_7b",                                                 #   LLM原始权重模型路径
         "enable_using_safetensors": false,                                                          #   原始权重文件格式是否safetensors
-        "pmx_model_output_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/pmx-model/"  #   输出PMX模型目标路径
+        "pmx_model_output_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/pmx-model/"  #   输出PMX模型目标路径
     }
 
     执行该命令，将在指定路径生成原始模型的pmx模型。
@@ -75,9 +75,9 @@
 
     配置文件说明：
     "split_pmx_model": {
-        "pmx_model_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_65b/pmx-model/",                #   待切分PMX模型目录
+        "pmx_model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_65b/pmx-model/",                #   待切分PMX模型目录
         "number_of_shards": 4,                                                                               #   PMX模型切分数量
-        "split_model_output_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_65b/pmx-model-split/"  #   切分后PMX模型保存目录
+        "split_model_output_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_65b/pmx-model-split/"  #   切分后PMX模型保存目录
     }
     
     执行该命令，将在指定路径生成4份子模型，以适配多卡并行推理。
@@ -88,9 +88,9 @@
 
     配置文件说明：
     "merge_pmx_model": {
-        "split_model_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_65b/pmx-model-split/",            #   待合并PMX模型目录
+        "split_model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_65b/pmx-model-split/",            #   待合并PMX模型目录
         "num_of_shards": 4,                                                                                      #   PMX子模型数量
-        "merged_model_output_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_65b/pmx-model-merged/"    #   合并后PMX模型保存目录
+        "merged_model_output_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_65b/pmx-model-merged/"    #   合并后PMX模型保存目录
     }
 
     该命令与模型切分相反，将多个切分后的PMX子模型合并成一个。
@@ -102,12 +102,12 @@
     配置文件说明：
     "pmx_model_test": {
         "num_gpu": 1,                                                                               #   模型推理需要的GPU数量，与模型份数相关
-        "pmx_model_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/pmx-model/",        #   PMX模型目录
-        "origin_model_tokenizer_dir": "/home/$USER/Llama_7b",                                       #   tokenizer模型目录
+        "pmx_model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/pmx-model/",        #   PMX模型目录
+        "origin_model_tokenizer_path": "/external/models/Llama_7b",                                       #   tokenizer模型目录
         "seqlen_scale_up": 1,                                                                       #   输入字节大小的比例因子
         "max_gen_len": 256,                                                                         #   生成的最大输出长度
         "dump_steps": "0,1,255",                                                                    #   保存测试数据的step
-        "dump_tensor_path": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/pmx-dump/",      #   保存测试数据的路径
+        "dump_tensor_path": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/pmx-dump/",      #   保存测试数据的路径
         "batch_size": 1,                                                                            #   批处理的数据大小
         "cache_layout": 3                                                                           #   cacheAttention中cache存储layout，当前仅支持0和3。
     }
@@ -121,9 +121,9 @@
     配置文件说明：
     "convert_to_onnx": {
         "num_gpu": 1,                                                                                   #   模型推理需要的GPU数量
-        "pmx_model_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/pmx-model/",            #   PMX模型目录
-        "origin_model_tokenizer_dir": "/home/$USER/Llama_7b",                                           #   tokenizer模型目录
-        "onnx_model_output_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-model/",   #   ONNX模型导出目录
+        "pmx_model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/pmx-model/",            #   PMX模型目录
+        "origin_model_tokenizer_path": "/external/models/Llama_7b",                                           #   tokenizer模型目录
+        "onnx_model_output_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-model/",   #   ONNX模型导出目录
         "cache_layout": 3                                                                               #   cacheAttention中cache存储layout，当前仅支持0和3。
     }
 
@@ -138,9 +138,9 @@
         "step": 0,                                                                                          #   与PMX模型测试时的step相对应
         "num_gpu": 1,                                                                                       #   模型推理需要的GPU数量
         "pplnn_llm_dir": "/opt/maca-ai/ppl.llm.serving/bin/",                                               #   可执行文件pplnn_llm所在目录
-        "test_data_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/pmx-dump/",                 #   模型输入文件目录，此处使用PMX模型测试时保存的数据
-        "onnx_model_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-model/",              #   ONNX模型目录
-        "out_put_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-accuracy-test-result/"   #   模型输出文件保存目录
+        "test_data_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/pmx-dump/",                 #   模型输入文件目录，此处使用PMX模型测试时保存的数据
+        "onnx_model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-model/",              #   ONNX模型目录
+        "out_put_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-accuracy-test-result/"   #   模型输出文件保存目录
     }
 
     大多数情况下，大模型会依托服务端部署提供服务端接口供客户端调用，但在服务化部署前，需要依托本地模型部署进行推理验证，以确认模型精度是否符合预期。该命令将执行ONNX模型精度验证操作，输出数据将与PMX模型测试输出数据进行对比。
@@ -153,15 +153,15 @@
     "onnx_performance_test": {
         "model_name": "llama_7b",                                                                                                   #   模型名称
         "ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/bin/",                                                                     #   可执行文件benchmark_llama所在目录
-        "onnx_model_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-model/",                                      #   ONNX模型目录
-        "onnx_model_param_path": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-model/params.json",                    #   ONNX模型的params.json文件路径
+        "onnx_model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-model/",                                      #   ONNX模型目录
+        "onnx_model_param_path": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-model/params.json",                    #   ONNX模型的params.json文件路径
         "tensor_parallel_size": 1,                                                                                                  #   与模型切分数量一致
         "top_p": 0.0,                                                                                                               #   ```
         "top_k": 1,                                                                                                                 #       推理参数
         "temperature": 1.0,                                                                                                         #   ```
         "warmup_loops": 2,                                                                                                          #   warmup执行次数
         "benchmark_loops": 2,                                                                                                       #   性能测试执行次数
-        "input_file_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Input/",                                                          #   模型输入文件目录
+        "input_file_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Input/",                                                          #   模型输入文件目录
         "input_file_base": "tokens_input",                                                                                          #   模型输入文件基础文件名
         "input_token_list": "8,256",                                                                                                #   模型输入token长度列表
         "output_token_list": "256,512",                                                                                             #   模型生成token长度列表
@@ -169,7 +169,7 @@
         "do_tracer": false,                                                                                                         #   使用mcTracer
         "enable_output_logs": false,                                                                                                #   运行日志输出开关
         "log_path": "",                                                                                                             #   日志保存路径
-        "output_result_json_path": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-performance-test-result/result.json" #   测试结果保存路径
+        "output_result_json_path": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-performance-test-result/result.json" #   测试结果保存路径
     }
 
     执行该命令，可在本地进行性能测试，为后续服务端部署做性能指标参照。性能测试过程中将遍历batch_size、input_token和output_token进行组合，对每种组合分别做测试，测试结束后会输出对应的性能测试数据，如下所示：
@@ -184,9 +184,9 @@
     "ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/bin/",                                                     #   可执行文件ppl_llm_server所在目录
     "server_config": {
         "model_type": "llama",                                                                                  #   ppl_llm_server支持的模型框架类型，当前支持的模型已经配置完成，不需要做修改
-        "model_dir": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-model/",                       #   ONNX模型目录
-        "model_param_path": "/home/$USER/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-model/params.json",     #   ONNX模型的params.json文件路径
-        "tokenizer_path": "/home/$USER/Llama_7b/tokenizer.model",                                               #   tokenizer模型目录
+        "model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-model/",                       #   ONNX模型目录
+        "model_param_path": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_7b/onnx-model/params.json",     #   ONNX模型的params.json文件路径
+        "tokenizer_path": "/external/models/Llama_7b/tokenizer.model",                                               #   tokenizer模型目录
         "tensor_parallel_size": 1,                                                                              #   与模型切分数量一致
         "top_p": 0.0,                                                                                           #   推理参数
         "top_k": 1,                                                                                             #   推理参数
@@ -199,18 +199,19 @@
         "port": 23333                                                                                           #   grpc服务端port
     },
     "enable_http_server": true,                                                                                 #   http服务开关
-    "http_server_config": {                                                                                     #   http服务端host、port
+    "http_server_config": {                                                                                     #   http服务端host、port、工作线程数量
         "host": "0.0.0.0",
-        "port": "23334"
+        "port": 23334,
+        "threads": 50
     }
 
     执行该命令将启动大模型服务，默认接收grpc请求，客户端示例代码可在安装ppl.llm.serving后在/opt/maca-ai/ppl.llm.serving/samples/samples/ppl_server_client/目录下找到，包含C++和Python两种版本。python客户端依赖grpc，使用时需安装grpcio、grpcio-tools两个依赖项。
         pip install grpcio
         pip install grpcio-tools
 
-    若选择开启http服务，可接收http和grpc两种请求，http服务需要安装flask、flask_socketio依赖项。
+    若选择开启http服务，可接收http和grpc两种请求，http服务需要安装flask、msgpack依赖项。
         pip install flask
-        pip install flask_socketio
+        pip install msgpack
     http客户端示例代码可见/opt/maca-ai/ppl.llm.serving/samples/samples/ppl_server_client/python_client/http_client.py，需要安装requests依赖项。
         pip install requests
 
