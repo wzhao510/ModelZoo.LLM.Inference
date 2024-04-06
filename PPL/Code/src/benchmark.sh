@@ -57,4 +57,7 @@ echo "RUN RANK${MPI_LOCALRANKID} STEP${STEP} -> $CMD"
  
 eval "$CMD"
 
-python src/compare.py ${STEP} ${OUTPUT_DIR} ${TEST_DATA_DIR}
+python "$(dirname "$0")/compare.py" ${STEP} ${OUTPUT_DIR} ${TEST_DATA_DIR}
+
+
+

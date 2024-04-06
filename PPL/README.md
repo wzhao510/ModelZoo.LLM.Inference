@@ -34,14 +34,15 @@
 │   └── Qwen
 │       ├── Config.json
 │       └── ServiceConfig.json
-└── README.md
+│── README.md
+└── runtest.sh
 ```
 
 ## 环境依赖
 
     运行PPL相关操作需要完成安装MacaPMX及ppl.llm.serving，Python版本3.8，用到Python标准库os, subprocess, json, sys, tempfile, signal
 
-    此外需要正确配置环境变量：
+    此外需要正确配置环境变量（默认在Docker镜像中已设置）：
 
         export MACA_PATH=your_maca_path
         export PATH=${MACA_PATH}/bin:${PATH}
@@ -50,7 +51,7 @@
 
 ## 支持命令
 
-    命令结构为 Python Start.py YOUR_COMMAND CONFIG_FILE
+    命令结构为 ./runtest.sh YOUR_COMMAND CONFIG_FILE
                     |                        |
                 (绝对或相对路径)          (绝对或相对路径)
 
@@ -58,7 +59,7 @@
 
 ## 1、转为PMX模型（以llama_7b为例，在ModelZoo.LLM.Inference/PPL/Code目录下执行）
 
-    python ./Start.py convert_to_pmx ../Model/Llama_7b/Config.json
+    ./runtest.sh convert_to_pmx Model/Llama_7b/Config.json
 
     配置文件说明：
     "convert_to_pmx": {
@@ -71,7 +72,7 @@
 
 ## 2、PMX模型切分（以llama_65b为例，在ModelZoo.LLM.Inference/PPL/Code目录下执行）
 
-    python ./Start.py split_pmx_model ../Model/Llama_65b/Config.json
+    ./runtest.sh split_pmx_model Model/Llama_65b/Config.json
 
     配置文件说明：
     "split_pmx_model": {
@@ -84,7 +85,7 @@
 
 ## 3、PMX模型合并（以llama_65b为例，在ModelZoo.LLM.Inference/PPL/Code目录下执行）
 
-    python ./Start.py merge_pmx_model ../Model/Llama_65b/Config.json
+    ./runtest.sh merge_pmx_model Model/Llama_65b/Config.json
 
     配置文件说明：
     "merge_pmx_model": {
@@ -97,7 +98,7 @@
 
 ## 4、PMX模型测试（以llama_7b为例，在ModelZoo.LLM.Inference/PPL/Code目录下执行）
 
-    python ./Start.py pmx_model_test ../Model/Llama_7b/Config.json
+    ./runtest.sh pmx_model_test Model/Llama_7b/Config.json
 
     配置文件说明：
     "pmx_model_test": {
@@ -116,7 +117,7 @@
 
 ## 5、导出为ONNX模型（以llama_7b为例，在ModelZoo.LLM.Inference/PPL/Code目录下执行）
 
-    python ./Start.py convert_to_onnx ../Model/Llama_7b/Config.json
+    ./runtest.sh convert_to_onnx Model/Llama_7b/Config.json
 
     配置文件说明：
     "convert_to_onnx": {
@@ -131,7 +132,7 @@
 
 ## 6、ONNX模型精度验证（以llama_7b为例，在ModelZoo.LLM.Inference/PPL/Code目录下执行）
 
-    python ./Start.py onnx_accuracy_test ../Model/Llama_7b/Config.json
+    ./runtest.sh onnx_accuracy_test Model/Llama_7b/Config.json
 
     配置文件说明：
     "onnx_accuracy_test": {
@@ -147,7 +148,7 @@
 
 ## 7、ONNX模型性能测试（以llama_7b为例，在ModelZoo.LLM.Inference/PPL/Code目录下执行）
 
-    python ./Start.py onnx_performance_test ../Model/Llama_7b/Config.json
+    ./runtest.sh onnx_performance_test Model/Llama_7b/Config.json
 
     配置文件说明：
     "onnx_performance_test": {
@@ -178,7 +179,7 @@
 
 ## 8、服务化部署（以llama_7b为例，在ModelZoo.LLM.Inference/PPL/Code目录下执行）
 
-    python ./Start.py start_llm_server ../Model/Llama_7b/ServiceConfig.json
+    ./runtest.sh start_llm_server Model/Llama_7b/Config.json
 
     配置文件说明：
     "ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/bin/",                                                     #   可执行文件ppl_llm_server所在目录
@@ -205,14 +206,14 @@
         "threads": 50
     }
 
-    执行该命令将启动大模型服务，默认接收grpc请求，客户端示例代码可在安装ppl.llm.serving后在/opt/maca-ai/ppl.llm.serving/samples/samples/ppl_server_client/目录下找到，包含C++和Python两种版本。python客户端依赖grpc，使用时需安装grpcio、grpcio-tools两个依赖项。
+    执行该命令将启动大模型服务，默认接收grpc请求，客户端示例代码可在安装ppl.llm.serving后在/opt/maca-ai/ppl.llm.serving/samples/samples/ppl_server_client/目录下找到，包含C++和Python两种版本。python客户端依赖grpc，使用时需安装grpcio、grpcio-tools两个依赖项（默认在Docker镜像中已安装）。
         pip install grpcio
         pip install grpcio-tools
 
-    若选择开启http服务，可接收http和grpc两种请求，http服务需要安装flask、msgpack依赖项。
+    若选择开启http服务，可接收http和grpc两种请求，http服务需要安装flask、msgpack依赖项（默认在Docker镜像中已安装）。
         pip install flask
         pip install msgpack
-    http客户端示例代码可见/opt/maca-ai/ppl.llm.serving/samples/samples/ppl_server_client/python_client/http_client.py，需要安装requests依赖项。
+    http客户端示例代码可见/opt/maca-ai/ppl.llm.serving/samples/samples/ppl_server_client/python_client/http_client.py，需要安装requests依赖项（默认在Docker镜像中已安装）。
         pip install requests
 
     若需要输出prefill性能统计数据，设置该环境变量
@@ -262,4 +263,5 @@
         finished query count：当前step已经结束生成的请求数量
         pipeline：整体流程耗时，包含当前step耗时，平均耗时及总耗时
         model inference：大模型推理的耗时，包含当前step耗时，平均耗时及总耗时
+
 
