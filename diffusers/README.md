@@ -17,33 +17,20 @@
         o   └── config.json 
 ```
 
-## environment build 
-
-# 第一步 git clone modelZoo 部分机子下载不了需要找IT帮忙看下  在gerrit找ssh下载链接
-```
-cd your_work_path
-git clone "ssh://***@mercury.metax-tech.com:29418/PDE/AI/ModelZoo.LLM.Inference"
-```
-
-# 第二步 加载docker (可选)  
-参见xwiki   待建
-
-# 第三步 进入docker工作目录 开ssh 服务  （可选）
-待补充
-
-# 第四步 获取数据集  通过软连接获取
-待补充
+## 运行测试
+./runtest.sh ./models/ox_sd_15/ 1 fp16 norm test maca
+./runtest.sh ./models/ox_sd_21/ 1 fp16 norm test maca
+./runtest.sh ./models/ox_sd_21_base/ 1 fp16 norm test maca
 
 
 
-## 运行
-python code/sample_onnx_multithreads.py your/onnx/model/path 1 fp16 norm test maca
-例如：
+## 其它例子：
 ```python
 python code/sample_onnx.py ./models/ox_sd_15/  1 fp16 norm test maca # 执行fp16 C500推理. Demo 测试跑1条数据
 python code/start.py ./models/ox_sd_15/  1 fp16 norm test maca 16 # 执行fp16 C500推理. 全量多线程 
 python code/start.py ./models/ox_sd_15/  1 fp32 norm test cpu  16 # 执行fp32 CPU推理. 全量多线程
 ```
+
 参数
 # modelpath：  需测试的模型路径, 内部包含config.json模型参数文件已配置好
 # batchsize:   推理的batchsize, 可设置1, 暂时只支持bs1
