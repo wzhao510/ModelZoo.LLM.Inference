@@ -1,5 +1,6 @@
 运行描述文件
-
+## requirement
+* 需要 onnxsim=0.4.36 
 ## 目录结构及说明
 
 ```
@@ -23,12 +24,11 @@
 ./runtest.sh ./models/ox_sd_21_base/ 1 fp16 norm test maca
 
 
-
 ## 其它例子：
 ```python
-python code/sample_onnx.py ./models/ox_sd_15/  1 fp16 norm test maca # 执行fp16 C500推理. Demo 测试跑1条数据
-python code/start.py ./models/ox_sd_15/  1 fp16 norm test maca 16 # 执行fp16 C500推理. 全量多线程 
-python code/start.py ./models/ox_sd_15/  1 fp32 norm test cpu  16 # 执行fp32 CPU推理. 全量多线程
+python code/sample_onnx.py ./models/ox_sd_15/  1 fp16 norm test maca # 执行fp16 C500推理. Demo 测试跑2条数据
+python code/sample_onnx.py ./models/ox_sd_15_bs/  1 fp16 norm test maca # 执行fp16 C500推理. Demo 测试跑2条数据 (动态shape和动态batch支持，默认出图照片为 960x960)
+
 ```
 
 参数
