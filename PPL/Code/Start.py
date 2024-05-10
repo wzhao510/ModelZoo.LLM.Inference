@@ -51,11 +51,9 @@ def PmxModelTest(config_str):
     if len(config['dump_steps'].split(",")) == 1 and config['dump_steps'][-1] != ",":
         config['dump_steps'] += ","
     test_cmd = 'OMP_NUM_THREADS=1 torchrun --nproc_per_node {} {}/src/{}/Demo.py --ckpt_dir {} --tokenizer_path {} --fused_qkv 1 --fused_kvcache 1\
-                --quantized_cache 1 --dynamic_batching 1 --seqlen_scale_up {} --max_gen_len {} --dump_steps {} --dump_tensor_path {} --batch {}\
+                --quantized_cache 1 --dynamic_batching 1 --auto_causal 1 --seqlen_scale_up {} --max_gen_len {} --dump_steps {} --dump_tensor_path {} --batch {}\
                 --cache_layout {}'.format(config['num_gpu'], _dir, model_type, config['pmx_model_dir'], config['origin_model_tokenizer_path'], config['seqlen_scale_up'],\
                 config['max_gen_len'], config['dump_steps'], config['dump_tensor_path'], config['batch_size'], config['cache_layout'])
-    if model_type != "mixtral":
-        test_cmd += " --auto_causal 1"
     ret = subprocess.Popen(test_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
     ret.wait()
 
@@ -63,11 +61,9 @@ def ConvertPmxToOnnx(config_str):
     config = json.loads(config_str).get('convert_to_onnx')
     model_type = json.loads(config_str).get('model_type')
     convert_cmd = 'OMP_NUM_THREADS=1 torchrun --nproc_per_node {} {}/src/{}/Export.py --ckpt_dir {} --fused_qkv 1\
-                     --fused_kvcache 1 --quantized_cache 1 --dynamic_batching 1 --export_path {} --cache_layout {}'.format(config['num_gpu'],\
+                     --fused_kvcache 1 --quantized_cache 1 --dynamic_batching 1 --auto_causal 1 --export_path {} --cache_layout {}'.format(config['num_gpu'],\
                      _dir, model_type, config['pmx_model_dir'], config['onnx_model_output_dir'], config['cache_layout'])
-    if model_type != "mixtral":
-        convert_cmd += " --auto_causal 1"
-    if not model_type.startswith('chatglm') and model_type != 'qwen':
+    if not model_type.startswith('chatglm') and model_type != 'qwen' and model_type != 'mixtral':
         convert_cmd += ' --tokenizer_path {}/tokenizer.model'.format(config['origin_model_tokenizer_path'])                     
     ret = subprocess.Popen(convert_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
     ret.wait()
