@@ -1,0 +1,11 @@
+{
+    "model_type": "Mistral",
+    "model_path": "/AI-DATA/Models/Mistral/Mixtral-8x7B-v0.1/",
+    "c-eval_param": {
+        "dtype": "float16",
+        "tensor_parallel_size": 4,
+        "gpu_memory_utilization": 0.9,
+        "batch_size": 1,
+        "task_name": "ceval-valid"
+    }
+}

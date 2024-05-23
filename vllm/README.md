@@ -23,6 +23,22 @@
 └── README.md
 ```
 
+## C-Eval 执行
+1. 依赖 环境（默认已预装）
+```shell
+lm-eval=0.4.2
+```
+2. 建立软连接：
+
+```shell
+ln  -s /AI-DATA/dataset/ModelZoo_LLM_data/ceval ceval
+ln  -s /AI-DATA/dataset/ModelZoo_LLM_data/lm_eval_code/exact_match exact_match
+```
+3. 执行方式
+python code/c-eval.py  ./models/xxxx  # 
+
+
+
 ## 1、本地推理脚本run_offline_inference_demo.sh
     脚本内需要根据使用模型情况修改模型所在目录，如/external/models/llama-2-7b-hf
     可根据需要修改code/src/offline_inference.py内的prompts

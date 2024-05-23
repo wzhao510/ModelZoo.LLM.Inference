@@ -1,0 +1,11 @@
+{
+    "model_type": "Baichuan",
+    "model_path": "/AI-DATA/Models/Baichuan/Baichuan2-13B-Chat/",
+    "c-eval_param": {
+        "dtype": "float16",
+        "tensor_parallel_size": 1,
+        "gpu_memory_utilization": 0.8,
+        "batch_size": 1,
+        "task_name": "ceval-valid"
+    }
+}
