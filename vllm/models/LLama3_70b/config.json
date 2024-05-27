@@ -1,0 +1,11 @@
+{
+    "model_type": "llma",
+    "model_path": "/AI-DATA/Models/Llama/Meta-Llama-3-70B/",
+    "c-eval_param": {
+        "dtype": "float16",
+        "tensor_parallel_size": 4,
+        "gpu_memory_utilization": 0.8,
+        "batch_size": 1,
+        "task_name": "ceval-valid"
+    }
+}
