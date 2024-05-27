@@ -28,6 +28,30 @@
 ```shell
 lm-eval=0.4.2
 ```
+
+安装原生的 0.4.2  需要修改 安装lm-eval路径，比如  
+/opt/conda/lib/python3.8/site-packages/lm_eval/api/model.py ：294  _encode_pair 方法为下面的：  
+```python
+    def _encode_pair(self, context, continuation):
+        n_spaces = len(context) - len(context.rstrip())
+        if n_spaces > 0:
+            continuation = context[-n_spaces:] + continuation
+            context = context[:-n_spaces]
+
+        model_class = getattr(self, "AUTO_MODEL_CLASS", None)
+
+        if model_class == transformers.AutoModelForSeq2SeqLM:
+            context_enc = self.tok_encode(context)
+            continuation_enc = self.tok_encode(continuation, add_special_tokens=False)
+        else:
+            whole_enc = self.tok_encode(context + continuation)
+            context_enc = self.tok_encode(context)
+
+            context_enc_len = len(context_enc)
+            continuation_enc = whole_enc[context_enc_len:]
+
+        return context_enc, continuation_enc
+```
 2. 建立软连接：
 
 ```shell
@@ -37,7 +61,9 @@ ln  -s /AI-DATA/dataset/ModelZoo_LLM_data/lm_eval_code/exact_match exact_match
 3. 执行方式
 python code/c-eval.py  ./models/xxxx  # 
 
-
+## benchmark throghtout 执行
+python code/bench_test.py  ./models/xxxx 24 # 跑24条数据测试
+python code/bench_test.py  ./models/xxxx 1024 # 跑1024条数据测试
 
 ## 1、本地推理脚本run_offline_inference_demo.sh
     脚本内需要根据使用模型情况修改模型所在目录，如/external/models/llama-2-7b-hf

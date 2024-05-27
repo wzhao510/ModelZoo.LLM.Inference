@@ -5,7 +5,7 @@ from utils import get_params,write_txt
 
 
 
-def run_eval(model_name):
+def run_benchmark(model_name, num_prompt):
     model_config = get_params(model_name)
 
     model_path = model_config["model_path"]
@@ -15,10 +15,9 @@ def run_eval(model_name):
     task_name = model_config["c-eval_param"]["task_name"]
     batch_size = model_config["c-eval_param"]["batch_size"]
 
-    c_eval_cmd = f'lm_eval --model vllm \
-        --model_args pretrained={model_path},tensor_parallel_size={tensor_parallel_size},dtype={dtype},max_model_len=2048,trust_remote_code=True,worker_use_ray=False,gpu_memory_utilization={gpu_memory_utilization} \
-        --tasks {task_name} \
-        --batch_size {batch_size}'
+    c_eval_cmd = f'python ./code/src/benchmark_throughput.py  --model={model_path} --enforce-eager \
+                --backend=vllm --max-model-len 2048 --num-prompts {num_prompt} --trust-remote-code \
+                --input-len 1024 --output-len 1024 --tensor-parallel-size {tensor_parallel_size}'
     
     print(c_eval_cmd)
     use_cmd = True
@@ -28,7 +27,7 @@ def run_eval(model_name):
         ret = subprocess.run(c_eval_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8')
         data = ret.stdout
         data_name = model_path.replace("/", "_")
-        write_txt(f"./20240423/{data_name}.txt", data)
+        write_txt(f"{data_name}.txt", data)
         data_list = data.split("\n")
         acc = 0
         std = 0
@@ -44,4 +43,5 @@ def run_eval(model_name):
 
 if __name__ == '__main__':
     modelname = sys.argv[1]
-    run_eval(modelname)
+    num_prompt = sys.argv[2] if len(sys.argv) > 2 else 24
+    run_benchmark(modelname, num_prompt)
