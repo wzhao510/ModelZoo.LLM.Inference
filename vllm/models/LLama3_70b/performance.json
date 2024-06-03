@@ -1,6 +1,6 @@
 {
-    "name" : "llama3-8b",
+    "name" : "llama3-70b",
     "fp16":{
-        "acc": 0.5134
+        "acc": 0.6404
     }
 }

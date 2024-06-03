@@ -1,5 +1,5 @@
 {
-    "name" : "llama2-65b",
+    "name" : "llama2-70b",
     "fp16":{
         "acc": 0.4101
     }
