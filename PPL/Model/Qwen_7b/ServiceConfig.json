@@ -1,10 +1,10 @@
 {
     "ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/bin/",
     "server_config": {
-        "model_type": "",
-        "model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Bigcode/onnx-model/",
-        "model_param_path": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Bigcode/onnx-model/params.json",
-        "tokenizer_path": "/external/models/Bigcode/tokenizer.model",
+        "model_type": "qwen",
+        "model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Qwen_7b/onnx-model/",
+        "model_param_path": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Qwen_7b/onnx-model/params.json",
+        "tokenizer_path": "/external/models/Qwen_7b/qwen.tiktoken",
         "tensor_parallel_size": 1,
         "top_p": 0.0,
         "top_k": 1,

@@ -110,23 +110,23 @@ def OnnxModelPerformanceTest(config_str):
                 if config['do_tracer']:
                     llama_benchmark_cmd = 'mcTracer --name Tracers/Tracer_{}_bs{}_input{}_output{}_new_lib {}/benchmark_llama --model-type llama --model-dir {} --model-param-path {} \
                     --tensor-parallel-size {} --top-p {} --top-k {} --temperature {} --warmup-loops {} --generation-len {} \
-                    --benchmark-loops {} --input-file {} --batch-size {} 2>&1'.format(
+                    --benchmark-loops {} --input-file {} --batch-size {} '.format(
                         config['model_name'], batch_size, input_token, output_token, config['ppl_serving_dir'], config['onnx_model_dir'],
                         config['onnx_model_param_path'], config['tensor_parallel_size'], config['top_p'], config['top_k'], config['temperature'],
                         config['warmup_loops'], output_token, config['benchmark_loops'], input_file, batch_size
                     )
                     if config['enable_output_logs']:
-                        llama_benchmark_cmd += ' | tee {}'.format(cur_log)
+                        llama_benchmark_cmd += '2>&1 | tee {}'.format(cur_log)
                 else:
                     llama_benchmark_cmd = '{}/benchmark_llama --model-type llama --model-dir {} --model-param-path {} \
                     --tensor-parallel-size {} --top-p {} --top-k {} --temperature {} --warmup-loops {} --generation-len {} \
-                    --benchmark-loops {} --input-file {} --batch-size {} 2>&1'.format(
+                    --benchmark-loops {} --input-file {} --batch-size {} '.format(
                         config['ppl_serving_dir'], config['onnx_model_dir'], config['onnx_model_param_path'],
                         config['tensor_parallel_size'], config['top_p'], config['top_k'], config['temperature'],
                         config['warmup_loops'], output_token, config['benchmark_loops'], input_file, batch_size
                     )
                     if config['enable_output_logs']:
-                        llama_benchmark_cmd += ' | tee {}'.format(cur_log)
+                        llama_benchmark_cmd += '2>&1 | tee {}'.format(cur_log)
                 while(True):
                     ret = subprocess.run(llama_benchmark_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8')
                     print(ret.stdout)

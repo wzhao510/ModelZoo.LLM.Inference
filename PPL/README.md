@@ -57,7 +57,7 @@
 
     配置文件已经在代码中给出，每个模型单独对应一个目录，命令相关配置在配置文件内有对应关系。
 
-## 1、转为PMX模型（以llama_7b为例，在ModelZoo.LLM.Inference/PPL/Code目录下执行）
+## 1、转为PMX模型（以llama_7b为例，在ModelZoo.LLM.Inference/PPL目录下执行）
 
     ./runtest.sh convert_to_pmx Model/Llama_7b/Config.json
 
@@ -70,7 +70,7 @@
 
     执行该命令，将在指定路径生成原始模型的pmx模型。
 
-## 2、PMX模型切分（以llama_65b为例，在ModelZoo.LLM.Inference/PPL/Code目录下执行）
+## 2、PMX模型切分（以llama_65b为例，在ModelZoo.LLM.Inference/PPL目录下执行）
 
     ./runtest.sh split_pmx_model Model/Llama_65b/Config.json
 
@@ -83,7 +83,7 @@
     
     执行该命令，将在指定路径生成4份子模型，以适配多卡并行推理。
 
-## 3、PMX模型合并（以llama_65b为例，在ModelZoo.LLM.Inference/PPL/Code目录下执行）
+## 3、PMX模型合并（以llama_65b为例，在ModelZoo.LLM.Inference/PPL目录下执行）
 
     ./runtest.sh merge_pmx_model Model/Llama_65b/Config.json
 
@@ -96,7 +96,7 @@
 
     该命令与模型切分相反，将多个切分后的PMX子模型合并成一个。
 
-## 4、PMX模型测试（以llama_7b为例，在ModelZoo.LLM.Inference/PPL/Code目录下执行）
+## 4、PMX模型测试（以llama_7b为例，在ModelZoo.LLM.Inference/PPL目录下执行）
 
     ./runtest.sh pmx_model_test Model/Llama_7b/Config.json
 
@@ -115,7 +115,7 @@
 
     当生成PMX模型后，使用该命令加载PMX模型并执行LLM推理，根据输出结果验证PMX模型转换的正确性。同时，若设置相应dump参数，可以将模型对应step的输入、输出保存下来，作为后续本地部署精度验证的输入及输出参考值。
 
-## 5、导出为ONNX模型（以llama_7b为例，在ModelZoo.LLM.Inference/PPL/Code目录下执行）
+## 5、导出为ONNX模型（以llama_7b为例，在ModelZoo.LLM.Inference/PPL目录下执行）
 
     ./runtest.sh convert_to_onnx Model/Llama_7b/Config.json
 
@@ -130,7 +130,7 @@
 
     在验证PMX模型精度无误后，可执行该命令，将PMX模型导出为ONNX模型。
 
-## 6、ONNX模型精度验证（以llama_7b为例，在ModelZoo.LLM.Inference/PPL/Code目录下执行）
+## 6、ONNX模型精度验证（以llama_7b为例，在ModelZoo.LLM.Inference/PPL目录下执行）
 
     ./runtest.sh onnx_accuracy_test Model/Llama_7b/Config.json
 
@@ -146,7 +146,7 @@
 
     大多数情况下，大模型会依托服务端部署提供服务端接口供客户端调用，但在服务化部署前，需要依托本地模型部署进行推理验证，以确认模型精度是否符合预期。该命令将执行ONNX模型精度验证操作，输出数据将与PMX模型测试输出数据进行对比。
 
-## 7、ONNX模型性能测试（以llama_7b为例，在ModelZoo.LLM.Inference/PPL/Code目录下执行）
+## 7、ONNX模型性能测试（以llama_7b为例，在ModelZoo.LLM.Inference/PPL目录下执行）
 
     ./runtest.sh onnx_performance_test Model/Llama_7b/Config.json
 
@@ -177,9 +177,9 @@
         CSV format header:prefill(ms),decode(ms),avg(ms),tps(ms),mem(gib)
         CSV format output:40.16,14.2576,14.4599,69.1567,14.3461
 
-## 8、服务化部署（以llama_7b为例，在ModelZoo.LLM.Inference/PPL/Code目录下执行）
+## 8、服务化部署（以llama_7b为例，在ModelZoo.LLM.Inference/PPL目录下执行）
 
-    ./runtest.sh start_llm_server Model/Llama_7b/Config.json
+    ./runtest.sh start_llm_server Model/Llama_7b/ServiceConfig.json
 
     配置文件说明：
     "ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/bin/",                                                     #   可执行文件ppl_llm_server所在目录
