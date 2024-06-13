@@ -7,17 +7,17 @@
     },
     "split_pmx_model": {
         "pmx_model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_30b/pmx-model/",
-        "number_of_shards": 2,
+        "number_of_shards": 4,
         "split_model_output_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_30b/pmx-model-split/"
     },
     "merge_pmx_model": {
         "split_model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_30b/pmx-model-split/",
-        "num_of_shards": 2,
+        "num_of_shards": 4,
         "merged_model_output_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_30b/pmx-model-merged/"
     },
     "pmx_model_test": {
-        "num_gpu": 1,
-        "pmx_model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_30b/pmx-model/",
+        "num_gpu": 4,
+        "pmx_model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_30b/pmx-model-split/",
         "origin_model_tokenizer_path": "/external/models/Llama_30b/tokenizer.model",
         "seqlen_scale_up": 1,
         "max_gen_len": 256,
@@ -27,15 +27,15 @@
         "cache_layout": 3
     },
     "convert_to_onnx": {
-        "num_gpu": 1,
-        "pmx_model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_30b/pmx-model/",
+        "num_gpu": 4,
+        "pmx_model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_30b/pmx-model-split/",
         "origin_model_tokenizer_path": "/external/models/Llama_30b/tokenizer.model",
         "onnx_model_output_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_30b/onnx-model/",
         "cache_layout": 3
     },
     "onnx_accuracy_test": {
         "step": 0,
-        "num_gpu": 1,
+        "num_gpu": 4,
         "ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/bin/",
         "test_data_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_30b/pmx-dump/",
         "onnx_model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_30b/onnx-model/",
@@ -46,7 +46,7 @@
         "ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/bin/",
         "onnx_model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_30b/onnx-model/",
         "onnx_model_param_path": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama_30b/onnx-model/params.json",
-        "tensor_parallel_size": 1,
+        "tensor_parallel_size": 4,
         "top_p": 0.0,
         "top_k": 1,
         "temperature": 1.0,
