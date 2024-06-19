@@ -1,7 +1,0 @@
-{
-    "name" : "base_bert",
-    "fp16":{
-        "InferTime" : 81.45,
-        "FPS" : 88.68
-    }
-}
