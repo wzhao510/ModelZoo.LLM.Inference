@@ -1,7 +1,7 @@
 import argparse
 from vllm import LLM, SamplingParams
 
-def run(model_path, tensor_parallel_size, trust_remote_code):
+def run(model_path, tensor_parallel_size, trust_remote_code, max_model_len):
     # Sample prompts.
     prompts = [
         "Hello, my name is",
@@ -13,7 +13,7 @@ def run(model_path, tensor_parallel_size, trust_remote_code):
     sampling_params = SamplingParams(top_k=1)
 
     # Create an LLM.
-    llm = LLM(model=model_path,tensor_parallel_size=tensor_parallel_size, trust_remote_code=trust_remote_code)
+    llm = LLM(model=model_path,tensor_parallel_size=tensor_parallel_size, trust_remote_code=trust_remote_code, max_model_len=max_model_len)
     # Generate texts from the prompts. The output is a list of RequestOutput objects
     # that contain the prompt, generated text, and other information.
     outputs = llm.generate(prompts, sampling_params)
@@ -31,7 +31,13 @@ if __name__ == "__main__":
     parser.add_argument('--trust_remote_code',
                         action='store_true',
                         help='trust remote code from huggingface')
+    parser.add_argument(
+        '--max-model-len',
+        type=int,
+        default=None,
+        help='Maximum length of a sequence (including prompt and output). '
+        'If None, will be derived from the model.')
 
     args = parser.parse_args()
 
-    run(args.model, args.tensor_parallel_size, args.trust_remote_code)
+    run(args.model, args.tensor_parallel_size, args.trust_remote_code, args.max_model_len)
