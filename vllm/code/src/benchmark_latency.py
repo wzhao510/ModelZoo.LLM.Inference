@@ -23,6 +23,7 @@ def main(args: argparse.Namespace):
         tensor_parallel_size=args.tensor_parallel_size,
         trust_remote_code=args.trust_remote_code,
         dtype=args.dtype,
+        max_model_len=args.max_model_len,
         enforce_eager=args.enforce_eager,
     )
 
@@ -127,5 +128,11 @@ if __name__ == '__main__':
             'path to save the pytorch profiler output. Can be visualized '
             'with ui.perfetto.dev or Tensorboard.'
         ))
+    parser.add_argument(
+        '--max-model-len',
+        type=int,
+        default=None,
+        help='Maximum length of a sequence (including prompt and output). '
+        'If None, will be derived from the model.')
     args = parser.parse_args()
     main(args)
