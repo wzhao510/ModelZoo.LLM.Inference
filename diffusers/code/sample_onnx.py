@@ -114,11 +114,17 @@ def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca",
         # warmup
         sd_pipe_output = sd_text2img_models[0](name)
         
+    total_cost = 0.0
     print("Start Infer")
     sd_pipe_output_list = []
-    for i, name in enumerate(prompt):
-        sd_pipe_output = sd_text2img_models[0](name)
+    for i in range(10):
+        start_time = time.time()
+        sd_pipe_output = sd_text2img_models[0](prompt[:batchsize])#(name)
+        end_time = time.time()
+        total_cost += end_time - start_time
         sd_pipe_output_list.append(sd_pipe_output)
+
+    print(f"AVG Inference cost {total_cost/len(sd_pipe_output_list)} seconds")
 
     cnt = 0 
     for sd_pipe_output in sd_pipe_output_list:
