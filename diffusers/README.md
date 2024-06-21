@@ -24,11 +24,17 @@
 ./runtest.sh ./models/ox_sd_21_base/ 1 fp16 norm test maca
 
 
-## 其它例子：
+## demo 示例：
 ```python
 python code/sample_onnx.py ./models/ox_sd_15/  1 fp16 norm test maca # 执行fp16 C500推理. Demo 测试跑2条数据
 python code/sample_onnx.py ./models/ox_sd_15_bs/  1 fp16 norm test maca # 执行fp16 C500推理. Demo 测试跑2条数据 (动态shape和动态batch支持，默认出图照片为 960x960)
 
+```
+
+## 数据集测试
+```python
+python code/sample_onnx_multithreads.py ./models/ox_sd_15/  1  fp16 norm test maca 8 # 执行fp16 C500推理. 以batch=1，8个线程运行。模型不带_bs 只支持 bs=1 运行
+python code/sample_onnx_multithreads.py ./models/ox_sd_15_bs/  2  fp16 norm test maca 8  # 执行fp16 C500推理. 以batch=2，8个线程运行
 ```
 
 参数

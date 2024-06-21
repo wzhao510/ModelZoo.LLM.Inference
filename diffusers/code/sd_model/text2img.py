@@ -54,13 +54,34 @@ class Text2ImgModelSess:
             feature_extractor=None,
             requires_safety_checker=False,
         )
+
+        self.pipe.set_progress_bar_config(disable=True)
     
-    def __call__(self, prompts):
+    def truncated_prompt_embeds(self, prompt):
+        text_input_ids = self.tokenizer(
+                prompt,
+                padding="max_length",
+                max_length=self.tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="np",
+            ).input_ids
+        prompt_embeds = self.text_encoder(input_ids=text_input_ids.astype(np.int32))[0]
+        return prompt_embeds
+        
+    def __call__(self, prompts, height=None, width=None, prompt_embeds=None):
+        if height is None:
+            height = self.height
+        if width is None:
+            width = self.width
+        if prompt_embeds is not None:
+            prompts = None
+        
         image = self.pipe(prompts,
-                            height=self.height,
-                            width=self.width,
+                            height=height,
+                            width=width,
                             generator=self.generator,
-                            num_inference_steps=self.num_inference_steps)
+                            num_inference_steps=self.num_inference_steps,
+                            prompt_embeds=prompt_embeds)
         return image
 
         
