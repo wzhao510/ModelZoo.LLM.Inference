@@ -1,5 +1,5 @@
 {
-    "model_type": "llma",
+    "model_type": "llama",
     "model_path": "/AI-DATA/Models/Llama/Llama-2-7b-hf/",
     "c-eval_param": {
         "dtype": "float16",

@@ -1,6 +1,6 @@
 {
-    "model_type": "llama",
-    "model_path": "/AI-DATA/Models/Llama/Meta-Llama-3-8B-Instruct/",
+    "model_type": "Aquila",
+    "model_path": "/AI-DATA/Models/Aquila/Aquila-7B/",
     "c-eval_param": {
         "dtype": "float16",
         "tensor_parallel_size": 1,

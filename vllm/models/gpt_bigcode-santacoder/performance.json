@@ -1,0 +1,6 @@
+{
+    "name" : "gpt_bigcode-santacoder",
+    "fp16":{
+        "acc": 0.2333
+    }
+}
