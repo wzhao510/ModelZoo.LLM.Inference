@@ -17,6 +17,7 @@ def run_eval(model_name):
 
     c_eval_cmd = f'lm_eval --model vllm \
         --model_args pretrained={model_path},tensor_parallel_size={tensor_parallel_size},dtype={dtype},max_model_len=2048,trust_remote_code=True,gpu_memory_utilization={gpu_memory_utilization} \
+        --trust_remote_code \
         --tasks {task_name} \
         --batch_size {batch_size}'
     
