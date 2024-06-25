@@ -72,10 +72,23 @@ def convert_fp16_model(params, module_name):
     os.system(cmd)
     return fp16_model_path
 
+def get_gpu_memory_usage(device_id=0):
+    import subprocess
+    memory_cmd = f'mx-smi --show-memory -i {device_id}'
+    ret = subprocess.run(memory_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8')
+    start_pos = ret.stdout.find('vis_vram used')
+    end_pos = ret.stdout.find('vis_vram usage')
+    memory_str = ret.stdout[start_pos+13:end_pos-2]
+    start_pos = memory_str.find(':')
+    end_pos = memory_str.find('KB')
+    used_memory = int(memory_str[start_pos+1:end_pos])
+    return used_memory
+
 
 def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca", th_num="8"):
     if EP.lower() == "maca":
         providers = ["MACAExecutionProvider",]
+        init_memory = get_gpu_memory_usage(0)
     else:
         providers = ["CPUExecutionProvider",]
 
@@ -115,16 +128,27 @@ def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca",
         sd_pipe_output = sd_text2img_models[0](name)
         
     total_cost = 0.0
+    max_memory = 0.0
     print("Start Infer")
+    
     sd_pipe_output_list = []
     for i in range(10):
         start_time = time.time()
         sd_pipe_output = sd_text2img_models[0](prompt[:batchsize])#(name)
         end_time = time.time()
         total_cost += end_time - start_time
+        if EP.lower() == "maca":
+            used_memory = get_gpu_memory_usage(0) - init_memory
+            if used_memory > max_memory:
+                max_memory = used_memory
         sd_pipe_output_list.append(sd_pipe_output)
 
-    print(f"AVG Inference cost {total_cost/len(sd_pipe_output_list)} seconds")
+    avg_cost = total_cost/len(sd_pipe_output_list)
+    fps = 1/avg_cost
+    if EP.lower() == "maca":
+        print(f"Inference cost {avg_cost:.3f} seconds, fps is {fps:.3f}, memory usage: {max_memory / 1024 / 1024:.3f} GB")
+    else:
+        print(f"Inference cost {avg_cost:.3f} seconds, fps is {fps:.3f}")
 
     cnt = 0 
     for sd_pipe_output in sd_pipe_output_list:
@@ -136,7 +160,7 @@ def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca",
 
 if __name__ == '__main__':
     modelname = sys.argv[1]
-    batchsize = sys.argv[2]
+    batchsize = int(sys.argv[2])
     precision = sys.argv[3]
 
     task = sys.argv[4]      
