@@ -16,7 +16,7 @@ def run_benchmark(model_name, num_prompt, input_len, output_len):
     batch_size = model_config["c-eval_param"]["batch_size"]
 
     c_eval_cmd = f'python ./code/src/benchmark_throughput.py  --model={model_path}  \
-                --backend=vllm --max-model-len 2048 --num-prompts {num_prompt} --trust-remote-code \
+                --backend=vllm --max-model-len 2048 --num-prompts {num_prompt} --trust-remote-code --dtype {dtype} \
                 --input-len {input_len} --output-len {output_len} --tensor-parallel-size {tensor_parallel_size}'
     
     print(c_eval_cmd)
