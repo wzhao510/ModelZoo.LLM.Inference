@@ -1,4 +1,5 @@
 """Benchmark offline inference throughput."""
+import os
 import argparse
 import json
 import random
@@ -76,8 +77,16 @@ def run_vllm(
     enable_prefix_caching: bool,
     gpu_memory_utilization: float = 0.9,
     download_dir: Optional[str] = None,
+    lora_path: Optional[str] = None,
 ) -> float:
     from vllm import LLM, SamplingParams
+    from vllm.lora.request import LoRARequest
+    enable_lora = False
+    if lora_path is not None:
+        if os.path.isdir(lora_path):
+            enable_lora = True
+        else:
+            raise ValueError(f"lora path: {lora_path} does not exit")
     llm = LLM(model=model,
               tokenizer=tokenizer,
               quantization=quantization,
@@ -91,7 +100,8 @@ def run_vllm(
               kv_cache_dtype=kv_cache_dtype,
               device=device,
               enable_prefix_caching=enable_prefix_caching,
-              download_dir=download_dir)
+              download_dir=download_dir,
+              enable_lora=enable_lora)
 
     # Add the requests to the engine.
     for prompt, _, output_len in requests:
@@ -104,11 +114,19 @@ def run_vllm(
             max_tokens=output_len,
         )
         # FIXME(woosuk): Do not use internal method.
-        llm._add_request(
-            prompt=prompt,
-            prompt_token_ids=None,
-            sampling_params=sampling_params,
-        )
+        if not enable_lora:
+            llm._add_request(
+                prompt=prompt,
+                prompt_token_ids=None,
+                sampling_params=sampling_params,
+            )
+        else:
+            llm._add_request(
+                prompt=prompt,
+                prompt_token_ids=None,
+                sampling_params=sampling_params,
+                lora_request=LoRARequest("sql_adapter", 1, lora_path)
+            )
 
     start = time.perf_counter()
     # FIXME(woosuk): Do not use internal method.
@@ -219,7 +237,8 @@ def main(args: argparse.Namespace):
                                 args.max_model_len, args.enforce_eager,
                                 args.kv_cache_dtype, args.device,
                                 args.enable_prefix_caching,
-                                args.gpu_memory_utilization, args.download_dir)
+                                args.gpu_memory_utilization, args.download_dir,
+                                args.lora_path)
     elif args.backend == "hf":
         assert args.tensor_parallel_size == 1
         elapsed_time = run_hf(requests, args.model, tokenizer, args.n,
@@ -325,6 +344,10 @@ if __name__ == "__main__":
                         default=None,
                         help='directory to download and load the weights, '
                         'default to the default cache dir of huggingface')
+    parser.add_argument('--lora_path',
+                        type=str,
+                        default=None,
+                        help='directory to lora model path')
     args = parser.parse_args()
     if args.tokenizer is None:
         args.tokenizer = args.model

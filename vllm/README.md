@@ -58,6 +58,7 @@ lm-eval=0.4.2
 ln  -s /AI-DATA/dataset/ModelZoo_LLM_data/ceval ceval
 ln  -s /AI-DATA/dataset/ModelZoo_LLM_data/lm_eval_code/exact_match exact_match
 ```
+如果是本地运行需要修改下 路径，否则会一直尝试网络下载。
 3. 执行方式
 python code/c-eval.py  ./models/xxxx  # 
 
@@ -65,6 +66,31 @@ python code/c-eval.py  ./models/xxxx  #
 python code/bench_test.py  ./models/xxxx 24 # 跑24条数据测试
 python code/bench_test.py  ./models/xxxx 1024 # 跑1024条数据测试
 
+## LoRA 特性支持 （Released版本大于等于 2.23）benchmark 
+离线推理脚本（配置 lora_path 为微调的LoRA模型路径）：
+```python
+python code/src/offline_inference_lora.py --model /AI-DATA/Models/Llama/Llama-2-7b-hf/ --lora_path /AI-DATA/LoRA/lora_test/lora_llama-2-7b/llama-2-7b-sql-lora-test/
+```
+multi-LoRA 推理脚本
+```python
+python code/src/offline_inference_multi_lora.py --model /AI-DATA/Models/Llama/Llama-2-7b-hf/ --lora_path /AI-DATA/LoRA/lora_test/lora_llama-2-7b/llama-2-7b-sql-lora-test/
+```
+
+LoRA 跑性能数据 --当前性能较差，后续会对其进行优化
+```python
+python code/bench_test.py ./models/Llama2_7b_sql_lora/ 64 1024 1024
+```
+
+## GPTQ 特性支持（Released版本大于等于 2.23）
+用法同普通一致，模型路径要为gptq 模型路径
+```python
+python code/src/offline_inference.py --model /AI-DATA/Models/quantize_model/llama-2-7b-int4-gptq/
+```
+
+GPTQ 跑性能数据
+```python
+python code/bench_test.py ./models/Llama2_7b_int4_gptq/ 64 1024 1024
+```
 ## 1、本地推理脚本run_offline_inference_demo.sh
     脚本内需要根据使用模型情况修改模型所在目录，如/external/models/llama-2-7b-hf
     可根据需要修改code/src/offline_inference.py内的prompts
