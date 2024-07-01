@@ -264,4 +264,32 @@
         pipeline：整体流程耗时，包含当前step耗时，平均耗时及总耗时
         model inference：大模型推理的耗时，包含当前step耗时，平均耗时及总耗时
 
+## 9、mmlu 精度测试（以chatglm3_6b为例，在ModelZoo.LLM.Inference/PPL目录下执行）
 
+    ./runtest.sh MMLUAccuracyTest Model/Chatglm3_6b/ServiceConfig.json
+
+    配置文件与服务化部署相同，具体说明见服务化部署，测试结束后输出如下：
+        Average accuracy 0.696 - world_religions
+        Average accuracy 0.378 - math
+        Average accuracy 0.580 - health
+        Average accuracy 0.466 - physics
+        Average accuracy 0.776 - business
+        Average accuracy 0.681 - biology
+        Average accuracy 0.488 - chemistry
+        Average accuracy 0.524 - computer science
+        Average accuracy 0.551 - economics
+        Average accuracy 0.503 - engineering
+        Average accuracy 0.480 - philosophy
+        Average accuracy 0.645 - other
+        Average accuracy 0.710 - history
+        Average accuracy 0.788 - geography
+        Average accuracy 0.747 - politics
+        Average accuracy 0.668 - psychology
+        Average accuracy 0.732 - culture
+        Average accuracy 0.493 - law
+        Average accuracy 0.479 - STEM
+        Average accuracy 0.530 - humanities
+        Average accuracy 0.671 - social sciences
+        Average accuracy 0.630 - other (business, health, misc.)
+        Average accuracy: 0.573
+    同时会在Model/Chatglm3_6b/生成results_Chatglm3_6b文件夹，用以保存各个子项测试结果csv文件。

@@ -5,7 +5,7 @@
         "model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama2_70b/onnx-model/",
         "model_param_path": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Llama2_70b/onnx-model/params.json",
         "tokenizer_path": "/external/models/Llama2_70b/tokenizer.model",
-        "tensor_parallel_size": 1,
+        "tensor_parallel_size": 4,
         "top_p": 0.0,
         "top_k": 1,
         "quant_method": "none",

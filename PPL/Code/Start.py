@@ -4,6 +4,10 @@ import json
 import sys
 import tempfile
 import signal
+# import multiprocessing
+# from multiprocessing import Process, Queue, set_start_method
+# event = multiprocessing.Event()
+import time
 
 _dir = ""
 
@@ -195,7 +199,82 @@ def StartServer(config_str, config_file):
         for process in processes:
             process.wait()
 
+def MMLUAccuracyTest(config_str, config_file):
+    def get_server_proc_id(start_server_cmd):
+        cmd = f'mx-smi --show-process -i 0'
+        ret = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8')
+        start_position = ret.stdout.find('ppl_llm_server')
+        process_infos = []
+        if start_position > 0:
+            begin_position = start_position - 36
+            end_position = start_position + 40
+            ppl_line = ret.stdout[begin_position:end_position]
+            print(ret.stdout[begin_position:end_position])     
+            infos = ppl_line.strip().split(' ')
+            for info in infos:
+                if info != '':
+                    process_infos.append(info)
+        return process_infos
+        
+    from src.evaluate_pplnn import main as test_main
+    #mmlu test flow
+    # 1. start server, support grpc only
+    
+    server_dir = json.loads(config_str).get('ppl_serving_dir')
+    general_config = json.loads(config_str).get('server_config')
+    with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=False, prefix='server_config_', dir=os.path.dirname(os.path.abspath(config_file))) as tmp_file:
+        json.dump(general_config, tmp_file)
+        tmp_file.seek(0)
+        start_server_cmd = '{}/ppl_llm_server {} > server.log 2>&1 &'.format(server_dir, tmp_file.name)
+        print(f'start_server_cmd is {start_server_cmd}')
+        os.system(start_server_cmd)
+        time.sleep(1)
+    
+    # 2. check server ready or not, and get server process id    
+    model_name = config_file.split('/')[-2]
+    if model_name.find('_6b') > 0 or model_name.find('_7b') > 0 or model_name.find('_8b') > 0 or model_name.find('_30b') > 0:
+        memory_threshold = 16000
+    elif model_name.find('_13b') > 0 or model_name.find('_14b') > 0:
+        memory_threshold = 25000
+    else:
+        memory_threshold = 35000
 
+    while True:
+        server_process_infos = get_server_proc_id(start_server_cmd)
+        if len(server_process_infos) == 0:
+            print('Start ppl_llm_server error! Please check.')
+            sys.exit()
+        else:
+            # ['0', '1424400', 'ppl_llm_server', '37900']
+            server_proc_id = server_process_infos[1]
+            memory_usage = int(server_process_infos[3])
+            if memory_usage < memory_threshold:
+                time.sleep(2)
+                continue
+            else:
+                print('Server is ready...')                
+                os.system(f'rm {tmp_file.name}')
+                time.sleep(5)
+                break
+    
+    # 3. start test mmlu       
+    mmlu_data_dir = os.path.dirname(__file__).replace('Code', 'Input/mmlu')
+    save_dir = os.path.dirname(os.path.abspath(config_file))
+    port = json.loads(config_str).get('server_config')['port']
+    print(f'mmlu_data_dir is {mmlu_data_dir}')
+    print(f'model_name is {model_name}')
+    print(f'save_dir is {save_dir}')
+    print(f'port is {port}')
+    try:
+        test_main(mmlu_data_dir, save_dir, model_name, port)
+    except:
+        print('test error occurred...')
+        os.system(f'kill -9 {server_proc_id}')
+        sys.exit()
+    
+    # 4. stop server
+    os.system(f'kill -9 {server_proc_id}')
+    
 if __name__ == "__main__":
 
     _dir = os.path.dirname(os.path.abspath(__file__))
@@ -229,6 +308,8 @@ if __name__ == "__main__":
         OnnxModelPerformanceTest(config_str)
     elif model_cmd == 'start_llm_server':
         StartServer(config_str, sys.argv[2])
+    elif model_cmd == 'mmlu_accuracy_test':
+        MMLUAccuracyTest(config_str, sys.argv[2])
     else:
         print('Unknown command: %s' %(model_cmd))
         sys.exit()
