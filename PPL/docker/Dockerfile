@@ -73,7 +73,8 @@ RUN . /etc/profile.d/conda.sh &&\
         flask_socketio \
         requests \
         msgpack \
-        waitress
+        waitress \
+        pandas
 
 
 ############  5. 下载 ppl.llm.serving 并安装 ############
