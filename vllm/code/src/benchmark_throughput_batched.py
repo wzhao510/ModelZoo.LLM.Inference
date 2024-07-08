@@ -164,13 +164,9 @@ def run_vllm(
     return end - start
 
 
-
-
-
-
-
 def main(args: argparse.Namespace):
     print(args)
+    print("[INFO] Use Batched to run 35 case")
     random.seed(args.seed)
     llm = get_vllm(args.model, args.tokenizer,
                     args.quantization, args.tensor_parallel_size,

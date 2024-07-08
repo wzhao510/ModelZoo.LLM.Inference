@@ -62,9 +62,10 @@ ln  -s /AI-DATA/dataset/ModelZoo_LLM_data/lm_eval_code/exact_match exact_match
 3. 执行方式
 python code/c-eval.py  ./models/xxxx  # 
 
-## benchmark throghtout 执行
-python code/bench_test.py  ./models/xxxx 24 # 跑24条数据测试
-python code/bench_test.py  ./models/xxxx 1024 # 跑1024条数据测试
+## benchmark throughput 执行
+python code/bench_test.py  ./models/xxxx 24                # 跑24条数据测试 ，默认： 输入长度1024 输出长度1024
+python code/bench_test.py  ./models/xxxx 1024 512 128      # 跑1024条数据测试，设置: 输入长度512 输出长度 128
+python code/bench_test.py  ./models/xxxx 1024 512 128 1     # 最后一个1 表示进行批次跑；前面设置批次、输入长度、输出长度不生效，将会一次加载模型跑看护的35个case性能数据
 
 ## LoRA 特性支持 （Released版本大于等于 2.23）benchmark 
 离线推理脚本（配置 lora_path 为微调的LoRA模型路径）：
