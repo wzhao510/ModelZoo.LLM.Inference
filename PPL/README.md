@@ -266,7 +266,7 @@
 
 ## 9、mmlu 精度测试（以chatglm3_6b为例，在ModelZoo.LLM.Inference/PPL目录下执行）
 
-    ./runtest.sh MMLUAccuracyTest Model/Chatglm3_6b/ServiceConfig.json
+    ./runtest.sh mmlu_accuracy_test Model/Chatglm3_6b/ServiceConfig.json
 
     配置文件与服务化部署相同，具体说明见服务化部署，测试结束后输出如下：
         Average accuracy 0.696 - world_religions
