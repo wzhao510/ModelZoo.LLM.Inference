@@ -1,4 +1,5 @@
 """Benchmark offline inference throughput."""
+
 import os
 import argparse
 import json
@@ -8,8 +9,13 @@ from typing import List, Optional, Tuple
 
 import torch
 from tqdm import tqdm
+
+from torch_profile_utils  import profile_to_csv
 from transformers import (AutoModelForCausalLM, AutoTokenizer,
                           PreTrainedTokenizerBase)
+
+
+MX_PROFILE_CSV_NAME = "default_1_1_1.csv"
 
 
 def sample_requests(
@@ -78,6 +84,7 @@ def run_vllm(
     gpu_memory_utilization: float = 0.9,
     download_dir: Optional[str] = None,
     lora_path: Optional[str] = None,
+    enable_profile: Optional[bool] = False,
 ) -> float:
     from vllm import LLM, SamplingParams
     from vllm.lora.request import LoRARequest
@@ -128,11 +135,24 @@ def run_vllm(
                 lora_request=LoRARequest("sql_adapter", 1, lora_path)
             )
 
-    start = time.perf_counter()
-    # FIXME(woosuk): Do not use internal method.
-    llm._run_engine(use_tqdm=True)
-    end = time.perf_counter()
+    if not enable_profile:
+        start = time.perf_counter()
+        # FIXME(woosuk): Do not use internal method.
+        llm._run_engine(use_tqdm=True)
+        end = time.perf_counter()
+        return end - start
+    
+    # with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,],on_trace_ready=trace_handler_f) as p:
+    with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:
+        start = time.perf_counter()
+        # FIXME(woosuk): Do not use internal method.
+        llm._run_engine(use_tqdm=True)
+        end = time.perf_counter()
+
+    profile_to_csv(prof, MX_PROFILE_CSV_NAME)
     return end - start
+
+    
 
 
 def run_hf(
@@ -217,6 +237,10 @@ def main(args: argparse.Namespace):
     print(args)
     random.seed(args.seed)
 
+    global MX_PROFILE_CSV_NAME
+    model_name_list = args.model.split("/")
+    model_name = model_name_list[-2] if len(model_name_list[-1]) == 0 else model_name_list[-1]
+    MX_PROFILE_CSV_NAME = f"{model_name}_{args.num_prompts}_{args.input_len}_{args.output_len}.csv"
     # Sample the requests.
     tokenizer = AutoTokenizer.from_pretrained(
         args.tokenizer, trust_remote_code=args.trust_remote_code)
@@ -238,7 +262,7 @@ def main(args: argparse.Namespace):
                                 args.kv_cache_dtype, args.device,
                                 args.enable_prefix_caching,
                                 args.gpu_memory_utilization, args.download_dir,
-                                args.lora_path)
+                                args.lora_path, args.enable_profile)
     elif args.backend == "hf":
         assert args.tensor_parallel_size == 1
         elapsed_time = run_hf(requests, args.model, tokenizer, args.n,
@@ -348,6 +372,10 @@ if __name__ == "__main__":
                         type=str,
                         default=None,
                         help='directory to lora model path')
+    parser.add_argument(
+        "--enable-profile",
+        action='store_true',
+        help="enable profile to collect kernel info.")
     args = parser.parse_args()
     if args.tokenizer is None:
         args.tokenizer = args.model

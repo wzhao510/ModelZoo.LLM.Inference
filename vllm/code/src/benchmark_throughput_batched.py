@@ -8,9 +8,11 @@ from typing import List, Optional, Tuple
 
 import torch
 from tqdm import tqdm
+from torch_profile_utils  import profile_to_csv
 from transformers import (AutoModelForCausalLM, AutoTokenizer,
                           PreTrainedTokenizerBase)
 
+MX_PROFILE_CSV_NAME = "default_1_1_1.csv"
 
 def sample_requests(
     dataset_path: str,
@@ -123,6 +125,7 @@ def run_vllm(
     gpu_memory_utilization: float = 0.9,
     download_dir: Optional[str] = None,
     lora_path: Optional[str] = None,
+    enable_profile: Optional[bool] = False,
 ) -> float:
     from vllm import LLM, SamplingParams
     from vllm.lora.request import LoRARequest
@@ -157,16 +160,30 @@ def run_vllm(
                 sampling_params=sampling_params,
                 lora_request=LoRARequest("sql_adapter", 1, lora_path)
             )
-    start = time.perf_counter()
-    # FIXME(woosuk): Do not use internal method.
-    llm._run_engine(use_tqdm=True)
-    end = time.perf_counter()
+    
+    if not enable_profile:
+        start = time.perf_counter()
+        # FIXME(woosuk): Do not use internal method.
+        llm._run_engine(use_tqdm=True)
+        end = time.perf_counter()
+        return end - start
+    
+    # with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,],on_trace_ready=trace_handler_f) as p:
+    with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:
+        start = time.perf_counter()
+        # FIXME(woosuk): Do not use internal method.
+        llm._run_engine(use_tqdm=True)
+        end = time.perf_counter()
+
+    profile_to_csv(prof, MX_PROFILE_CSV_NAME)
     return end - start
 
 
 def main(args: argparse.Namespace):
     print(args)
     print("[INFO] Use Batched to run 35 case")
+    if args.enable_profile:
+        print("[INFO] Seems that you turn on PROFILE. It will slower than normal.")
     random.seed(args.seed)
     llm = get_vllm(args.model, args.tokenizer,
                     args.quantization, args.tensor_parallel_size,
@@ -188,6 +205,17 @@ def main(args: argparse.Namespace):
             for output_len in [128, 512, 1024]:
                 if input_len == 1024 and output_len != 1024:
                     continue
+                
+                global MX_PROFILE_CSV_NAME
+                model_name_list = args.model.split("/")
+                model_name = model_name_list[-2] if len(model_name_list[-1]) == 0 else model_name_list[-1]
+                MX_PROFILE_CSV_NAME = f"{model_name}_{batch}_{input_len}_{output_len}.csv"
+                enable_profile = False
+                if args.enable_profile:
+                    if input_len == 256 and output_len == 128:
+                         enable_profile= True
+                    if input_len == 1024 and output_len == 1024:
+                        enable_profile= True
                 # Synthesize a prompt with the given input length.
                 prompt = "hi " * (input_len - 1)
                 requests = [(prompt, input_len, output_len)
@@ -200,7 +228,7 @@ def main(args: argparse.Namespace):
                                         args.kv_cache_dtype, args.device,
                                         args.enable_prefix_caching,
                                         args.gpu_memory_utilization, args.download_dir,
-                                        args.lora_path)
+                                        args.lora_path, enable_profile)
                 
                 total_num_tokens = sum(prompt_len + output_len
                                     for _, prompt_len, output_len in requests)
@@ -301,6 +329,10 @@ if __name__ == "__main__":
                         type=str,
                         default=None,
                         help='directory to lora model path')
+    parser.add_argument(
+        "--enable-profile",
+        action='store_true',
+        help="enable profile to collect kernel info.")
     args = parser.parse_args()
     if args.tokenizer is None:
         args.tokenizer = args.model
