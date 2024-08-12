@@ -1,12 +1,17 @@
 import os
 import sys
 import subprocess
-from utils import get_params,write_txt
+from utils import get_params,write_txt, get_vllm_version
 
 
 
 def run_eval(model_name):
     model_config = get_params(model_name)
+    vllm_version = get_vllm_version()
+    print(f"vLLM version: {vllm_version}")
+    if vllm_version is None:
+        raise ValueError("Cannot get vllm_version.")
+    
 
     model_path = model_config["model_path"]
     tensor_parallel_size = model_config["c-eval_param"]["tensor_parallel_size"]
@@ -15,11 +20,20 @@ def run_eval(model_name):
     task_name = model_config["c-eval_param"]["task_name"]
     batch_size = model_config["c-eval_param"]["batch_size"]
 
-    c_eval_cmd = f'lm_eval --model vllm \
-        --model_args pretrained={model_path},tensor_parallel_size={tensor_parallel_size},dtype={dtype},max_model_len=2048,trust_remote_code=True,gpu_memory_utilization={gpu_memory_utilization} \
-        --trust_remote_code \
-        --tasks {task_name} \
-        --batch_size {batch_size}'
+    if vllm_version.startswith("0.4.0"):
+        c_eval_cmd = f'lm_eval --model vllm \
+            --model_args pretrained={model_path},tensor_parallel_size={tensor_parallel_size},dtype={dtype},max_model_len=2048,trust_remote_code=True,gpu_memory_utilization={gpu_memory_utilization} \
+            --trust_remote_code \
+            --tasks {task_name} \
+            --batch_size {batch_size} \
+            --output_path results \
+            --log_samples '
+    else:
+         c_eval_cmd = f'lm_eval --model vllm \
+            --model_args pretrained={model_path},tensor_parallel_size={tensor_parallel_size},dtype={dtype},max_model_len=2048,trust_remote_code=True,gpu_memory_utilization={gpu_memory_utilization},distributed_executor_backend=ray \
+            --trust_remote_code \
+            --tasks {task_name} \
+            --batch_size {batch_size}'
     
     print(c_eval_cmd)
     use_cmd = True
