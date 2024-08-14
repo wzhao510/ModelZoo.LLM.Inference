@@ -85,13 +85,14 @@ def get_gpu_memory_usage(device_id=0):
     return used_memory
 
 
-def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca", th_num="8"):
+def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca", th_num="8",device_id=0):
     if EP.lower() == "maca":
-        providers = ["MACAExecutionProvider",]
+        providers = [("MACAExecutionProvider",{
+            'device_id':device_id,
+        }),]
         init_memory = get_gpu_memory_usage(0)
     else:
         providers = ["CPUExecutionProvider",]
-
 
     params = get_params(modelname)
     if params.get("do_fp16_convert", False):
@@ -167,4 +168,5 @@ if __name__ == '__main__':
     model_path = sys.argv[5] if len(sys.argv) > 5 else "./"
     EP = sys.argv[6] if len(sys.argv) > 6 else "maca"
     th_num = sys.argv[7] if len(sys.argv) > 7 else "16"
-    main(modelname,batchsize,precision,task,model_path, EP, th_num) 
+    device_id = int(sys.argv[8]) if len(sys.argv) > 8 else 0
+    main(modelname,batchsize,precision,task,model_path, EP, th_num, device_id) 

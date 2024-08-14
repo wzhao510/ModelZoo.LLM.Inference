@@ -137,12 +137,14 @@ def convert_fp16_model(params, module_name):
     return fp16_model_path
 
 
-def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca", th_num="8"):
+def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca", th_num="8", device_id=0):
     if not os.path.isfile(EVAL_MODEL_PATH):
         raise ValueError(f"{EVAL_MODEL_PATH} dose not exist. Please check on file.")
             
     if EP.lower() == "maca":
-        providers = ["MACAExecutionProvider",]
+        providers = [("MACAExecutionProvider",{
+            'device_id':device_id,
+        }),]
     else:
         providers = ["CPUExecutionProvider",]
 
@@ -238,4 +240,5 @@ if __name__ == '__main__':
     model_path = sys.argv[5] if len(sys.argv) > 5 else "./"
     EP = sys.argv[6] if len(sys.argv) > 6 else "maca"
     th_num = sys.argv[7] if len(sys.argv) > 7 else "16"
-    main(modelname,batchsize,precision,task,model_path, EP, th_num)
+    device_id = int(sys.argv[8]) if len(sys.argv) > 8 else 0
+    main(modelname,batchsize,precision,task,model_path, EP, th_num, device_id)
