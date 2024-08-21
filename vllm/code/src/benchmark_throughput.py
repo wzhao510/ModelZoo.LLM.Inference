@@ -108,7 +108,6 @@ def run_vllm(
               device=device,
               enable_prefix_caching=enable_prefix_caching,
               download_dir=download_dir,
-              max_num_batched_tokens=2048*13,
               enable_lora=enable_lora)
 
     # Add the requests to the engine.
