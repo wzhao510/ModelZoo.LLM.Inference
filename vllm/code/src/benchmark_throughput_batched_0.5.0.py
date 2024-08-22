@@ -61,8 +61,64 @@ def sample_requests(
 
     return filtered_dataset
 
+def get_vllm(
+    model: str,
+    tokenizer: str,
+    quantization: Optional[str],
+    tensor_parallel_size: int,
+    seed: int,
+    n: int,
+    use_beam_search: bool,
+    trust_remote_code: bool,
+    dtype: str,
+    max_model_len: Optional[int],
+    enforce_eager: bool,
+    kv_cache_dtype: str,
+    quantization_param_path: Optional[str],
+    device: str,
+    enable_prefix_caching: bool,
+    enable_chunked_prefill: bool,
+    max_num_batched_tokens: int,
+    distributed_executor_backend: Optional[str],
+    gpu_memory_utilization: float = 0.9,
+    download_dir: Optional[str] = None,
+    lora_path: Optional[str] = None):
+
+    from vllm import LLM, SamplingParams
+    from vllm.lora.request import LoRARequest
+    enable_lora = False
+    if lora_path is not None:
+        if os.path.isdir(lora_path):
+            enable_lora = True
+        else:
+            raise ValueError(f"lora path: {lora_path} does not exit")
+
+    llm = LLM(
+        model=model,
+        tokenizer=tokenizer,
+        quantization=quantization,
+        tensor_parallel_size=tensor_parallel_size,
+        seed=seed,
+        trust_remote_code=trust_remote_code,
+        dtype=dtype,
+        max_model_len=max_model_len,
+        gpu_memory_utilization=gpu_memory_utilization,
+        enforce_eager=enforce_eager,
+        kv_cache_dtype=kv_cache_dtype,
+        quantization_param_path=quantization_param_path,
+        device=device,
+        enable_prefix_caching=enable_prefix_caching,
+        download_dir=download_dir,
+        enable_chunked_prefill=enable_chunked_prefill,
+        max_num_batched_tokens=None,
+        num_gpu_blocks_override=None,
+        distributed_executor_backend=distributed_executor_backend,
+        enable_lora=enable_lora
+    )
+    return llm
 
 def run_vllm(
+    llm,
     requests: List[Tuple[str, int, int]],
     model: str,
     tokenizer: str,
@@ -95,29 +151,6 @@ def run_vllm(
             enable_lora = True
         else:
             raise ValueError(f"lora path: {lora_path} does not exit")
-
-    llm = LLM(
-        model=model,
-        tokenizer=tokenizer,
-        quantization=quantization,
-        tensor_parallel_size=tensor_parallel_size,
-        seed=seed,
-        trust_remote_code=trust_remote_code,
-        dtype=dtype,
-        max_model_len=max_model_len,
-        gpu_memory_utilization=gpu_memory_utilization,
-        enforce_eager=enforce_eager,
-        kv_cache_dtype=kv_cache_dtype,
-        quantization_param_path=quantization_param_path,
-        device=device,
-        enable_prefix_caching=enable_prefix_caching,
-        download_dir=download_dir,
-        enable_chunked_prefill=enable_chunked_prefill,
-        max_num_batched_tokens=None,
-        num_gpu_blocks_override=None,
-        distributed_executor_backend=distributed_executor_backend,
-        enable_lora=enable_lora
-    )
 
     # Add the requests to the engine.
     prompts = []
@@ -164,109 +197,15 @@ def run_vllm(
             end = time.perf_counter()
             return end - start
 
-
-def run_hf(
-    requests: List[Tuple[str, int, int]],
-    model: str,
-    tokenizer: PreTrainedTokenizerBase,
-    n: int,
-    use_beam_search: bool,
-    max_batch_size: int,
-    trust_remote_code: bool,
-) -> float:
-    assert not use_beam_search
-    llm = AutoModelForCausalLM.from_pretrained(
-        model, torch_dtype=torch.float16, trust_remote_code=trust_remote_code)
-    if llm.config.model_type == "llama":
-        # To enable padding in the HF backend.
-        tokenizer.pad_token = tokenizer.eos_token
-    llm = llm.cuda()
-
-    pbar = tqdm(total=len(requests))
-    start = time.perf_counter()
-    batch: List[str] = []
-    max_prompt_len = 0
-    max_output_len = 0
-    for i in range(len(requests)):
-        prompt, prompt_len, output_len = requests[i]
-        # Add the prompt to the batch.
-        batch.append(prompt)
-        max_prompt_len = max(max_prompt_len, prompt_len)
-        max_output_len = max(max_output_len, output_len)
-        if len(batch) < max_batch_size and i != len(requests) - 1:
-            # Check if we can add more requests to the batch.
-            _, next_prompt_len, next_output_len = requests[i + 1]
-            if (max(max_prompt_len, next_prompt_len) +
-                    max(max_output_len, next_output_len)) <= 2048:
-                # We can add more requests to the batch.
-                continue
-
-        # Generate the sequences.
-        input_ids = tokenizer(batch, return_tensors="pt",
-                              padding=True).input_ids
-        llm_outputs = llm.generate(
-            input_ids=input_ids.cuda(),
-            do_sample=not use_beam_search,
-            num_return_sequences=n,
-            temperature=1.0,
-            top_p=1.0,
-            use_cache=True,
-            max_new_tokens=max_output_len,
-        )
-        # Include the decoding time.
-        tokenizer.batch_decode(llm_outputs, skip_special_tokens=True)
-        pbar.update(len(batch))
-
-        # Clear the batch.
-        batch = []
-        max_prompt_len = 0
-        max_output_len = 0
-    end = time.perf_counter()
-    return end - start
-
-
-def run_mii(
-    requests: List[Tuple[str, int, int]],
-    model: str,
-    tensor_parallel_size: int,
-    output_len: int,
-) -> float:
-    from mii import client, serve
-    llm = serve(model, tensor_parallel=tensor_parallel_size)
-    prompts = [prompt for prompt, _, _ in requests]
-
-    start = time.perf_counter()
-    llm.generate(prompts, max_new_tokens=output_len)
-    end = time.perf_counter()
-    client = client(model)
-    client.terminate_server()
-    return end - start
-
-
 def main(args: argparse.Namespace):
     print(args)
+    print(args)
+    print("[INFO] Use Batched to run 35 case")
+    if args.enable_profile:
+        print("[INFO] Seems that you turn on PROFILE. It will slower than normal.")
+    
     random.seed(args.seed)
-    global MX_PROFILE_CSV_NAME
-    model_name_list = args.model.split("/")
-    model_name = model_name_list[-2] if len(model_name_list[-1]) == 0 else model_name_list[-1]
-    MX_PROFILE_CSV_NAME = f"{model_name}_{args.num_prompts}_{args.input_len}_{args.output_len}.csv"
-
-
-    # Sample the requests.
-    tokenizer = AutoTokenizer.from_pretrained(
-        args.tokenizer, trust_remote_code=args.trust_remote_code)
-    if args.dataset is None:
-        # Synthesize a prompt with the given input length.
-        prompt = "hi" * (args.input_len - 1)
-        requests = [(prompt, args.input_len, args.output_len)
-                    for _ in range(args.num_prompts)]
-    else:
-        requests = sample_requests(args.dataset, args.num_prompts, tokenizer,
-                                   args.output_len)
-
-    if args.backend == "vllm":
-        elapsed_time = run_vllm(
-            requests, args.model, args.tokenizer, args.quantization,
+    llm = get_vllm(args.model, args.tokenizer, args.quantization,
             args.tensor_parallel_size, args.seed, args.n, args.use_beam_search,
             args.trust_remote_code, args.dtype, args.max_model_len,
             args.enforce_eager, args.kv_cache_dtype,
@@ -274,33 +213,46 @@ def main(args: argparse.Namespace):
             args.enable_prefix_caching, args.enable_chunked_prefill,
             args.max_num_batched_tokens, args.distributed_executor_backend,
             args.gpu_memory_utilization, args.download_dir,
-            args.lora_path, args.enable_profile)
-    elif args.backend == "hf":
-        assert args.tensor_parallel_size == 1
-        elapsed_time = run_hf(requests, args.model, tokenizer, args.n,
-                              args.use_beam_search, args.hf_max_batch_size,
-                              args.trust_remote_code)
-    elif args.backend == "mii":
-        elapsed_time = run_mii(requests, args.model, args.tensor_parallel_size,
-                               args.output_len)
-    else:
-        raise ValueError(f"Unknown backend: {args.backend}")
-    total_num_tokens = sum(prompt_len + output_len
-                           for _, prompt_len, output_len in requests)
-    print(f"Throughput: {len(requests) / elapsed_time:.2f} requests/s, "
-          f"{total_num_tokens / elapsed_time:.2f} tokens/s")
+            args.lora_path)
 
-    # Output JSON results if specified
-    if args.output_json:
-        results = {
-            "elapsed_time": elapsed_time,
-            "num_requests": len(requests),
-            "total_num_tokens": total_num_tokens,
-            "requests_per_second": len(requests) / elapsed_time,
-            "tokens_per_second": total_num_tokens / elapsed_time,
-        }
-        with open(args.output_json, "w") as f:
-            json.dump(results, f, indent=4)
+    # Sample the requests.
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.tokenizer, trust_remote_code=args.trust_remote_code)
+    for batch in [1,8,16,32,64]:
+        for input_len in [256, 512, 1024]:
+            for output_len in [128, 512, 1024]:
+                if input_len == 1024 and output_len != 1024:
+                    continue
+                
+                global MX_PROFILE_CSV_NAME
+                model_name_list = args.model.split("/")
+                model_name = model_name_list[-2] if len(model_name_list[-1]) == 0 else model_name_list[-1]
+                MX_PROFILE_CSV_NAME = f"{model_name}_{batch}_{input_len}_{output_len}.csv"
+                enable_profile = False
+                if args.enable_profile:
+                    if input_len == 256 and output_len == 128:
+                         enable_profile= True
+                    if input_len == 1024 and output_len == 1024:
+                        enable_profile= True
+                # Synthesize a prompt with the given input length.
+                prompt = "hi" * (input_len - 1)
+                requests = [(prompt, input_len, output_len)
+                            for _ in range(batch)]
+                elapsed_time = run_vllm(llm, requests, args.model, args.tokenizer, args.quantization,
+                                        args.tensor_parallel_size, args.seed, args.n, args.use_beam_search,
+                                        args.trust_remote_code, args.dtype, args.max_model_len,
+                                        args.enforce_eager, args.kv_cache_dtype,
+                                        args.quantization_param_path, args.device,
+                                        args.enable_prefix_caching, args.enable_chunked_prefill,
+                                        args.max_num_batched_tokens, args.distributed_executor_backend,
+                                        args.gpu_memory_utilization, args.download_dir,
+                                        args.lora_path, args.enable_profile)
+                
+                total_num_tokens = sum(prompt_len + output_len
+                                    for _, prompt_len, output_len in requests)
+                print(f"bs_{batch}_input_{input_len}_output_{output_len} Throughput: {len(requests) / elapsed_time:.2f} requests/s, "
+                    f"{total_num_tokens / elapsed_time:.2f} tokens/s")
+    
 
 
 if __name__ == "__main__":
