@@ -1,6 +1,6 @@
 {
     "model_type": "Falcon",
-    "model_path": "/AI-DATA/Models/Falcon/falcon-40b/",
+    "model_path": "/pde_ai/models/llm/Falcon/falcon-40b/",
     "c-eval_param": {
         "dtype": "float16",
         "tensor_parallel_size": 4,

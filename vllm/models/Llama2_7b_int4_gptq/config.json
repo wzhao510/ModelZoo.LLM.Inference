@@ -1,6 +1,6 @@
 {
     "model_type": "llama",
-    "model_path": "/AI-DATA/Models/quantize_model/llama-2-7b-int4-gptq/",
+    "model_path": "/pde_ai/models/llm/quantize_model/llama-2-7b-int4-gptq/",
     "c-eval_param": {
         "dtype": "float16",
         "tensor_parallel_size": 1,

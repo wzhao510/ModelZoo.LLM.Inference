@@ -1,6 +1,6 @@
 {
     "model_type": "Qwen",
-    "model_path": "/AI-DATA/Models/Qwen/Qwen-7B/",
+    "model_path": "/pde_ai/models/llm/Qwen/Qwen-7B/",
     "c-eval_param": {
         "dtype": "float16",
         "tensor_parallel_size": 1,

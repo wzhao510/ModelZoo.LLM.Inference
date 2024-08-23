@@ -130,7 +130,7 @@ def main(model_path, tensor_parallel_size, trust_remote_code, max_model_len, lor
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="/AI-DATA/Models/Llama/Llama-2-7b-hf/")
+    parser.add_argument("--model", type=str, default="/pde_ai/models/llm/Llama/Llama-2-7b-hf/")
     parser.add_argument("--lora_path", type=str, default="/AI-DATA/LoRA/lora_test/lora_llama-2-7b/llama-2-7b-sql-lora-test/")
     parser.add_argument("--tensor_parallel_size", "-tp", type=int, default=1)
     parser.add_argument('--trust_remote_code',

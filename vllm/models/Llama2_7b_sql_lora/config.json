@@ -1,6 +1,6 @@
 {
     "model_type": "llama",
-    "model_path": "/AI-DATA/Models/Llama/Llama-2-7b-hf/",
+    "model_path": "/pde_ai/models/llm/Llama/Llama-2-7b-hf/",
     "lora_path": "/AI-DATA/LoRA/lora_test/lora_llama-2-7b/llama-2-7b-sql-lora-test/",
     "c-eval_param": {
         "dtype": "float16",

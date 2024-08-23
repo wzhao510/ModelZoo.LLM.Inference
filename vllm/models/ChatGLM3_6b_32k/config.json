@@ -1,6 +1,6 @@
 {
     "model_type": "chatGLM",
-    "model_path": "/AI-DATA/Models/ChatGLM/chatglm3-6b-32k/",
+    "model_path": "/pde_ai/models/llm/ChatGLM/chatglm3-6b-32k/",
     "c-eval_param": {
         "dtype": "float16",
         "tensor_parallel_size": 1,

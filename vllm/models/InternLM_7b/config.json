@@ -1,6 +1,6 @@
 {
     "model_type": "InternLM",
-    "model_path": "/AI-DATA/Models/Internlm/internlm-7b/",
+    "model_path": "/pde_ai/models/llm/Internlm/internlm-7b/",
     "c-eval_param": {
         "dtype": "float16",
         "tensor_parallel_size": 1,
