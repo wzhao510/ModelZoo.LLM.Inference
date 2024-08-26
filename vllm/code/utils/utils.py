@@ -14,9 +14,13 @@ def write_txt(filename, data):
         f.write(data)
 
 def get_vllm_version():
-    result = subprocess.run(['pip', 'show', 'vllm'], stdout=subprocess.PIPE, text=True)
-    for line in result.stdout.split('\n'):
-        if line.startswith('Version:'):
-            return line.split()[-1]
-    return None
+    try:
+        import vllm
+        return vllm.__version__
+    except ImportError:
+        print("Not install vLLM")
+        return None
+    except AttributeError:
+        print("Can not get vLLM version")
+        return None
     
