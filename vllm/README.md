@@ -55,8 +55,8 @@ lm-eval=0.4.2
 2. 建立软连接：
 
 ```shell
-ln  -s /AI-DATA/dataset/ModelZoo_LLM_data/ceval ceval
-ln  -s /AI-DATA/dataset/ModelZoo_LLM_data/lm_eval_code/exact_match exact_match
+ln  -s /pde_ai/datasets/dataset-7/ModelZoo_LLM_data/ceval ceval
+ln  -s /pde_ai/datasets/dataset-7/ModelZoo_LLM_data/lm_eval_code/exact_match exact_match
 ```
 如果是本地运行需要修改下 路径，否则会一直尝试网络下载。
 3. 执行方式
