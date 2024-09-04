@@ -145,7 +145,7 @@ def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca",
         sd_pipe_output_list.append(sd_pipe_output)
 
     avg_cost = total_cost/len(sd_pipe_output_list)
-    fps = 1/avg_cost
+    fps = (1/avg_cost) * batchsize
     if EP.lower() == "maca":
         print(f"Inference cost {avg_cost:.3f} seconds, fps is {fps:.3f}, memory usage: {max_memory / 1024 / 1024:.3f} GB")
     else:
