@@ -16,6 +16,16 @@ from vllm.model_executor.layers.quantization import QUANTIZATION_METHODS
 
 MX_PROFILE_CSV_NAME = "default_1_1_1.csv"
 
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
 def sample_requests(
     dataset_path: str,
     num_requests: int,
@@ -368,7 +378,8 @@ if __name__ == "__main__":
                         'the model executor, which can range from 0 to 1.'
                         'If unspecified, will use the default value of 0.9.')
     parser.add_argument("--enforce-eager",
-                        action="store_true",
+                        type=str2bool,
+                        default=True,
                         help="enforce eager execution")
     parser.add_argument(
         '--kv-cache-dtype',
