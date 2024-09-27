@@ -54,6 +54,8 @@ def PmxModelTest(config_str):
     model_type = json.loads(config_str).get('model_type')
     if len(config['dump_steps'].split(",")) == 1 and config['dump_steps'][-1] != ",":
         config['dump_steps'] += ","
+    if 'origin_model_tokenizer_path' not in config:
+        config['origin_model_tokenizer_path'] = config['origin_model_dir']
     test_cmd = 'OMP_NUM_THREADS=1 torchrun --nproc_per_node {} {}/src/{}/Demo.py --ckpt_dir {} --tokenizer_path {} --fused_qkv 1 --fused_kvcache 1\
                 --quantized_cache 1 --dynamic_batching 1 --auto_causal 1 --seqlen_scale_up {} --max_gen_len {} --dump_steps {} --dump_tensor_path {} --batch {}\
                 --cache_layout {}'.format(config['num_gpu'], _dir, model_type, config['pmx_model_dir'], config['origin_model_tokenizer_path'], config['seqlen_scale_up'],\
@@ -81,7 +83,7 @@ def OnnxModelAccuracyTest(config_str):
         if not maca_path:
             print("$MACA_PATH is not set.")
             sys.exit()
-        test_cmd = '{}/ompi/bin/mpirun -np {} bash {}/src/benchmark.sh {} {} {} {} {}'.format(maca_path, num_gpu, _dir, step, config['onnx_model_dir'], config['out_put_dir'], config['test_data_dir'], config['ppl_serving_dir'])
+        test_cmd = '{}/ompi/bin/mpirun --allow-run-as-root -np {} bash {}/src/benchmark.sh {} {} {} {} {}'.format(maca_path, num_gpu, _dir, step, config['onnx_model_dir'], config['out_put_dir'], config['test_data_dir'], config['ppl_serving_dir'])
     else:
         test_cmd = 'bash {}/src/benchmark.sh {} {} {} {} {}'.format(_dir, step, config['onnx_model_dir'], config['out_put_dir'], config['test_data_dir'], config['ppl_serving_dir'])
     ret = subprocess.Popen(test_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
@@ -201,7 +203,7 @@ def StartServer(config_str, config_file):
 
 def MMLUAccuracyTest(config_str, config_file):
     def get_server_proc_id(start_server_cmd):
-        cmd = f'mx-smi --show-process -i 0'
+        cmd = f'mx-smi --show-process -i 1'
         ret = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8')
         start_position = ret.stdout.find('ppl_llm_server')
         process_infos = []
@@ -265,12 +267,13 @@ def MMLUAccuracyTest(config_str, config_file):
     print(f'model_name is {model_name}')
     print(f'save_dir is {save_dir}')
     print(f'port is {port}')
-    try:
-        test_main(mmlu_data_dir, save_dir, model_name, port)
-    except:
-        print('test error occurred...')
-        os.system(f'kill -9 {server_proc_id}')
-        sys.exit()
+    test_main(mmlu_data_dir, save_dir, model_name, port)
+    # try:
+    #     test_main(mmlu_data_dir, save_dir, model_name, port)
+    # except:
+    #     print('test error occurred...')
+    #     os.system(f'kill -9 {server_proc_id}')
+    #     sys.exit()
     
     # 4. stop server
     os.system(f'kill -9 {server_proc_id}')
@@ -285,7 +288,7 @@ if __name__ == "__main__":
 
     model_cmd = sys.argv[1]
     with open(sys.argv[2], 'r') as f:
-        config_str = f.read()        
+        config_str = f.read()
 
     if model_cmd == 'convert_to_pmx':
         check_model_type(config_str)

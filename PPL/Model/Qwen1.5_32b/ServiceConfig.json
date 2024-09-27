@@ -1,0 +1,25 @@
+{
+    "ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/bin/",
+    "server_config": {
+        "model_type": "qwen",
+        "model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Qwen1.5_32b/onnx-model/",
+        "model_param_path": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Qwen1.5_32b/onnx-model/params.json",
+        "tokenizer_path": "/opt/maca-ai/ppl.llm.serving/samples/samples/ppl_server_client/tokenizer_file/qwen.tiktoken",
+        "tensor_parallel_size": 4,
+        "top_p": 0.0,
+        "top_k": 1,
+        "quant_method": "none",
+        "max_tokens_scale": 0.6,
+        "max_tokens_per_request": 4096,
+        "max_running_batch": 1024,
+        "max_tokens_per_step": 8192,
+        "host": "0.0.0.0",
+        "port": 23333
+    },
+    "enable_http_server": true,
+    "http_server_config": {
+        "host": "0.0.0.0",
+        "port": 23334,
+        "threads": 50
+    }
+}

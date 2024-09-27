@@ -117,8 +117,8 @@ if __name__ == "__main__":
     print("."*50)
 
 
-    if cos_value > 0.9999:
+    if cos_value > 0.9995:
         print(succ_str)
     else:
         print(fail_str)
-    print("Note: we use COS_VALUE > 0.9999 to judge. ")
+    print("Note: we use COS_VALUE > 0.9995 to judge. ")

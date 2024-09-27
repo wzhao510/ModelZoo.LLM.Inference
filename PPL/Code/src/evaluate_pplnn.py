@@ -10,6 +10,13 @@ sys.path.append(os.path.dirname(os.path.realpath(__file__)) + "/../..")
 import Code.src.http.llm_pb2 as llm_pb2
 import Code.src.http.llm_pb2_grpc as llm_pb2_grpc
 
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    TextIteratorStreamer,
+)
+tokenizer = AutoTokenizer.from_pretrained("/external/models/Yi/yi-1___5-6b-chat", use_fast=False)
+
 subcategories = {
     "abstract_algebra": ["math"],
     "anatomy": ["health"],
@@ -91,7 +98,7 @@ def run(prompts, port):
         req.id=i
         req.temperature=0.0
         req.generation_length=8
-        req.prompt=prompts[i]
+        req.prompt=str.encode(prompts[i])  #
         req_list.req.append(req)
         if req.id not in qa_dict:
             qa_dict[req.id] = {}
@@ -103,7 +110,7 @@ def run(prompts, port):
     # print("Answer: ")
 
     for response in responses:
-        qa_dict[response.id]['answer'] += response.generated
+        qa_dict[response.id]['answer'] += bytes.decode(response.generated, "utf-8", "ignore")  #
 
     # for id, qa in qa_dict.items():
     #     print("ID:{}".format(id))
@@ -131,6 +138,8 @@ def format_example(df, idx, include_answer=True):
         prompt += " {}\n\n".format(df.iloc[idx, k + 1])
     return prompt
 
+def build_chat_prompt(prompt):
+    return "<|im_start|>user\n" + prompt + " <|im_end|>\n<|im_start|>assistant\n"
 
 def gen_prompt(train_df, subject, k=-1):
     prompt = "The following are multiple choice questions (with answers) about {}.\n\n".format(
@@ -160,6 +169,11 @@ def eval(ntrain, subject, dev_df, test_df, port):
             prompt_end = format_example(test_df, j+start, include_answer=False)
             train_prompt = gen_prompt(dev_df, subject, k)
             prompt = train_prompt + prompt_end
+            # message = {"role": "user", "content": prompt}
+            # prompt = tokenizer.apply_chat_template(conversation=message, tokenize=False, add_generation_prompt=True, return_tensors='pt')
+            
+            # prompt = build_chat_prompt(prompt)
+            # print(prompt)
 
             label = test_df.iloc[j+start, test_df.shape[1] - 1]
             prompts.append(prompt)
