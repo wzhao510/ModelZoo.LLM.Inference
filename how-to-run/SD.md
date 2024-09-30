@@ -1,4 +1,4 @@
-这一页说明如何推理SD模型，包括sd1.5和sd2.1。
+这一页说明如何推理SD模型，包括sd1.5和sd2.1。建议使用onnxruntime Docker环境，添加模型目录映射：-v /pde_ai/models/llm/StableDiffusion/stable-diffusion-onnx:/pde_ai/models/llm/StableDiffusion/stable-diffusion-onnx
 
 ## requirement
 需要安装运行依赖包: onnxsim=0.4.36 diffusers==0.19.3 onnx==1.12.0 Pillow==10.0.0 transformers==4.31.0
