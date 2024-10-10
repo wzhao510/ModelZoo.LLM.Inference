@@ -10,7 +10,7 @@ import onnxruntime as ort
 import logging
 
 
-from utils.utils import get_params
+from utils.utils import get_params, convertModel, get_input_shape_info
 from utils.clip_score import ClipScore
 from sd_model.text2img import Text2ImgModelSess
 
@@ -38,15 +38,15 @@ def check_accuracy_thread(sd_text2img_models, batch_size, test_set, si):
     results = []
     for start_idx in trange(0, len(test_set), batch_size):
         end_idx = min(start_idx + batch_size, len(test_set))
-
+        start_idx -= (start_idx + batch_size - end_idx )
         prompts = []
+        prompt_str = []
         for i in range(start_idx, end_idx):
             data = test_set[i]
-            prompt = sd_text2img_models.truncated_prompt_embeds(data["prompt"])
-            prompts.append(prompt)
+            prompt_str.append(data["prompt"])
             results.append(data)
-        
-        prompt_np = np.vstack(prompts)
+        prompts = sd_text2img_models.truncated_prompt_embeds(prompt_str)
+        prompt_np = np.array(prompts)
         ## infer
         sd_pipe_output = sd_text2img_models(None, height=512, width=512, prompt_embeds=prompt_np)
         images = sd_pipe_output.images
@@ -112,18 +112,24 @@ def check_fp16_cfg_file(params):
         cmd = f"cp -r {params['ori_path']}/scheduler {params['fp16_path']}"
         os.system(cmd)
 
-def convert_fp16_model(params, module_name):
+def convert_fp16_model(params, module_name, batchsize, is_sd15):
 
     fp16_path = os.path.join(params["fp16_path"], module_name)
     fp32_path = os.path.join(params["ori_path"], module_name)
     if not os.path.exists(fp16_path):
         print(f"FP16 path:{fp16_path} does not exists, It will create..")
         os.makedirs(fp16_path)
-
+    
     fp16_modelname = "model_sim_fp16.onnx"
     fp32_modelname = params[module_name]
     fp32_model_path = os.path.join(fp32_path, fp32_modelname)
     fp16_model_path = os.path.join(fp16_path, fp16_modelname)
+
+    if params["must_convert"]:
+        img_size = params["outputs_size"].split("#")
+        input_shape = get_input_shape_info(module_name, [int(img_size[0]), int(img_size[1])], batchsize, is_sd15)
+        convertModel(fp32_model_path, fp16_model_path, input_shape)
+
     if os.path.isfile(fp16_model_path):
         return fp16_model_path
     if not os.path.isfile(fp32_model_path):
@@ -137,10 +143,11 @@ def convert_fp16_model(params, module_name):
     return fp16_model_path
 
 
-def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca", th_num="8", device_id=0):
+def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca", th_num="8", device_id=0, is_sd15=False):
     if not os.path.isfile(EVAL_MODEL_PATH):
         raise ValueError(f"{EVAL_MODEL_PATH} dose not exist. Please check on file.")
-            
+
+    batchsize = int(batchsize)     
     if EP.lower() == "maca":
         providers = [("MACAExecutionProvider",{
             'device_id':device_id,
@@ -157,9 +164,9 @@ def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca",
     
     check_fp16_cfg_file(params)
     if precision == "fp16":
-        text_encoder_path = convert_fp16_model(params, "text_encoder")
-        unet_path = convert_fp16_model(params, "unet")
-        vae_decoder_path = convert_fp16_model(params, "vae_decoder")
+        text_encoder_path = convert_fp16_model(params, "text_encoder",batchsize, is_sd15)
+        unet_path = convert_fp16_model(params, "unet",batchsize, is_sd15)
+        vae_decoder_path = convert_fp16_model(params, "vae_decoder",batchsize, is_sd15)
     else:
         text_encoder_path = os.path.join(params["ori_path"], params["text_encoder"])
         unet_path = os.path.join(params["ori_path"], params["unet"])
@@ -190,9 +197,10 @@ def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca",
     
     
     print("warmup")
-    for data in dataset[:1]:
-        # warmup
-        _ = sd_text2img_models[0](data["prompt"])
+    warmup_prompts = []
+    for idx in range(batchsize):
+        warmup_prompts.append(dataset[idx]["prompt"])
+    sd_pipe_output = sd_text2img_models[0](warmup_prompts)
         
     results = []
     print("Start Infer")
@@ -241,4 +249,5 @@ if __name__ == '__main__':
     EP = sys.argv[6] if len(sys.argv) > 6 else "maca"
     th_num = sys.argv[7] if len(sys.argv) > 7 else "16"
     device_id = int(sys.argv[8]) if len(sys.argv) > 8 else 0
-    main(modelname,batchsize,precision,task,model_path, EP, th_num, device_id)
+    is_sd15 = True if len(sys.argv) > 9 else False
+    main(modelname,batchsize,precision,task,model_path, EP, th_num, device_id, is_sd15)

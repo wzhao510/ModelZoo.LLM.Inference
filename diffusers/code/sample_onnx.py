@@ -2,11 +2,10 @@ import shutil
 import os
 import sys
 import numpy as np
-from utils.utils import get_params
+from utils.utils import get_params, convertModel, get_input_shape_info
 from sd_model.text2img import Text2ImgModelSess
 import time
 import onnxruntime as ort
-
 
 def check_fp32_models(params):
     if not os.path.exists(os.path.join(params["ori_path"], "tokenizer")):
@@ -37,6 +36,8 @@ def check_fp16_cfg_file(params):
         print(f'Try cp -r from FP32 path:{params["ori_path"]}')
         cmd = f"cp -r {params['ori_path']}/tokenizer {params['fp16_path']}"
         os.system(cmd)
+    if "must_convert" not in params:
+        params["must_convert"] = False
 
     # scheduler
     scheduler_path = os.path.join(params["fp16_path"], "scheduler")
@@ -48,7 +49,7 @@ def check_fp16_cfg_file(params):
         cmd = f"cp -r {params['ori_path']}/scheduler {params['fp16_path']}"
         os.system(cmd)
 
-def convert_fp16_model(params, module_name):
+def convert_fp16_model(params, module_name, batchsize, is_sd15):
 
     fp16_path = os.path.join(params["fp16_path"], module_name)
     fp32_path = os.path.join(params["ori_path"], module_name)
@@ -60,6 +61,14 @@ def convert_fp16_model(params, module_name):
     fp32_modelname = params[module_name]
     fp32_model_path = os.path.join(fp32_path, fp32_modelname)
     fp16_model_path = os.path.join(fp16_path, fp16_modelname)
+
+    if params["must_convert"]:
+        img_size = params["outputs_size"].split("#")
+        input_shape = get_input_shape_info(module_name, [int(img_size[0]), int(img_size[1])], batchsize, is_sd15)
+        print(f'input shape is {input_shape}')
+        print(f'start convert module {module_name}')
+        convertModel(fp32_model_path, fp16_model_path, input_shape)
+
     if os.path.isfile(fp16_model_path):
         return fp16_model_path
     if not os.path.isfile(fp32_model_path):
@@ -85,7 +94,7 @@ def get_gpu_memory_usage(device_id=0):
     return used_memory
 
 
-def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca", th_num="8",device_id=0):
+def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca", output_size=None, device_id=0, is_sd15=False):
     if EP.lower() == "maca":
         providers = [("MACAExecutionProvider",{
             'device_id':device_id,
@@ -95,6 +104,8 @@ def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca",
         providers = ["CPUExecutionProvider",]
 
     params = get_params(modelname)
+    if output_size is not None:
+        params["outputs_size"] = "{}#{}".format(output_size, output_size)
     if params.get("do_fp16_convert", False):
         is_succ = check_fp32_models(params)
         if not is_succ:
@@ -102,9 +113,9 @@ def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca",
     
     check_fp16_cfg_file(params)
     if precision == "fp16":
-        text_encoder_path = convert_fp16_model(params, "text_encoder")
-        unet_path = convert_fp16_model(params, "unet")
-        vae_decoder_path = convert_fp16_model(params, "vae_decoder")
+        text_encoder_path = convert_fp16_model(params, "text_encoder", batchsize, is_sd15)
+        unet_path = convert_fp16_model(params, "unet", batchsize, is_sd15)
+        vae_decoder_path = convert_fp16_model(params, "vae_decoder", batchsize, is_sd15)
     else:
         text_encoder_path = os.path.join(params["ori_path"], params["text_encoder"])
         unet_path = os.path.join(params["ori_path"], params["unet"])
@@ -115,18 +126,34 @@ def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca",
     vae_decoder_sess = ort.InferenceSession(vae_decoder_path, providers=providers)
     
 
-    thr_num = int(th_num)
     sd_text2img_models = []
-    for i in range(thr_num):
-        sd_text2img_models.append(Text2ImgModelSess(params, text_encoder_sess, unet_sess, vae_decoder_sess))
+
+    sd_text2img_models.append(Text2ImgModelSess(params, text_encoder_sess, unet_sess, vae_decoder_sess))
     
-    prompt = ["a photo of an astronaut riding a horse on mars",
-            "A majestic lion jumping from a big stone at night"]
+    prompt = [
+            "a photo of an astronaut riding a horse on mars",
+            "A majestic lion jumping from a big stone at night",
+            "purple lego dollhouse with a pool and a swing",	
+            "black bearded dog with an injured leg wearing a cone",
+            "brown white and black white guinea pigs eating parsley handed to them"
+            "The Rosetta Stone lying on the ground, covered in snow.",
+            "a high-quality photograph of an armadillo playing a bagpipe while standing on one leg",
+            "a white robot with a red mohawk painted as graffiti on a red brick wall", 
+            "a panda bear playing ping pong using a blue paddle against an ostrich using a red paddle",
+            "Anubis wearing sunglasses and sitting astride a hog motorcyle",
+            "a photograph of sand with a bucket, lots of scattered shells but no sandpipers",
+            "a shiba inu wearing a beret and black turtleneck",
+            "a handpalm with leaves growing from it",
+            "panda mad scientist mixing sparkling chemicals",
+            "a corgi’s head depicted as an explosion of a nebula",
+            "a dolphin in an astronaut suit on saturn",
+            "a teddy bear on a skateboard in times square",
+            "A Big Ben clock towering over the city of London",
+            "A Vietnam map showing Ha Long Bay",
+            ]
     
     print("warmup")
-    for name in prompt[:1]:
-        # warmup
-        sd_pipe_output = sd_text2img_models[0](name)
+    sd_pipe_output = sd_text2img_models[0](prompt[:batchsize])
         
     total_cost = 0.0
     max_memory = 0.0
@@ -151,12 +178,14 @@ def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca",
     else:
         print(f"Inference cost {avg_cost:.3f} seconds, fps is {fps:.3f}")
 
-    cnt = 0 
-    for sd_pipe_output in sd_pipe_output_list:
-        images = sd_pipe_output.images
-        for i in range(len(images)):
-            sd_pipe_output.images[i].save(f"generated_image_{cnt}.png")
-            cnt += 1
+    # save generated images
+    if False:
+        cnt = 0 
+        for sd_pipe_output in sd_pipe_output_list:
+            images = sd_pipe_output.images
+            for i in range(len(images)):
+                sd_pipe_output.images[i].save(f"generated_image_{cnt}.png")
+                cnt += 1
 
 
 if __name__ == '__main__':
@@ -167,6 +196,8 @@ if __name__ == '__main__':
     task = sys.argv[4]      
     model_path = sys.argv[5] if len(sys.argv) > 5 else "./"
     EP = sys.argv[6] if len(sys.argv) > 6 else "maca"
-    th_num = sys.argv[7] if len(sys.argv) > 7 else "16"
+    output_size = int(sys.argv[7]) if len(sys.argv) > 7 else None
     device_id = int(sys.argv[8]) if len(sys.argv) > 8 else 0
-    main(modelname,batchsize,precision,task,model_path, EP, th_num, device_id) 
+    is_sd15 = True if len(sys.argv) > 9 else False
+    print(f'modelname: {modelname}\nbatchsize: {batchsize}\nprecision: {precision}\ntask: {task}\nmodel_path: {model_path}\nEP: {EP}\noutput_size: {output_size}\ndevice_id: {device_id}\nis_sd15: {is_sd15}')
+    main(modelname,batchsize,precision,task,model_path, EP, output_size, device_id, is_sd15) 

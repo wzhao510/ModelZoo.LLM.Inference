@@ -1,0 +1,17 @@
+{
+    "//": "以下配置的模型名字为FP32路径模型名字, FP16名字将会在转换统一命名 model_sim_fp16.onnx",
+    "model_config":{
+        "ori_path":"/pde_ai/models/llm/StableDiffusion/stable-diffusion-onnx/sd-v1-5_fp32_bs/",
+        "fp16_path":"/pde_ai/models/llm/StableDiffusion/stable-diffusion-onnx/static_shape_onnx/sd_1_5_fp16_512/",
+        "dataset":"./data/PartiPrompts.tsv",
+        "seed": 42,
+        "num_inference_steps": 50,
+        "text_encoder":"model.onnx",
+        "unet": "model.onnx",
+        "vae_decoder":"model.onnx",
+        "vae_encoder":"model.onnx",
+        "outputs_size":"512#512",
+        "scheduler":"PNDM",
+        "must_convert":true
+    }
+}
