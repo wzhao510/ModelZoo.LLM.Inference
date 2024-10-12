@@ -11,6 +11,7 @@
         "vae_decoder":"model_sim.onnx",
         "vae_encoder":"model_sim.onnx",
         "outputs_size":"512#512",
-        "scheduler":"DDIM"
+        "scheduler":"DDIM",
+        "encoder_hidden_dim":1024
     }
 }

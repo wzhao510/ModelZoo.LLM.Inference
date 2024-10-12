@@ -12,6 +12,7 @@
         "vae_encoder":"model.onnx",
         "outputs_size":"512#512",
         "scheduler":"PNDM",
+        "encoder_hidden_dim":768,
         "must_convert":true
     }
 }

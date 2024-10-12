@@ -23,13 +23,15 @@ def handle_post_req():
         i += 1
         grpc_req.temperature = req_data['temperature']
         grpc_req.generation_length = req_data['generation_length']
-        grpc_req.prompt = req
+        grpc_req.prompt = req.encode()
+        grpc_req.early_stopping=True
         req_list.req.append(grpc_req)
     responses = llmStub.Generation(req_list)
 
     def generate_chunks():
-        for resp in responses:
-            yield msgpack.packb({"id": resp.id, "data": resp.generated})
+        for response in responses:
+            for element in response.rsp:
+                yield msgpack.packb({"id": element.id, "data": element.generated.decode("utf-8", "ignore")})
 
     return Response(generate_chunks(), mimetype='application/json')
 

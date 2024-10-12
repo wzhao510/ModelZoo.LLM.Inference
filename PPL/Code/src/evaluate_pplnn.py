@@ -92,6 +92,7 @@ def run(prompts, port):
         req.temperature=0.0
         req.generation_length=8
         req.prompt=str.encode(prompts[i])  #
+        req.early_stopping=True
         req_list.req.append(req)
         if req.id not in qa_dict:
             qa_dict[req.id] = {}
@@ -101,9 +102,9 @@ def run(prompts, port):
     responses = llmStub.Generation(req_list)
 
     # print("Answer: ")
-
     for response in responses:
-        qa_dict[response.id]['answer'] += bytes.decode(response.generated, "utf-8", "ignore")  #
+        for element in response.rsp:
+            qa_dict[element.id]['answer'] += element.generated.decode("utf-8", "ignore")
 
     # for id, qa in qa_dict.items():
     #     print("ID:{}".format(id))
@@ -177,7 +178,7 @@ def eval(ntrain, subject, dev_df, test_df, port):
                     pred = word
                     break
             if pred is None:
-                print(qa['answer'])
+                # print(qa['answer'])
                 pred = 'F'
             
             label = labels[id]

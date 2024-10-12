@@ -102,6 +102,11 @@ def check_fp16_cfg_file(params):
         cmd = f"cp -r {params['ori_path']}/tokenizer {params['fp16_path']}"
         os.system(cmd)
 
+    if "must_convert" not in params:
+        params["must_convert"] = False
+    if "dynamic_batch" not in params:
+        params["dynamic_batch"] = False
+
     # scheduler
     scheduler_path = os.path.join(params["fp16_path"], "scheduler")
     if not os.path.exists(scheduler_path):
@@ -112,7 +117,7 @@ def check_fp16_cfg_file(params):
         cmd = f"cp -r {params['ori_path']}/scheduler {params['fp16_path']}"
         os.system(cmd)
 
-def convert_fp16_model(params, module_name, batchsize, is_sd15):
+def convert_fp16_model(params, module_name, batchsize):
 
     fp16_path = os.path.join(params["fp16_path"], module_name)
     fp32_path = os.path.join(params["ori_path"], module_name)
@@ -127,8 +132,12 @@ def convert_fp16_model(params, module_name, batchsize, is_sd15):
 
     if params["must_convert"]:
         img_size = params["outputs_size"].split("#")
-        input_shape = get_input_shape_info(module_name, [int(img_size[0]), int(img_size[1])], batchsize, is_sd15)
-        convertModel(fp32_model_path, fp16_model_path, input_shape)
+        dynamic_batch = params["dynamic_batch"]
+        encoder_hidden_dim = params["encoder_hidden_dim"]
+        input_shape = get_input_shape_info(module_name, [int(img_size[0]), int(img_size[1])], batchsize, encoder_hidden_dim, dynamic_batch)
+        print(f'input shape is {input_shape}')
+        print(f'start convert module {module_name}')
+        convertModel(fp32_model_path, fp16_model_path, input_shape, dynamic_batch)
 
     if os.path.isfile(fp16_model_path):
         return fp16_model_path
@@ -164,9 +173,9 @@ def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca",
     
     check_fp16_cfg_file(params)
     if precision == "fp16":
-        text_encoder_path = convert_fp16_model(params, "text_encoder",batchsize, is_sd15)
-        unet_path = convert_fp16_model(params, "unet",batchsize, is_sd15)
-        vae_decoder_path = convert_fp16_model(params, "vae_decoder",batchsize, is_sd15)
+        text_encoder_path = convert_fp16_model(params, "text_encoder",batchsize)
+        unet_path = convert_fp16_model(params, "unet",batchsize)
+        vae_decoder_path = convert_fp16_model(params, "vae_decoder",batchsize)
     else:
         text_encoder_path = os.path.join(params["ori_path"], params["text_encoder"])
         unet_path = os.path.join(params["ori_path"], params["unet"])
@@ -249,5 +258,4 @@ if __name__ == '__main__':
     EP = sys.argv[6] if len(sys.argv) > 6 else "maca"
     th_num = sys.argv[7] if len(sys.argv) > 7 else "16"
     device_id = int(sys.argv[8]) if len(sys.argv) > 8 else 0
-    is_sd15 = True if len(sys.argv) > 9 else False
-    main(modelname,batchsize,precision,task,model_path, EP, th_num, device_id, is_sd15)
+    main(modelname,batchsize,precision,task,model_path, EP, th_num, device_id)

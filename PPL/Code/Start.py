@@ -203,7 +203,7 @@ def StartServer(config_str, config_file):
 
 def MMLUAccuracyTest(config_str, config_file):
     def get_server_proc_id(start_server_cmd):
-        cmd = f'mx-smi --show-process -i 1'
+        cmd = f'mx-smi --show-process -i 0'
         ret = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8')
         start_position = ret.stdout.find('ppl_llm_server')
         process_infos = []
@@ -211,7 +211,7 @@ def MMLUAccuracyTest(config_str, config_file):
             begin_position = start_position - 36
             end_position = start_position + 40
             ppl_line = ret.stdout[begin_position:end_position]
-            print(ret.stdout[begin_position:end_position])     
+            # print(ret.stdout[begin_position:end_position])     
             infos = ppl_line.strip().split(' ')
             for info in infos:
                 if info != '':

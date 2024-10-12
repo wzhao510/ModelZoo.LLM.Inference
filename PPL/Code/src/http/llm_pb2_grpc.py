@@ -21,7 +21,7 @@ class LLMServiceStub(object):
         self.Generation = channel.unary_stream(
                 '/ppl.llm.proto.LLMService/Generation',
                 request_serializer=llm__pb2.BatchedRequest.SerializeToString,
-                response_deserializer=llm__pb2.Response.FromString,
+                response_deserializer=llm__pb2.BatchedResponse.FromString,
                 )
 
 
@@ -40,7 +40,7 @@ def add_LLMServiceServicer_to_server(servicer, server):
             'Generation': grpc.unary_stream_rpc_method_handler(
                     servicer.Generation,
                     request_deserializer=llm__pb2.BatchedRequest.FromString,
-                    response_serializer=llm__pb2.Response.SerializeToString,
+                    response_serializer=llm__pb2.BatchedResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -65,6 +65,6 @@ class LLMService(object):
             metadata=None):
         return grpc.experimental.unary_stream(request, target, '/ppl.llm.proto.LLMService/Generation',
             llm__pb2.BatchedRequest.SerializeToString,
-            llm__pb2.Response.FromString,
+            llm__pb2.BatchedResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
