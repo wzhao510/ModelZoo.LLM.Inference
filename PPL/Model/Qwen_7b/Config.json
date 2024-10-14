@@ -2,7 +2,7 @@
     "model_type": "qwen",
     "convert_to_pmx": {
         "origin_model_dir": "/external/models/Qwen_7b/",
-        "enable_using_safetensors": false,
+        "enable_using_safetensors": true,
         "pmx_model_output_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Qwen_7b/pmx-model"
     },
     "split_pmx_model": {

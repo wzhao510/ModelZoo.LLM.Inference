@@ -13,6 +13,12 @@ def main():
         "--output_dir",
         help="Location to write PMX model",
     )
+    parser.add_argument(
+        "--use_safetensors",
+        type=bool,
+        default=False,
+        help="whether using safetensors for original input file",
+    )
     args = parser.parse_args()
     write_pmx_model(
         model_path=args.output_dir,
