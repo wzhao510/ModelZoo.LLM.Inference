@@ -55,17 +55,27 @@ lm-eval=0.4.2
 2. 建立软连接：
 
 ```shell
-ln  -s /pde_ai/datasets/dataset-7/ModelZoo_LLM_data/ceval ceval
-ln  -s /pde_ai/datasets/dataset-7/ModelZoo_LLM_data/lm_eval_code/exact_match exact_match
+ln  -s /AI-DATA/dataset/ModelZoo_LLM_data/ceval ceval
+ln  -s /AI-DATA/dataset/ModelZoo_LLM_data/lm_eval_code/exact_match exact_match
 ```
 如果是本地运行需要修改下 路径，否则会一直尝试网络下载。
 3. 执行方式
 python code/c-eval.py  ./models/xxxx  # 
 
 ## benchmark throughput 执行
+```
 python code/bench_test.py  ./models/xxxx 24                # 跑24条数据测试 ，默认： 输入长度1024 输出长度1024
 python code/bench_test.py  ./models/xxxx 1024 512 128      # 跑1024条数据测试，设置: 输入长度512 输出长度 128
 python code/bench_test.py  ./models/xxxx 1024 512 128 1     # 最后一个1 表示进行批次跑；前面设置批次、输入长度、输出长度不生效，将会一次加载模型跑看护的35个case性能数据
+```
+----  2024.10.08  ---
+### 新增开启 enforce-eager 参数 （false 为 开启cuda-graph；true 为不开启 cuda-graph）
+* 具体使用方式为在第六个参数上控制，默认不开启 cuda graph。请注意 开启 cuda-graph 需要开启环境变量 `export MACA_GRAPH_LAUNCH_MODE=1` 加速这部分
+```
+python code/bench_test.py  ./models/xxxx 8 512 128          # 测试XXX模型，输入为8条数据测试，设置: 输入长度512 输出长度 128；单条数据；不开启 cuda-graph
+python code/bench_test.py  ./models/xxxx 8 512 128 0 true   # 测试XXX模型，输入为8条数据测试，设置: 输入长度512 输出长度 128；单条数据；不开启 cuda-graph
+python code/bench_test.py  ./models/xxxx 8 512 128 0 flase  # 测试XXX模型，输入为8条数据测试，设置: 输入长度512 输出长度 128；单条数据；开启 cuda-graph
+```
 ----  2024.07.31  ---
 ### 新增环境变量 `MX_VLLM_ENABLE_PROFILE`
 * 使能 `MX_VLLM_ENABLE_PROFILE`环境变量后将会在 `./mx_profiler/` 文件夹通过torch_profiler 工具生成csv原始文件（如果跑35个case的话，目前只统计 input_len=256,output_len=128 以及 input_len=1024,output_len=1024 数据）
@@ -100,27 +110,45 @@ GPTQ 跑性能数据
 python code/bench_test.py ./models/Llama2_7b_int4_gptq/ 64 1024 1024
 ```
 ## 1、本地推理脚本run_offline_inference_demo.sh
-    脚本内需要根据使用模型情况修改模型所在目录，如/external/models/llama-2-7b-hf
+    脚本内需要根据使用模型情况修改模型所在目录，如/pde_ai/models/llm/Llama/Llama-2-7b-hf/
     可根据需要修改code/src/offline_inference.py内的prompts
 
 ## 2、benchmark_latency
 ##    Benchmark the latency of processing a single batch of requests.
-    脚本内需要根据使用模型情况修改模型所在目录，如/external/models/llama-2-7b-hf
+    脚本内需要根据使用模型情况修改模型所在目录，如/pde_ai/models/llm/Llama/Llama-2-7b-hf/
     可根据测试需要在脚本内增加input-len、output-len、batch-size等参数，详细参数信息见code/src/benchmark_latency.py
 
 ## 3、benchmark_throughput
 ##    Benchmark offline inference throughput.
-    脚本内需要根据使用模型情况修改模型所在目录，如/external/models/llama-2-7b-hf
+    脚本内需要根据使用模型情况修改模型所在目录，如/pde_ai/models/llm/Llama/Llama-2-7b-hf/
     可根据测试需要在脚本内修改input-len、output-len、batch-size等参数，详细参数信息见code/src/benchmark_throughput.py
 
 ## 4、benchmark_serving
 ##    Benchmark online serving throughput.
-    执行benchmark前需要有对应服务启动，简易启动命令: python -m vllm.entrypoints.api_server --model /external/models/llama-2-7b-hf
-    服务启动后可在脚本内修改参数，详细参数信息见code/src/benchmark_serving.py
+执行benchmark前需要有对应服务启动，简易启动命令: 
+```
+python -m vllm.entrypoints.api_server --model /pde_ai/models/llm/Llama/Llama-2-7b-hf/
+```
+---- 2024.09.30 ----   
+
+新增开启 enforce-eager 参数 （默认不开启cuda-graph； false 为 开启cuda-graph；true 为不开启 cuda-graph）。请注意 开启 cuda-graph 需要开启环境变量 `export MACA_GRAPH_LAUNCH_MODE=1` 加速这部分
+```
+python -m vllm.entrypoints.api_server --model /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --enforce-eager=false # 开启cuda-graph
+``` 
+服务启动后可在脚本内修改参数，详细参数信息见code/src/benchmark_serving.py
 
 ## 5、启动openai_api服务端 
-    简易启动命令: python -m vllm.entrypoints.openai.api_server --model /external/models/llama-2-7b-hf --host localhost --port 8000 --chat-template /workspace/ModelZoo.LLM.Inference/vllm/code/src/template_chatml.jinja
-    /workspace/ModelZoo.LLM.Inference/vllm/code目录下包含completion和chatcompletion两个客户端sample
+简易启动命令: 
+```
+python -m vllm.entrypoints.openai.api_server --model /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --host localhost --port 8000 --chat-template /workspace/ModelZoo.LLM.Inference/vllm/code/src/template_chatml.jinja
+```
+---- 2024.09.30 ----  
+
+新增开启 enforce-eager 参数 （false 为 开启cuda-graph；true 为不开启 cuda-graph）。请注意 开启 cuda-graph 需要开启环境变量 `export MACA_GRAPH_LAUNCH_MODE=1` 加速这部分
+```
+python -m vllm.entrypoints.openai.api_server --model /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --host localhost --port 8000 --chat-template /workspace/ModelZoo.LLM.Inference/vllm/code/src/template_chatml.jinja --enforce-eager=false
+``` 
+/workspace/ModelZoo.LLM.Inference/vllm/code目录下包含completion和chatcompletion两个客户端sample
     
 
 

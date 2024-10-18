@@ -11,7 +11,7 @@ def is_int(value):
         return False
 
 
-def run_benchmark(model_name, num_prompt, input_len, output_len, is_batched):
+def run_benchmark(model_name, num_prompt, input_len, output_len, is_batched, enforce_eager):
     model_config = get_params(model_name)
     vllm_version = get_vllm_version()
     print(f"vLLM version: {vllm_version}")
@@ -53,7 +53,10 @@ def run_benchmark(model_name, num_prompt, input_len, output_len, is_batched):
         c_eval_cmd += f" --lora_path {lora_path}"
     
     if enable_profile:
-            c_eval_cmd += " --enable-profile"
+        c_eval_cmd += " --enable-profile"
+    if enforce_eager is not None:
+        c_eval_cmd += f" --enforce-eager={enforce_eager}"
+
     
     print(c_eval_cmd)
     use_cmd = True
@@ -65,4 +68,5 @@ if __name__ == '__main__':
     input_len =  sys.argv[3] if len(sys.argv) > 3 else 1024
     output_len =  sys.argv[4] if len(sys.argv) > 4 else 1024
     is_batched = sys.argv[5] if len(sys.argv) > 5 else 0
-    run_benchmark(modelname, num_prompt, input_len, output_len, is_batched)
+    enforce_eager = sys.argv[6] if len(sys.argv) > 6 else None
+    run_benchmark(modelname, num_prompt, input_len, output_len, is_batched, enforce_eager)
