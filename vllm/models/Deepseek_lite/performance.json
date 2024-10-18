@@ -1,0 +1,6 @@
+{
+    "name" : "DeepSeek-lite",
+    "fp16":{
+        "acc": 0.2474
+    }
+}

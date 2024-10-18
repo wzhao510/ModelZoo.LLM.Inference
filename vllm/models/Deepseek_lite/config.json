@@ -1,0 +1,11 @@
+{
+    "model_type": "DeepSeek",
+    "model_path": "/pde_ai/models/llm/DeepSeek/DeepSeek-V2-Lite/",
+    "c-eval_param": {
+        "dtype": "float16",
+        "tensor_parallel_size": 4,
+        "gpu_memory_utilization": 0.8,
+        "batch_size": 1,
+        "task_name": "ceval-valid"
+    }
+}
