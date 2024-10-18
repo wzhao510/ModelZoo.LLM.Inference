@@ -244,6 +244,8 @@ def run_mii(
 
 def main(args: argparse.Namespace):
     print(args)
+    if not args.enforce_eager:
+        os.environ['MACA_GRAPH_LAUNCH_MODE'] = "1"
     random.seed(args.seed)
 
     global MX_PROFILE_CSV_NAME

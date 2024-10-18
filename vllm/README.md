@@ -70,7 +70,7 @@ python code/bench_test.py  ./models/xxxx 1024 512 128 1     # 最后一个1 表�
 ```
 ----  2024.10.08  ---
 ### 新增开启 enforce-eager 参数 （false 为 开启cuda-graph；true 为不开启 cuda-graph）
-* 具体使用方式为在第六个参数上控制，默认不开启 cuda graph。请注意 开启 cuda-graph 需要开启环境变量 `export MACA_GRAPH_LAUNCH_MODE=1` 加速这部分
+* 具体使用方式为在第六个参数上控制，默认不开启 cuda graph。请注意 开启 cuda-graph 需要开启环境变量 `export MACA_GRAPH_LAUNCH_MODE=1` 加速这部分。ARM 机器默认打开 CUDA_GARPH。更新：如果开启  enforce-eager=false 会默认设置环境变量`MACA_GRAPH_LAUNCH_MODE=1`。
 ```
 python code/bench_test.py  ./models/xxxx 8 512 128          # 测试XXX模型，输入为8条数据测试，设置: 输入长度512 输出长度 128；单条数据；不开启 cuda-graph
 python code/bench_test.py  ./models/xxxx 8 512 128 0 true   # 测试XXX模型，输入为8条数据测试，设置: 输入长度512 输出长度 128；单条数据；不开启 cuda-graph

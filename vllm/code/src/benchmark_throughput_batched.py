@@ -191,6 +191,8 @@ def run_vllm(
 
 def main(args: argparse.Namespace):
     print(args)
+    if not args.enforce_eager:
+        os.environ['MACA_GRAPH_LAUNCH_MODE'] = "1"
     print("[INFO] Use Batched to run 35 case")
     if args.enable_profile:
         print("[INFO] Seems that you turn on PROFILE. It will slower than normal.")

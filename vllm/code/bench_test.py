@@ -1,4 +1,5 @@
 import os
+import platform
 import sys
 import subprocess
 from utils import get_params,write_txt, get_vllm_version
@@ -54,10 +55,15 @@ def run_benchmark(model_name, num_prompt, input_len, output_len, is_batched, enf
     
     if enable_profile:
         c_eval_cmd += " --enable-profile"
-    if enforce_eager is not None:
+    
+    # if arm, we set enforce_eager=false to turn on CUDA_GRAPH for better performance.
+    # if you want to test another option, please modify this code.
+    machine = platform.machine()
+    if 'arm' in machine:
+        c_eval_cmd += " --enforce-eager=false"
+    elif enforce_eager is not None:
         c_eval_cmd += f" --enforce-eager={enforce_eager}"
 
-    
     print(c_eval_cmd)
     use_cmd = True
     os.system(c_eval_cmd)
