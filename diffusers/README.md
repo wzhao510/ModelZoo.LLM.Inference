@@ -40,6 +40,7 @@ python code/sample_onnx.py ./models/ox_sd_21_static/  8 fp16 norm test maca 768 
 ```
 
 ## 数据集测试
+本测试需要使用PartiPrompts数据集，请在测试前从https://huggingface.co/datasets/nateraw/parti-prompts/blob/main/PartiPrompts.tsv下载，并放至./data路径。
 ```python
 python code/sample_onnx_multithreads.py ./models/ox_sd_15/  1  fp16 norm test maca 8 # 执行fp16 C500推理. 以batch=1，8个线程运行。模型不带_bs 只支持 bs=1 运行
 python code/sample_onnx_multithreads.py ./models/ox_sd_15_bs/  2  fp16 norm test maca 8  # 执行fp16 C500推理. 以batch=2，8个线程运行

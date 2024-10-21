@@ -16,7 +16,7 @@
 │       ├── offline_inference.py
 │       └── template_chatml.jinja
 ├── dataset
-│   └── ShareGPT_V3_unfiltered_cleaned_split.json
+│   └── ShareGPT_V3_unfiltered_cleaned_split.json(需要自己准备，具体下载地址见下文-benchmark_serving)
 ├── docker
 │   ├── docker-build.sh
 │   └── Dockerfile
@@ -136,6 +136,8 @@ python -m vllm.entrypoints.api_server --model /pde_ai/models/llm/Llama/Llama-2-7
 python -m vllm.entrypoints.api_server --model /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --enforce-eager=false # 开启cuda-graph
 ``` 
 服务启动后可在脚本内修改参数，详细参数信息见code/src/benchmark_serving.py
+    
+若使用code/run_benchmark_serving.sh测试，需要准备ShareGPT_V3_unfiltered_cleaned_split.json数据，请从https://huggingface.co/datasets/anon8231489123/ShareGPT_Vicuna_unfiltered/blob/main/ShareGPT_V3_unfiltered_cleaned_split.json下载，并拷贝至./dataset路径。
 
 ## 5、启动openai_api服务端 
 简易启动命令: 

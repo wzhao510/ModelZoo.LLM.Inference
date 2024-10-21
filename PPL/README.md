@@ -265,6 +265,7 @@
         model inference：大模型推理的耗时，包含当前step耗时，平均耗时及总耗时
 
 ## 9、mmlu 精度测试（以chatglm3_6b为例，在ModelZoo.LLM.Inference/PPL目录下执行）
+本测试需要使用mmlu数据集，请在测试前从https://huggingface.co/datasets/lighteval/mmlu/blob/main/data.tar下载，解压后请将val和test文件夹拷贝至./Input/mmlu路径。
 
     ./runtest.sh mmlu_accuracy_test Model/Chatglm3_6b/ServiceConfig.json
 
