@@ -1,0 +1,6 @@
+{
+    "name" : "qwen2-72b-instruct-gptq-int8",
+    "fp16":{
+        "acc": 0.00
+    }
+}

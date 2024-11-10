@@ -1,0 +1,11 @@
+{
+    "model_type": "Qwen",
+    "model_path": "/pde_ai/models/llm/Qwen/Qwen2___5-14B-Instruct-AWQ/",
+    "c-eval_param": {
+        "dtype": "float16",
+        "tensor_parallel_size": 1,
+        "gpu_memory_utilization": 0.9,
+        "batch_size": 1,
+        "task_name": "ceval-valid"
+    }
+}
