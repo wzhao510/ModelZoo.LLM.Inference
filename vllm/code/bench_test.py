@@ -23,6 +23,8 @@ def run_benchmark(model_name, num_prompt, input_len, output_len, is_batched, enf
     model_path = model_config["model_path"]
     lora_path = model_config.get("lora_path", None)
     tensor_parallel_size = model_config["c-eval_param"]["tensor_parallel_size"]
+    pipeline_parallel_size = model_config["c-eval_param"].get("pipeline_parallel_size")
+    async_engine = model_config.get("async_engine")
     dtype = model_config["c-eval_param"]["dtype"]
     gpu_memory_utilization = model_config["c-eval_param"]["gpu_memory_utilization"]
     task_name = model_config["c-eval_param"]["task_name"]
@@ -42,9 +44,16 @@ def run_benchmark(model_name, num_prompt, input_len, output_len, is_batched, enf
                         --backend=vllm --max-model-len 2048 --num-prompts {num_prompt} --trust-remote-code --dtype {dtype} \
                         --input-len {input_len} --output-len {output_len} --tensor-parallel-size {tensor_parallel_size}'
         elif vllm_version.startswith("0.6"):
-             c_eval_cmd = f'python ./code/src/benchmark_throughput_0.6.0.py  --model={model_path}  \
+            extra_args = ""
+            if pipeline_parallel_size is not None:
+                extra_args = f"{extra_args} --pipeline-parallel-size={pipeline_parallel_size}"
+            if async_engine is not None and async_engine:
+                extra_args = f"{extra_args} --async-engine"
+            print(f"extra_args: {extra_args}")
+            c_eval_cmd = f'python ./code/src/benchmark_throughput_0.6.0.py  --model={model_path}  \
                         --backend=vllm --max-model-len 4096 --num-prompts {num_prompt} --trust-remote-code --dtype {dtype} \
-                        --input-len {input_len} --output-len {output_len} --tensor-parallel-size {tensor_parallel_size}'
+                        --input-len {input_len} --output-len {output_len} --tensor-parallel-size {tensor_parallel_size} \
+                        {extra_args}'
     else:
         if vllm_version.startswith("0.4.0"):
             c_eval_cmd = f'python ./code/src/benchmark_throughput_batched.py  --model={model_path}  \

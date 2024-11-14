@@ -5,7 +5,7 @@ import json
 import random
 import time
 from typing import List, Optional, Tuple
-from torch_profile_utils  import profile_to_csv
+from torch_profile_utils import profile_to_csv
 
 import torch
 from tqdm import tqdm
@@ -16,6 +16,7 @@ from vllm.model_executor.layers.quantization import QUANTIZATION_METHODS
 
 MX_PROFILE_CSV_NAME = "default_1_1_1.csv"
 
+
 def str2bool(v):
     if isinstance(v, bool):
         return v
@@ -25,6 +26,7 @@ def str2bool(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
+
 
 def sample_requests(
     dataset_path: str,
@@ -70,6 +72,7 @@ def sample_requests(
         filtered_dataset.append((prompt, prompt_len, output_len))
 
     return filtered_dataset
+
 
 def run_vllm(
     requests: List[Tuple[str, int, int]],
@@ -150,7 +153,7 @@ def run_vllm(
 
             profile_to_csv(prof, MX_PROFILE_CSV_NAME)
             return end - start
-        
+
         else:
             start = time.perf_counter()
             tmp_result = llm.generate(prompts, sampling_params, use_tqdm=True)
@@ -170,6 +173,84 @@ def run_vllm(
                         ignore_eos=True)
         end = time.perf_counter()
     return end - start
+
+
+async def run_vllm_async(
+    requests: List[Tuple[str, int, int]],
+    args: argparse.Namespace,
+) -> float:
+    import asyncio
+    import uuid
+    from vllm import SamplingParams, AsyncLLMEngine
+    from vllm.engine.arg_utils import AsyncEngineArgs
+    engine = AsyncLLMEngine.from_engine_args(
+        AsyncEngineArgs(
+            model=args.model,
+            tokenizer=args.tokenizer,
+            quantization=args.quantization,
+            tensor_parallel_size=args.tensor_parallel_size,
+            pipeline_parallel_size=args.pipeline_parallel_size,
+            seed=args.seed,
+            trust_remote_code=args.trust_remote_code,
+            dtype=args.dtype,
+            max_model_len=args.max_model_len,
+            gpu_memory_utilization=args.gpu_memory_utilization,
+            enforce_eager=args.enforce_eager,
+            kv_cache_dtype=args.kv_cache_dtype,
+            quantization_param_path=args.quantization_param_path,
+            device=args.device,
+            enable_prefix_caching=args.enable_prefix_caching,
+            download_dir=args.download_dir,
+            enable_chunked_prefill=args.enable_chunked_prefill,
+            max_num_batched_tokens=args.max_num_batched_tokens,
+            distributed_executor_backend=args.distributed_executor_backend,
+            load_format=args.load_format,
+            num_scheduler_steps=args.num_scheduler_steps,
+            use_v2_block_manager=args.use_v2_block_manager,
+            disable_async_output_proc=args.disable_async_output_proc,
+        )
+    )
+
+    params = SamplingParams(
+        n=args.n,
+        temperature=0.0 if args.use_beam_search else 1.0,
+        top_p=1.0,
+        use_beam_search=args.use_beam_search,
+        ignore_eos=True,
+        max_tokens=args.output_len,
+    )
+
+    if not args.enable_profile:
+        tasks = list(map(lambda x: asyncio.create_task(
+            vllm_async_generate(engine, x[0], params, uuid.uuid4())), requests))
+        res = [await task for task in tasks]
+    else:
+        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:
+            tasks = list(map(lambda x: asyncio.create_task(
+                vllm_async_generate(engine, x[0], params, uuid.uuid4())), requests))
+            res = [await task for task in tasks]
+
+        profile_to_csv(prof, MX_PROFILE_CSV_NAME)
+
+    begin_time = time.time()
+    end_time = 0
+    for i in res:
+        begin_time = min(begin_time, i.metrics.first_scheduled_time)
+        end_time = max(end_time, i.metrics.finished_time)
+
+    return end_time - begin_time
+
+
+async def vllm_async_generate(engine, prompt, params, id):
+    results_generator = engine.generate(prompt, params, id)
+
+    final_output = None
+
+    async for request_output in results_generator:
+        final_output = request_output
+
+    return final_output
+
 
 def run_hf(
     requests: List[Tuple[str, int, int]],
@@ -256,16 +337,16 @@ def main(args: argparse.Namespace):
     random.seed(args.seed)
     global MX_PROFILE_CSV_NAME
     model_name_list = args.model.split("/")
-    model_name = model_name_list[-2] if len(model_name_list[-1]) == 0 else model_name_list[-1]
+    model_name = model_name_list[-2] if len(
+        model_name_list[-1]) == 0 else model_name_list[-1]
     MX_PROFILE_CSV_NAME = f"{model_name}_{args.num_prompts}_{args.input_len}_{args.output_len}.csv"
-
 
     # Sample the requests.
     tokenizer = AutoTokenizer.from_pretrained(
         args.tokenizer, trust_remote_code=args.trust_remote_code)
     if args.dataset is None:
         # Synthesize a prompt with the given input length.
-        prompt = "hi" * (args.input_len - 1)
+        prompt = "hi " * (args.input_len - 1)
         requests = [(prompt, args.input_len, args.output_len)
                     for _ in range(args.num_prompts)]
     else:
@@ -273,17 +354,21 @@ def main(args: argparse.Namespace):
                                    args.output_len)
 
     if args.backend == "vllm":
-        elapsed_time = run_vllm(
-            requests, args.model, args.tokenizer, args.quantization,
-            args.tensor_parallel_size, args.seed, args.n, args.use_beam_search,
-            args.trust_remote_code, args.dtype, args.max_model_len,
-            args.enforce_eager, args.kv_cache_dtype,
-            args.quantization_param_path, args.device,
-            args.enable_prefix_caching, args.enable_chunked_prefill,
-            args.max_num_batched_tokens, args.distributed_executor_backend,
-            args.gpu_memory_utilization, args.num_scheduler_steps,
-            args.use_v2_block_manager, args.download_dir, args.load_format,
-            args.disable_async_output_proc, args.use_new_beam_search_impl, args.enable_profile)
+        if args.async_engine:
+            import asyncio
+            elapsed_time = asyncio.run(run_vllm_async(requests, args))
+        else:
+            elapsed_time = run_vllm(
+                requests, args.model, args.tokenizer, args.quantization,
+                args.tensor_parallel_size, args.seed, args.n, args.use_beam_search,
+                args.trust_remote_code, args.dtype, args.max_model_len,
+                args.enforce_eager, args.kv_cache_dtype,
+                args.quantization_param_path, args.device,
+                args.enable_prefix_caching, args.enable_chunked_prefill,
+                args.max_num_batched_tokens, args.distributed_executor_backend,
+                args.gpu_memory_utilization, args.num_scheduler_steps,
+                args.use_v2_block_manager, args.download_dir, args.load_format,
+                args.disable_async_output_proc, args.use_new_beam_search_impl, args.enable_profile)
     elif args.backend == "hf":
         assert args.tensor_parallel_size == 1
         elapsed_time = run_hf(requests, args.model, tokenizer, args.n,
@@ -338,6 +423,7 @@ if __name__ == "__main__":
                         choices=[*QUANTIZATION_METHODS, None],
                         default=None)
     parser.add_argument("--tensor-parallel-size", "-tp", type=int, default=1)
+    parser.add_argument("--pipeline-parallel-size", "-pp", type=int, default=1)
     parser.add_argument("--n",
                         type=int,
                         default=1,
