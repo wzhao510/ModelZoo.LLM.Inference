@@ -1,0 +1,16 @@
+{
+    "//": "",
+    "model_config":{
+        "ori_path":"/pde_ai/models/llm/StableDiffusion/stable-diffusion-onnx/sdxl_onnx/",
+        "dataset":"",
+        "seed": 0,
+        "num_inference_steps": 50,
+        "text_encoder":"model.onnx",
+        "text_encoder_2":"model.onnx",
+        "unet": "model.onnx",
+        "vae_decoder":"model.onnx",
+        "vae_encoder":"model.onnx",
+        "outputs_size":"512#512",
+        "scheduler":"EulerDiscrete"
+    }
+}

@@ -55,3 +55,18 @@ python code/sample_onnx_multithreads.py ./models/ox_sd_15_static/  2  fp16 norm 
 # test_data:   test 表示读取test数据， dev 表示读取 dev数据。见 data
 # EP:          设置onnxruntime运行的EP, 默认为maca, 可选EP有cpu,gpu,trt, 需根据环境中存在的EP进行设置
 # num_thr:     测算性能时，开启的线程数量 默认8
+
+
+## sdxl demo 示例：
+(需要配置环境变量MACART_OP_KEEP_ONNX_PRECISION=ON，测试环境ort版本为mxc500-onnxruntime-20240930)
+```python 
+python code/sample_sdxl_onnx.py ./models/ox_sd_xl/ 50 1 maca 512 0 # 执行C500推理，step=50，出图尺寸为512*512，每个prompt生成1张图，使用0卡
+```
+参数
+# modelpath：               需测试的模型路径, 内部包含config.json模型参数文件已配置好
+# step:                     推理step
+# num_images_per_prompt:    每个prompt生成图片数量
+# EP:                       设置onnxruntime运行的EP, 默认为maca, 可选EP有cpu,maca
+# size:                     生成图片尺寸 (size*size)
+# device_id:                使用gpu编号
+
