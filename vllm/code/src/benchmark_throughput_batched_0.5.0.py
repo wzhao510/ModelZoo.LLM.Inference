@@ -392,6 +392,11 @@ if __name__ == "__main__":
                         default=None,
                         help='directory to lora model path')
     parser.add_argument(
+        '--warmup-loops',
+        type=int,
+        default=1,
+        help='warmup loops before performance benchmark')
+    parser.add_argument(
         "--enable-profile",
         action='store_true',
         help="enable profile to collect kernel info.")

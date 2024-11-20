@@ -96,9 +96,18 @@ def get_vllm(
     download_dir: Optional[str] = None,
     load_format: str = 'auto',
     disable_async_output_proc: bool = False,
-    use_new_beam_search_impl: bool = False,):
+    use_new_beam_search_impl: bool = False,
+    lora_path: Optional[str] = None):
 
     from vllm import LLM, SamplingParams
+    from vllm.lora.request import LoRARequest
+    enable_lora = False
+    if lora_path is not None:
+        if os.path.isdir(lora_path):
+            enable_lora = True
+        else:
+            raise ValueError(f"lora path: {lora_path} does not exit")
+        
     llm = LLM(
         model=model,
         tokenizer=tokenizer,
@@ -122,6 +131,7 @@ def get_vllm(
         num_scheduler_steps=num_scheduler_steps,
         use_v2_block_manager=use_v2_block_manager,
         disable_async_output_proc=disable_async_output_proc,
+        enable_lora=enable_lora
     )
 
     return llm
@@ -154,10 +164,19 @@ def run_vllm(
     load_format: str = 'auto',
     disable_async_output_proc: bool = False,
     use_new_beam_search_impl: bool = False,
+    lora_path: Optional[str] = None,
     enable_profile: Optional[bool] = False,
 ) -> float:
     from vllm import LLM, SamplingParams
-    
+    from vllm import LLM, SamplingParams
+    from vllm.lora.request import LoRARequest
+    enable_lora = False
+    if lora_path is not None:
+        if os.path.isdir(lora_path):
+            enable_lora = True
+        else:
+            raise ValueError(f"lora path: {lora_path} does not exit")
+        
     # Add the requests to the engine.
     prompts = []
     sampling_params = []
@@ -173,20 +192,33 @@ def run_vllm(
                 max_tokens=output_len,
             ))
     
-    if enable_profile:
-        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:
+    if enable_lora:
+        if enable_profile:
+            with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:
+                start = time.perf_counter()
+                llm.generate(prompts, sampling_params, lora_request=LoRARequest("sql_adapter", 1, lora_path), use_tqdm=True)
+                end = time.perf_counter()
+            profile_to_csv(prof, MX_PROFILE_CSV_NAME)
+            return end - start
+        else:
+            start = time.perf_counter()
+            llm.generate(prompts, sampling_params, lora_request=LoRARequest("sql_adapter", 1, lora_path), use_tqdm=True)
+            end = time.perf_counter()
+            return end - start
+    else:
+        if enable_profile:
+            with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:
+                start = time.perf_counter()
+                llm.generate(prompts, sampling_params, use_tqdm=True)
+                end = time.perf_counter()
+
+            profile_to_csv(prof, MX_PROFILE_CSV_NAME)
+            return end - start
+        else:
             start = time.perf_counter()
             llm.generate(prompts, sampling_params, use_tqdm=True)
             end = time.perf_counter()
-
-        profile_to_csv(prof, MX_PROFILE_CSV_NAME)
-        return end - start
-    
-    else:
-        start = time.perf_counter()
-        llm.generate(prompts, sampling_params, use_tqdm=True)
-        end = time.perf_counter()
-        return end - start
+            return end - start
 
 def main(args: argparse.Namespace):
     print(args)
@@ -206,11 +238,29 @@ def main(args: argparse.Namespace):
             args.max_num_batched_tokens, args.distributed_executor_backend,
             args.gpu_memory_utilization, args.num_scheduler_steps,
             args.use_v2_block_manager, args.download_dir, args.load_format,
-            args.disable_async_output_proc, args.use_new_beam_search_impl)
+            args.disable_async_output_proc, args.use_new_beam_search_impl, args.lora_path)
 
     # Sample the requests.
-    tokenizer = AutoTokenizer.from_pretrained(
-        args.tokenizer, trust_remote_code=args.trust_remote_code)
+    for idx in range(args.warmup_loops):
+        prompt = "hi" * 255
+        requests = [(prompt, 256, 256)
+                    for _ in range(8)]
+        elapsed_time = run_vllm(llm, requests, args.model, args.tokenizer, args.quantization,
+                                    args.tensor_parallel_size, args.seed, args.n, args.use_beam_search,
+                                    args.trust_remote_code, args.dtype, args.max_model_len,
+                                    args.enforce_eager, args.kv_cache_dtype,
+                                    args.quantization_param_path, args.device,
+                                    args.enable_prefix_caching, args.enable_chunked_prefill,
+                                    args.max_num_batched_tokens, args.distributed_executor_backend,
+                                    args.gpu_memory_utilization, args.num_scheduler_steps,
+                                    args.use_v2_block_manager, args.download_dir, args.load_format,
+                                    args.disable_async_output_proc, args.use_new_beam_search_impl, args.lora_path)
+                
+        total_num_tokens = sum(prompt_len + output_len
+                            for _, prompt_len, output_len in requests)
+        print(f"warmup round {idx+1} bs_8_input_256_output_256 Throughput: {len(requests) / elapsed_time:.2f} requests/s, "
+            f"{total_num_tokens / elapsed_time:.2f} tokens/s")
+        
     for batch in [1,8,16,32,64]:
         for input_len in [256, 512, 1024]:
             for output_len in [128, 512, 1024]:
@@ -240,7 +290,7 @@ def main(args: argparse.Namespace):
                                     args.max_num_batched_tokens, args.distributed_executor_backend,
                                     args.gpu_memory_utilization, args.num_scheduler_steps,
                                     args.use_v2_block_manager, args.download_dir, args.load_format,
-                                    args.disable_async_output_proc, args.use_new_beam_search_impl, enable_profile)
+                                    args.disable_async_output_proc, args.use_new_beam_search_impl, args.lora_path, enable_profile)
                 
                 total_num_tokens = sum(prompt_len + output_len
                                     for _, prompt_len, output_len in requests)
@@ -414,6 +464,15 @@ if __name__ == "__main__":
                         action='store_true',
                         default=False,
                         help="Disable decoupled async engine frontend.")
+    parser.add_argument('--lora_path',
+                        type=str,
+                        default=None,
+                        help='directory to lora model path')
+    parser.add_argument(
+        '--warmup-loops',
+        type=int,
+        default=1,
+        help='warmup loops before performance benchmark')
     parser.add_argument(
         "--enable-profile",
         action='store_true',

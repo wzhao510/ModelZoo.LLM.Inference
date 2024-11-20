@@ -101,9 +101,18 @@ def run_vllm(
     load_format: str = 'auto',
     disable_async_output_proc: bool = False,
     use_new_beam_search_impl: bool = False,
+    lora_path: Optional[str] = None,
     enable_profile: Optional[bool] = False,
 ) -> float:
     from vllm import LLM, SamplingParams
+    from vllm.lora.request import LoRARequest
+    enable_lora = False
+    if lora_path is not None:
+        if os.path.isdir(lora_path):
+            enable_lora = True
+        else:
+            raise ValueError(f"lora path: {lora_path} does not exit")
+        
     llm = LLM(
         model=model,
         tokenizer=tokenizer,
@@ -127,6 +136,7 @@ def run_vllm(
         num_scheduler_steps=num_scheduler_steps,
         use_v2_block_manager=use_v2_block_manager,
         disable_async_output_proc=disable_async_output_proc,
+        enable_lora=enable_lora
     )
 
     # Add the requests to the engine.
@@ -143,35 +153,48 @@ def run_vllm(
                 ignore_eos=True,
                 max_tokens=output_len,
             ))
-
-    if not use_new_beam_search_impl:
+    if enable_lora:
         if enable_profile:
             with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:
                 start = time.perf_counter()
-                llm.generate(prompts, sampling_params, use_tqdm=True)
+                llm.generate(prompts, sampling_params, lora_request=LoRARequest("sql_adapter", 1, lora_path), use_tqdm=True)
                 end = time.perf_counter()
-
             profile_to_csv(prof, MX_PROFILE_CSV_NAME)
             return end - start
-
         else:
             start = time.perf_counter()
-            tmp_result = llm.generate(prompts, sampling_params, use_tqdm=True)
+            llm.generate(prompts, sampling_params, lora_request=LoRARequest("sql_adapter", 1, lora_path), use_tqdm=True)
             end = time.perf_counter()
             return end - start
     else:
-        assert use_beam_search
-        prompts = [prompt for prompt, _, _ in requests]
-        # output_len should be the same for all requests.
-        output_len = requests[0][2]
-        for prompt, input_len, _output_len in requests:
-            assert _output_len == output_len
-        start = time.perf_counter()
-        llm.beam_search(prompts,
-                        beam_width=n,
-                        max_tokens=output_len,
-                        ignore_eos=True)
-        end = time.perf_counter()
+        if not use_new_beam_search_impl:
+            if enable_profile:
+                with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:
+                    start = time.perf_counter()
+                    llm.generate(prompts, sampling_params, use_tqdm=True)
+                    end = time.perf_counter()
+
+                profile_to_csv(prof, MX_PROFILE_CSV_NAME)
+                return end - start
+
+            else:
+                start = time.perf_counter()
+                tmp_result = llm.generate(prompts, sampling_params, use_tqdm=True)
+                end = time.perf_counter()
+                return end - start
+        else:
+            assert use_beam_search
+            prompts = [prompt for prompt, _, _ in requests]
+            # output_len should be the same for all requests.
+            output_len = requests[0][2]
+            for prompt, input_len, _output_len in requests:
+                assert _output_len == output_len
+            start = time.perf_counter()
+            llm.beam_search(prompts,
+                            beam_width=n,
+                            max_tokens=output_len,
+                            ignore_eos=True)
+            end = time.perf_counter()
     return end - start
 
 
@@ -368,7 +391,8 @@ def main(args: argparse.Namespace):
                 args.max_num_batched_tokens, args.distributed_executor_backend,
                 args.gpu_memory_utilization, args.num_scheduler_steps,
                 args.use_v2_block_manager, args.download_dir, args.load_format,
-                args.disable_async_output_proc, args.use_new_beam_search_impl, args.enable_profile)
+                args.disable_async_output_proc, args.use_new_beam_search_impl, 
+                args.lora_path, args.enable_profile)
     elif args.backend == "hf":
         assert args.tensor_parallel_size == 1
         elapsed_time = run_hf(requests, args.model, tokenizer, args.n,
@@ -563,6 +587,10 @@ if __name__ == "__main__":
                         action='store_true',
                         default=False,
                         help="Disable decoupled async engine frontend.")
+    parser.add_argument('--lora_path',
+                        type=str,
+                        default=None,
+                        help='directory to lora model path')
     parser.add_argument(
         "--enable-profile",
         action='store_true',
