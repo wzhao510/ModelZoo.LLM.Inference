@@ -1,9 +1,9 @@
 {
-    "model_type": "Qwen",
-    "model_path": "/pde_ai/models/llm/Qwen/Qwen1.5-7B/",
+    "model_type": "Falcon",
+    "model_path": "/pde_ai/models/llm/Falcon/falcon-180B/",
     "c-eval_param": {
         "dtype": "float16",
-        "tensor_parallel_size": 1,
+        "tensor_parallel_size": 8,
         "gpu_memory_utilization": 0.8,
         "batch_size": 1,
         "task_name": "ceval-valid"
