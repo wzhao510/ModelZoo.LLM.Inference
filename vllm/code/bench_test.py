@@ -51,7 +51,7 @@ def run_benchmark(model_name, num_prompt, input_len, output_len, is_batched, enf
                 extra_args = f"{extra_args} --async-engine"
             print(f"extra_args: {extra_args}")
             c_eval_cmd = f'python ./code/src/benchmark_throughput_0.6.0.py  --model={model_path}  \
-                        --backend=vllm --max-model-len 4096 --num-prompts {num_prompt} --trust-remote-code --dtype {dtype} \
+                        --backend=vllm --max-model-len 2048 --num-prompts {num_prompt} --trust-remote-code --dtype {dtype} \
                         --input-len {input_len} --output-len {output_len} --tensor-parallel-size {tensor_parallel_size} \
                         {extra_args}'
     else:

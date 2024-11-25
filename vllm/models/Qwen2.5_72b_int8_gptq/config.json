@@ -1,6 +1,6 @@
 {
     "model_type": "Qwen",
-    "model_path": "/pde_ai/models/llm/Qwen/Qwen2.5-72B-Instruct/",
+    "model_path": "/pde_ai/models/llm/Qwen/Qwen2___5-72B-Instruct-GPTQ-Int8/",
     "c-eval_param": {
         "dtype": "float16",
         "tensor_parallel_size": 1,
