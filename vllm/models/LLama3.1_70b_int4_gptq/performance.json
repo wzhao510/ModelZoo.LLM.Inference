@@ -1,0 +1,6 @@
+{
+    "name" : "llama3-70b-int4-gptq",
+    "fp16":{
+        "acc": 0.00
+    }
+}
