@@ -1,0 +1,10 @@
+{
+    "model_type": "internvl_chat",
+    "model_path": "/pde_ai/models/llm/Internlm/InternVL-Chat-V1-5",
+    "model_param": {
+        "dtype": "float16",
+        "tensor_parallel_size": 2,
+        "gpu_memory_utilization": 0.8,
+        "batch_size": 1
+    }
+}

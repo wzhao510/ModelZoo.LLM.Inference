@@ -39,7 +39,10 @@ vicuna-13b-v1.5
 │   ├── tools
 │   └── utils
 ├── dataset
-│   └── ShareGPT_V3_unfiltered_cleaned_split.json
+│   └── ShareGPT_V3_unfiltered_cleaned_split.json(需要自己准备，具体下载地址见下文-benchmark_serving)
+├── data
+│   ├── demo.jpeg
+│   └── demo.jpg
 ├── models
 │   ├── Aquila2_34b
 │   ├── Aquila_7b
@@ -50,12 +53,7 @@ vicuna-13b-v1.5
 │   .
 |   .
 |   .
-├── multimodal_test
-    ├── demo.jpeg
-    ├── demo.jpg
-    ├── multi_throughput.py
-    ├── run.sh
-    └── test.py
+
 
 code下存放的是测试代码和脚本，dataset是启动openai_api服务端用到的，models下存放的是支持的模型的配置文件，multimodal_test是多模态模型测试。
 ```
@@ -131,19 +129,17 @@ LoRA 跑性能数据 --当前性能较差，后续会对其进行优化
 python code/bench_test.py ./models/Llama2_7b_sql_lora/ 64 1024 1024
 ```
 
-## GPTQ 特性支持（Released版本大于等于 2.23）
-用法同普通一致，模型路径要为gptq 模型路径，目前支持llama-2-7b-int4-gptq 和 Qwen_1_5_14b_int8_gptq
+## 量化特性支持（Released版本大于等于 2.23）
+用法同普通一致，模型路径要为gptq/awq 模型路径，
 ```python
 python code/src/offline_inference.py --model /pde_ai/models/llm/quantize_model/llama-2-7b-int4-gptq/
 ```
 
-## 多模态模型测试
+## 多模态模型 特性支持（Released版本大于等于 2.25.2）
+简易启动命令：
 ```
-cd multimodal_test
-
-python test.py
+ python code/run_multimodal.py --model ./models/InternVL-chat-v1.5/
 ```
-2.25版本有精度问题(输出不符合预期)，可运行但不会报错。
 
 
 ## 1、本地推理demo

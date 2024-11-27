@@ -20,6 +20,9 @@
 
 ├── dataset
 │   └── ShareGPT_V3_unfiltered_cleaned_split.json(需要自己准备，具体下载地址见下文-benchmark_serving)
+├── data
+│   ├── demo.jpeg
+│   └── demo.jpg
 ├── docker
 │   ├── docker-build.sh
 │   └── Dockerfile
@@ -157,5 +160,9 @@ python -m vllm.entrypoints.openai.api_server --model /pde_ai/models/llm/Llama/Ll
 ``` 
 /workspace/ModelZoo.LLM.Inference/vllm/code目录下包含completion和chatcompletion两个客户端sample
     
-
+## 多模态模型 特性支持（Released版本大于等于 2.25.2）
+简易启动命令：
+```
+ python ./code/run_multimodal.py --model ./models/InternVL-chat-v1.5/
+```
 
