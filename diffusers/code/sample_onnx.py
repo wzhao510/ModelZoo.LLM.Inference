@@ -139,7 +139,7 @@ def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca",
             "A majestic lion jumping from a big stone at night",
             "purple lego dollhouse with a pool and a swing",	
             "black bearded dog with an injured leg wearing a cone",
-            "brown white and black white guinea pigs eating parsley handed to them"
+            "brown white and black white guinea pigs eating parsley handed to them",
             "The Rosetta Stone lying on the ground, covered in snow.",
             "a high-quality photograph of an armadillo playing a bagpipe while standing on one leg",
             "a white robot with a red mohawk painted as graffiti on a red brick wall", 
