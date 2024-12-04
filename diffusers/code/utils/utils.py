@@ -92,6 +92,9 @@ def macaOptFp16(input_model_path, output_model_path, dynamic_batch):
 
 def convertModel(input_model_path,output_model_path, input_shape_dict={}, dynamic_batch=False):
     temp_path = output_model_path+"_bak"
-    fixShape(input_model_path,output_model_path=temp_path, input_shape_dict=input_shape_dict)
-    macaOptFp16(temp_path,output_model_path, dynamic_batch)
-    os.remove(temp_path)
+    if os.path.isfile(temp_path):
+        pass
+    else:
+        fixShape(input_model_path,output_model_path=temp_path, input_shape_dict=input_shape_dict)
+        macaOptFp16(temp_path,output_model_path, dynamic_batch)
+    # os.remove(temp_path)
