@@ -210,6 +210,7 @@ git clone git@pdegit.metax-internal.com:pde-ai/open-compass/opencompass.git
 git clone https://github.com/open-compass/opencompass.git (commit ff831b153e3f81f80ac84a56a254dbb4cbad95c9)
 
 cd opencompass
+git apply opencompass.patch
 pip install --use-pep517 nltk==3.8
 pip install -e .
 ```
