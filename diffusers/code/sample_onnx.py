@@ -183,7 +183,8 @@ def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca",
         print(f"Inference cost {avg_cost:.3f} seconds, fps is {fps:.3f}")
 
     # save generated images
-    if False:
+    save_image=True
+    if save_image:
         cnt = 0 
         for sd_pipe_output in sd_pipe_output_list:
             images = sd_pipe_output.images

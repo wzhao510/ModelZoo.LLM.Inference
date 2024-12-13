@@ -127,7 +127,8 @@ def main(modelname, step=50, images_per_prompt=1, EP="maca", output_size=None, d
     print(f"Output {len(images)} images, inference cost {total_cost:.3f} seconds")
 
     # save generated images
-    if False:
+    save_image=True
+    if save_image:
         for i in range(len(images)):
             images[i].save(f"generated_image_{i}.png")
 

@@ -3,3 +3,5 @@ __pycache__
 ceval
 exact_match
 *.sw?
+*.log
+*.xlsx

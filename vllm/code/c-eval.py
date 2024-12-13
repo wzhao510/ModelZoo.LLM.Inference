@@ -59,7 +59,7 @@ def run_eval(model_name, enforce_eager=True):
     # import pdb;pdb.set_trace()
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Benchmark the throughput.")
+    parser = argparse.ArgumentParser(description="CEval test")
     parser.add_argument("--model",
                         type=str,
                         required=True)

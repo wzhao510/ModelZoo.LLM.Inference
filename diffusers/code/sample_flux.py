@@ -1,4 +1,5 @@
 import sys
+import argparse
 import torch
 from diffusers import FluxPipeline
 from utils.utils import get_params
@@ -23,8 +24,18 @@ prompt = [
     "a corgi’s head depicted as an explosion of a nebula",
 ]
 
-def main(modelname, batchsize):
-    params = get_params(modelname)
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
+def main(args):
+    params = get_params(args.model)
 
     img_info = params["outputs_size"].split("#")
     output_height = int(img_info[0])
@@ -35,7 +46,7 @@ def main(modelname, batchsize):
     pipe.enable_model_cpu_offload()
 
     out = pipe(
-        prompt=prompt[:batchsize],
+        prompt=prompt[:args.batchsize],
         guidance_scale=3.5,
         height=output_height,
         width=output_width,
@@ -43,12 +54,23 @@ def main(modelname, batchsize):
         generator=torch.Generator("cuda").manual_seed(params["seed"])
     ).images
 
-    if False:
+    if args.save_image:
         for i in range(len(out)):
             out[i].save(f"image_{i}.png")
 
 
 if __name__ == '__main__':
-    modelname = sys.argv[1]
-    batchsize = int(sys.argv[2])
-    main(modelname, batchsize)
+    parser = argparse.ArgumentParser(description="Run flux demo")
+    parser.add_argument("--model",
+                        type=str,
+                        required=True)
+    parser.add_argument("--batchsize",
+                        type=int,
+                        default=32,
+                        help="Number of prompts for throughput test")
+    parser.add_argument("--save-image",
+                        type=str2bool,
+                        default=True,
+                        help="save image or not")
+    args = parser.parse_args()
+    main(args)
