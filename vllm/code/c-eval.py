@@ -1,11 +1,12 @@
 import os
 import sys
 import subprocess
+import argparse
 from utils import get_params,write_txt, get_vllm_version
 
 
 
-def run_eval(model_name):
+def run_eval(model_name, enforce_eager=True):
     model_config = get_params(model_name)
     vllm_version = get_vllm_version()
     print(f"vLLM version: {vllm_version}")
@@ -22,7 +23,7 @@ def run_eval(model_name):
 
     if vllm_version.startswith("0.4.0"):
         c_eval_cmd = f'lm_eval --model vllm \
-            --model_args pretrained={model_path},tensor_parallel_size={tensor_parallel_size},dtype={dtype},max_model_len=2048,trust_remote_code=True,gpu_memory_utilization={gpu_memory_utilization} \
+            --model_args pretrained={model_path},tensor_parallel_size={tensor_parallel_size},dtype={dtype},enforce_eager={enforce_eager},max_model_len=2048,trust_remote_code=True,gpu_memory_utilization={gpu_memory_utilization} \
             --trust_remote_code \
             --tasks {task_name} \
             --batch_size {batch_size} \
@@ -30,7 +31,7 @@ def run_eval(model_name):
             --log_samples '
     else:
          c_eval_cmd = f'lm_eval --model vllm \
-            --model_args pretrained={model_path},tensor_parallel_size={tensor_parallel_size},dtype={dtype},max_model_len=2048,trust_remote_code=True,gpu_memory_utilization={gpu_memory_utilization},distributed_executor_backend=ray \
+            --model_args pretrained={model_path},tensor_parallel_size={tensor_parallel_size},dtype={dtype},enforce_eager={enforce_eager},max_model_len=2048,trust_remote_code=True,gpu_memory_utilization={gpu_memory_utilization},distributed_executor_backend=ray \
             --trust_remote_code \
             --tasks {task_name} \
             --batch_size {batch_size}'
@@ -58,5 +59,12 @@ def run_eval(model_name):
     # import pdb;pdb.set_trace()
 
 if __name__ == '__main__':
-    modelname = sys.argv[1]
-    run_eval(modelname)
+    parser = argparse.ArgumentParser(description="Benchmark the throughput.")
+    parser.add_argument("--model",
+                        type=str,
+                        required=True)
+    parser.add_argument("--enforce-eager",
+                        action="store_true",
+                        help="enforce eager execution")
+    args = parser.parse_args()
+    run_eval(args.model, args.enforce_eager)

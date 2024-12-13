@@ -144,6 +144,8 @@ def run_vllm(
                 max_tokens=output_len,
             ))
 
+    print("warmup round start")
+    llm.generate(prompts, sampling_params, use_tqdm=True)
     if enable_lora:
         if enable_profile:
             with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:

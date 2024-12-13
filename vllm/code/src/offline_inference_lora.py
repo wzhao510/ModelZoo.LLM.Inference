@@ -6,7 +6,7 @@ from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
 
 
-def run(model_path, tensor_parallel_size, trust_remote_code, max_model_len, lora_path):
+def run(args):
     # Sample prompts.
     prompts = [
         "[user] Write a SQL query to answer the question based on the table schema.\n\n context: CREATE TABLE table_name_74 (icao VARCHAR, airport VARCHAR)\n\n question: Name the ICAO for lilongwe international airport [/user] [assistant]",
@@ -22,10 +22,12 @@ def run(model_path, tensor_parallel_size, trust_remote_code, max_model_len, lora
 
     # Create an LLM. for enable lora
     llm = LLM(
-        model=model_path,
-        tensor_parallel_size=tensor_parallel_size, 
-        trust_remote_code=trust_remote_code, 
-        max_model_len=max_model_len, 
+        model=args.model_path,
+        tensor_parallel_size=args.tensor_parallel_size, 
+        trust_remote_code=args.trust_remote_code, 
+        max_model_len=args.max_model_len, 
+        dtype=args.dtype,
+        enforce_eager=args.enforce_eager,
         enable_lora=True)
 
     # Generate texts from the prompts for LoRA adapter. The output is a list of RequestOutput objects
@@ -34,7 +36,7 @@ def run(model_path, tensor_parallel_size, trust_remote_code, max_model_len, lora
     outputs = llm.generate(
         prompts,
         sampling_params,
-        lora_request=LoRARequest("sql_adapter", 1, lora_path)
+        lora_request=LoRARequest("sql_adapter", 1, args.lora_path)
     )
 
     for output in outputs:
@@ -54,6 +56,18 @@ if __name__ == "__main__":
                         action='store_true',
                         help='trust remote code from huggingface')
     parser.add_argument(
+        '--dtype',
+        type=str,
+        default='auto',
+        choices=['auto', 'half', 'float16', 'bfloat16', 'float', 'float32'],
+        help='data type for model weights and activations. '
+        'The "auto" option will use FP16 precision '
+        'for FP32 and FP16 models, and BF16 precision '
+        'for BF16 models.')
+    parser.add_argument("--enforce-eager",
+                        action="store_true",
+                        help="enforce eager execution")
+    parser.add_argument(
         '--max-model-len',
         type=int,
         default=None,
@@ -62,4 +76,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    run(args.model, args.tensor_parallel_size, args.trust_remote_code, args.max_model_len, args.lora_path)
+    run(args)

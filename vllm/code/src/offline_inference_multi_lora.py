@@ -98,7 +98,7 @@ def process_requests(engine: LLMEngine,
             generated_text = output.outputs[0].text
             print(f"Prompt: {prompt!r}, Generated text: {generated_text!r}")
 
-def initialize_engine(model_path, tensor_parallel_size, trust_remote_code, max_model_len) -> LLMEngine:
+def initialize_engine(model_path, tensor_parallel_size, trust_remote_code, max_model_len, dtype, enforce_eager) -> LLMEngine:
     """Initialize the LLMEngine."""
     # max_loras: controls the number of LoRAs that can be used in the same
     #   batch. Larger numbers will cause higher memory usage, as each LoRA
@@ -111,6 +111,8 @@ def initialize_engine(model_path, tensor_parallel_size, trust_remote_code, max_m
                              tensor_parallel_size=tensor_parallel_size,
                              trust_remote_code=trust_remote_code,
                              max_model_len=max_model_len,
+                             dtype=dtype,
+                             enforce_eager=enforce_eager,
                              enable_lora=True,
                              max_loras=1,
                              max_lora_rank=8,
@@ -119,11 +121,11 @@ def initialize_engine(model_path, tensor_parallel_size, trust_remote_code, max_m
     return LLMEngine.from_engine_args(engine_args)
 
 
-def main(model_path, tensor_parallel_size, trust_remote_code, max_model_len, lora_path):
+def main(args):
     """Main function that sets up and runs the prompt processing."""
-    engine = initialize_engine(model_path, tensor_parallel_size, trust_remote_code, max_model_len)
+    engine = initialize_engine(args.model_path, args.tensor_parallel_size, args.trust_remote_code, args.max_model_len, args.dtype, args.enforce_eager)
     #lora_path = snapshot_download(repo_id="yard1/llama-2-7b-sql-lora-test")
-    test_prompts = create_test_prompts(lora_path)
+    test_prompts = create_test_prompts(args.lora_path)
     process_requests(engine, test_prompts)
 
 
@@ -143,6 +145,16 @@ if __name__ == "__main__":
         help='Maximum length of a sequence (including prompt and output). '
         'If None, will be derived from the model.')
 
+    parser.add_argument("--enforce-eager",
+                        action="store_true",
+                        help="enforce eager execution")
+    parser.add_argument(
+        '--max-model-len',
+        type=int,
+        default=None,
+        help='Maximum length of a sequence (including prompt and output). '
+        'If None, will be derived from the model.')
+
     args = parser.parse_args()
 
-    main(args.model, args.tensor_parallel_size, args.trust_remote_code, args.max_model_len, args.lora_path)
+    main(args)

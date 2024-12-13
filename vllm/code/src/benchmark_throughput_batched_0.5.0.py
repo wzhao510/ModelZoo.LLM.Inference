@@ -226,9 +226,26 @@ def main(args: argparse.Namespace):
             args.gpu_memory_utilization, args.download_dir,
             args.lora_path)
 
-    # Sample the requests.
-    tokenizer = AutoTokenizer.from_pretrained(
-        args.tokenizer, trust_remote_code=args.trust_remote_code)
+    # Sample the requests.    
+    for idx in range(args.warmup_loops):
+        prompt = "hi" * 255
+        requests = [(prompt, 256, 256)
+                    for _ in range(8)]
+        elapsed_time = run_vllm(llm, requests, args.model, args.tokenizer, args.quantization,
+                                        args.tensor_parallel_size, args.seed, args.n, args.use_beam_search,
+                                        args.trust_remote_code, args.dtype, args.max_model_len,
+                                        args.enforce_eager, args.kv_cache_dtype,
+                                        args.quantization_param_path, args.device,
+                                        args.enable_prefix_caching, args.enable_chunked_prefill,
+                                        args.max_num_batched_tokens, args.distributed_executor_backend,
+                                        args.gpu_memory_utilization, args.download_dir,
+                                        args.lora_path, args.enable_profile)
+                
+        total_num_tokens = sum(prompt_len + output_len
+                            for _, prompt_len, output_len in requests)
+        print(f"warmup round {idx+1} bs_8_input_256_output_256 Throughput: {len(requests) / elapsed_time:.2f} requests/s, "
+            f"{total_num_tokens / elapsed_time:.2f} tokens/s")
+        
     for batch in [1,8,16,32,64]:
         for input_len in [256, 512, 1024]:
             for output_len in [128, 512, 1024]:
@@ -400,7 +417,6 @@ if __name__ == "__main__":
         "--enable-profile",
         action='store_true',
         help="enable profile to collect kernel info.")
-
     args = parser.parse_args()
     if args.tokenizer is None:
         args.tokenizer = args.model

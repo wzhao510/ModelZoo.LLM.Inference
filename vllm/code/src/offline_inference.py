@@ -1,7 +1,7 @@
 import argparse
 from vllm import LLM, SamplingParams
 
-def run(model_path, tensor_parallel_size, trust_remote_code, max_model_len):
+def run(args):
     # Sample prompts.
     prompts = [
         "Hello, my name is",
@@ -13,7 +13,10 @@ def run(model_path, tensor_parallel_size, trust_remote_code, max_model_len):
     sampling_params = SamplingParams(top_k=1)
 
     # Create an LLM.
-    llm = LLM(model=model_path,tensor_parallel_size=tensor_parallel_size, trust_remote_code=trust_remote_code, max_model_len=max_model_len)
+    llm = LLM(model=args.model_path,tensor_parallel_size=args.tensor_parallel_size, 
+              trust_remote_code=args.trust_remote_code, max_model_len=args.max_model_len, 
+              enforce_eager=args.enforce_eager, dtype=args.dtype,
+              gpu_memory_utilization=0.95)
     # Generate texts from the prompts. The output is a list of RequestOutput objects
     # that contain the prompt, generated text, and other information.
     outputs = llm.generate(prompts, sampling_params)
@@ -37,7 +40,16 @@ if __name__ == "__main__":
         default=None,
         help='Maximum length of a sequence (including prompt and output). '
         'If None, will be derived from the model.')
+    parser.add_argument("--enforce-eager",
+                        action="store_true",
+                        help="enforce eager execution")
+    parser.add_argument(
+        '--max-model-len',
+        type=int,
+        default=None,
+        help='Maximum length of a sequence (including prompt and output). '
+        'If None, will be derived from the model.')
 
     args = parser.parse_args()
 
-    run(args.model, args.tensor_parallel_size, args.trust_remote_code, args.max_model_len)
+    run(args)

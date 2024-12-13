@@ -136,7 +136,8 @@ def run_vllm(
         num_scheduler_steps=num_scheduler_steps,
         use_v2_block_manager=use_v2_block_manager,
         disable_async_output_proc=disable_async_output_proc,
-        enable_lora=enable_lora
+        enable_lora=enable_lora,
+        disable_custom_all_reduce=True
     )
 
     # Add the requests to the engine.
@@ -153,6 +154,9 @@ def run_vllm(
                 ignore_eos=True,
                 max_tokens=output_len,
             ))
+    
+    print("warmup round start")
+    llm.generate(prompts, sampling_params, use_tqdm=True)
     if enable_lora:
         if enable_profile:
             with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:

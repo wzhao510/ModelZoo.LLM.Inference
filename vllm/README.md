@@ -23,9 +23,6 @@
 ├── data
 │   ├── demo.jpeg
 │   └── demo.jpg
-├── docker
-│   ├── docker-build.sh
-│   └── Dockerfile
 └── README.md
 ```
 
@@ -36,7 +33,7 @@ lm-eval=0.4.2
 ```
 
 安装原生的 0.4.2  需要修改 安装lm-eval路径，比如  
-/opt/conda/lib/python3.8/site-packages/lm_eval/api/model.py ：294  _encode_pair 方法为下面的：  
+/opt/conda/lib/python3.8/site-packages/lm_eval/api/model.py _encode_pair 方法为下面的：  
 ```python
     def _encode_pair(self, context, continuation):
         n_spaces = len(context) - len(context.rstrip())
@@ -66,14 +63,17 @@ ln  -s /AI-DATA/dataset/ModelZoo_LLM_data/lm_eval_code/exact_match exact_match
 ```
 如果是本地运行需要修改下 路径，否则会一直尝试网络下载。
 3. 执行方式
-python code/c-eval.py  ./models/xxxx  # 
+python code/c-eval.py  --model ./models/xxxx --enforce_eager
+当前支持参数列表如下：
+ - model:&nbsp;&nbsp;原始模型路径，必须设置
+ - enforce-eager:&nbsp;&nbsp;是否使用eager模式，默认不配置，若不配置使用cuda graph。
 
 ## benchmark throughput 执行
 ----  2024.11.10  ---
 ```
 python code/bench_test.py  --model ./models/xxxx --num-prompts 24                # 跑24条数据测试 ，默认： 输入长度1024 输出长度1024
-python code/bench_test.py  --model ./models/xxxx --num-prompts 1024 --input-len 512 --output-len 128      # 跑1024条数据测试，设置: 输入长度512 输出长度 128
-python code/bench_test.py  --model ./models/xxxx --num-prompts 1024 --input-len 512 --output-len 128 --batched-test   # 最后 "--batched-test" 表示进行批次跑；前面设置批次、输入长度、输出长度不生效，将会一次加载模型跑看护的35个case性能数据.
+python code/bench_test.py  --model ./models/xxxx --num-prompts 32 --input-len 512 --output-len 128      # 跑32条数据测试，设置: 输入长度512 输出长度 128
+python code/bench_test.py  --model ./models/xxxx --num-prompts 32 --input-len 512 --output-len 128 --batched-test   # 最后 "--batched-test" 表示进行批次跑；前面设置批次、输入长度、输出长度不生效，将会一次加载模型跑看护的35个case性能数据.
 ```
 当前支持参数列表如下：
  - model:&nbsp;&nbsp;原始模型路径，必须设置
@@ -88,9 +88,9 @@ python code/bench_test.py  --model ./models/xxxx --num-prompts 1024 --input-len 
 ### 新增环境变量 `MX_VLLM_ENABLE_PROFILE`
 * 使能 `MX_VLLM_ENABLE_PROFILE`环境变量后将会在 `./mx_profiler/` 文件夹通过torch_profiler 工具生成csv原始文件（如果跑35个case的话，目前只统计 input_len=256,output_len=128 以及 input_len=1024,output_len=1024 数据）
 
-生成的对应文件夹路径下的csv 可以通过 以下脚本完成 kernel 汇总（注：需要 安装openxl包： `pip install openxl`）
+生成的对应文件夹路径下的csv 可以通过 以下脚本完成 kernel 汇总（注：需要 安装openxl包： `pip install openpyxl`）
 ```shell
-python ./vllm/code/tools/statistics_csv.py ./mx_profiler/
+python ./code/tools/statistics_csv.py ./mx_profiler/
 ```
 ## LoRA 特性支持 （Released版本大于等于 2.23）benchmark 
 离线推理脚本（配置 lora_path 为微调的LoRA模型路径）：
@@ -103,8 +103,9 @@ python code/src/offline_inference_multi_lora.py --model /pde_ai/models/llm/Llama
 ```
 
 LoRA 跑性能数据 --当前性能较差，后续会对其进行优化
+复用benchmark throughput测试方法，设置lora模型路径即可
 ```python
-python code/bench_test.py ./models/Llama2_7b_sql_lora/ 64 1024 1024
+python code/bench_test.py --model ./models/Llama2_7b_sql_lora/ --num-prompts 32 --input-len 512 --output-len 128
 ```
 
 ## GPTQ 特性支持（Released版本大于等于 2.23）
@@ -114,8 +115,9 @@ python code/src/offline_inference.py --model /pde_ai/models/llm/quantize_model/l
 ```
 
 GPTQ 跑性能数据
+复用benchmark throughput测试方法，设置gptq模型路径即可
 ```python
-python code/bench_test.py ./models/Llama2_7b_int4_gptq/ 64 1024 1024 1
+python code/bench_test.py --model ./models/Llama2_7b_int4_gptq/ --num-prompts 32 --input-len 512 --output-len 128
 ```
 ## 1、本地推理脚本run_offline_inference_demo.sh
     脚本内需要根据使用模型情况修改模型所在目录，如/pde_ai/models/llm/Llama/Llama-2-7b-hf/
