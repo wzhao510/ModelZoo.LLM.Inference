@@ -13,7 +13,7 @@ def run(args):
     sampling_params = SamplingParams(top_k=1)
 
     # Create an LLM.
-    llm = LLM(model=args.model_path,tensor_parallel_size=args.tensor_parallel_size, 
+    llm = LLM(model=args.model,tensor_parallel_size=args.tensor_parallel_size, 
               trust_remote_code=args.trust_remote_code, max_model_len=args.max_model_len, 
               enforce_eager=args.enforce_eager, dtype=args.dtype,
               gpu_memory_utilization=0.95)
@@ -44,11 +44,14 @@ if __name__ == "__main__":
                         action="store_true",
                         help="enforce eager execution")
     parser.add_argument(
-        '--max-model-len',
-        type=int,
-        default=None,
-        help='Maximum length of a sequence (including prompt and output). '
-        'If None, will be derived from the model.')
+        '--dtype',
+        type=str,
+        default='auto',
+        choices=['auto', 'half', 'float16', 'bfloat16', 'float', 'float32'],
+        help='data type for model weights and activations. '
+        'The "auto" option will use FP16 precision '
+        'for FP32 and FP16 models, and BF16 precision '
+        'for BF16 models.')
 
     args = parser.parse_args()
 

@@ -22,7 +22,7 @@ def run(args):
 
     # Create an LLM. for enable lora
     llm = LLM(
-        model=args.model_path,
+        model=args.model,
         tensor_parallel_size=args.tensor_parallel_size, 
         trust_remote_code=args.trust_remote_code, 
         max_model_len=args.max_model_len, 

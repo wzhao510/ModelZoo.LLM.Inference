@@ -131,7 +131,8 @@ def get_vllm(
         num_scheduler_steps=num_scheduler_steps,
         use_v2_block_manager=use_v2_block_manager,
         disable_async_output_proc=disable_async_output_proc,
-        enable_lora=enable_lora
+        enable_lora=enable_lora,
+        disable_sliding_window=True
     )
 
     return llm

@@ -137,7 +137,7 @@ def run_vllm(
         use_v2_block_manager=use_v2_block_manager,
         disable_async_output_proc=disable_async_output_proc,
         enable_lora=enable_lora,
-        disable_custom_all_reduce=True
+        disable_sliding_window=True
     )
 
     # Add the requests to the engine.

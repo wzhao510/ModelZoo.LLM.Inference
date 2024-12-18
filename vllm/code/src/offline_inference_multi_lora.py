@@ -4,6 +4,7 @@ for offline inference.
 
 Requires HuggingFace credentials for access to Llama2.
 """
+import os
 import argparse
 from typing import List, Optional, Tuple
 
@@ -122,8 +123,9 @@ def initialize_engine(model_path, tensor_parallel_size, trust_remote_code, max_m
 
 
 def main(args):
+    os.environ['VLLM_ALLOW_DEPRECATED_BEAM_SEARCH'] = "1"
     """Main function that sets up and runs the prompt processing."""
-    engine = initialize_engine(args.model_path, args.tensor_parallel_size, args.trust_remote_code, args.max_model_len, args.dtype, args.enforce_eager)
+    engine = initialize_engine(args.model, args.tensor_parallel_size, args.trust_remote_code, args.max_model_len, args.dtype, args.enforce_eager)
     #lora_path = snapshot_download(repo_id="yard1/llama-2-7b-sql-lora-test")
     test_prompts = create_test_prompts(args.lora_path)
     process_requests(engine, test_prompts)
@@ -144,16 +146,18 @@ if __name__ == "__main__":
         default=None,
         help='Maximum length of a sequence (including prompt and output). '
         'If None, will be derived from the model.')
-
+    parser.add_argument(
+        '--dtype',
+        type=str,
+        default='auto',
+        choices=['auto', 'half', 'float16', 'bfloat16', 'float', 'float32'],
+        help='data type for model weights and activations. '
+        'The "auto" option will use FP16 precision '
+        'for FP32 and FP16 models, and BF16 precision '
+        'for BF16 models.')
     parser.add_argument("--enforce-eager",
                         action="store_true",
                         help="enforce eager execution")
-    parser.add_argument(
-        '--max-model-len',
-        type=int,
-        default=None,
-        help='Maximum length of a sequence (including prompt and output). '
-        'If None, will be derived from the model.')
 
     args = parser.parse_args()
 
