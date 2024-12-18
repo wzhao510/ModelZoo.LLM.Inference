@@ -77,10 +77,8 @@ def run_benchmark(model_name, num_prompt, input_len, output_len, is_batched, enf
     # if arm, we set enforce_eager=false to turn on CUDA_GRAPH for better performance.
     # if you want to test another option, please modify this code.
     machine = platform.machine()
-    if 'arm' in machine:
-        c_eval_cmd += " --enforce-eager=false"
-    elif enforce_eager is not None:
-        c_eval_cmd += f" --enforce-eager={enforce_eager}"
+    if enforce_eager:
+        c_eval_cmd += f" --enforce-eager"
 
     if num_scheduler_steps is not None and vllm_version.startswith("0.6"):
         c_eval_cmd += f" --num-scheduler-steps={num_scheduler_steps}"
