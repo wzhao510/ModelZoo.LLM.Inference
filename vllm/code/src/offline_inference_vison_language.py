@@ -207,8 +207,12 @@ if __name__ == "__main__":
     parser.add_argument('--max-num-seqs',
                         type=int,
                         default=128,
+                        help='Number of max seqs.')
+    parser.add_argument('--num-prompts',
+                        type=int,
+                        default=1,
                         help='Number of prompts to run.')
-    parser.add_argument("--tensor_parallel_size", "-tp", type=int, default=1)
+    parser.add_argument("--tensor-parallel-size", "-tp", type=int, default=1)
     parser.add_argument('--trust_remote_code',
                         action='store_true',
                         help='trust remote code from huggingface')

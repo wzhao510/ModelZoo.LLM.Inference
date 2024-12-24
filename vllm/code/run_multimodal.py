@@ -7,10 +7,10 @@ def run_multimodal(args):
 
     model_path = model_config["model_path"]
     model_type = model_config["model_type"]
-    tp_size = model_config["tensor_parallel_size"]
-    dtype = model_config["dtype"]
-    gpu_memory_utilization = model_config["gpu_memory_utilization"]
-    max_num_seqs = model_config["max_num_seqs"]
+    tp_size = model_config["model_param"]["tensor_parallel_size"]
+    dtype = model_config["model_param"]["dtype"]
+    gpu_memory_utilization = model_config["model_param"]["gpu_memory_utilization"]
+    max_num_seqs = model_config["model_param"]["max_num_seqs"]
 
     image_path = "./data/demo.jpeg"
     script = "python ./code/src/offline_inference_vison_language.py"
