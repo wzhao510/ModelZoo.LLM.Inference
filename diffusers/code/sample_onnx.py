@@ -74,7 +74,8 @@ def convert_fp16_model(params, module_name, batchsize):
         convertModel(fp32_model_path, fp16_model_path, input_shape, dynamic_batch)
 
     if os.path.isfile(fp16_model_path):
-        return fp16_model_path
+        os.system(f"rm -rf {fp16_model_path}")
+        # return fp16_model_path
     if not os.path.isfile(fp32_model_path):
         raise ValueError(f"Try to converter from fp32..\n \
                 Howerver fp32 path:{fp32_model_path} does not exit" )
