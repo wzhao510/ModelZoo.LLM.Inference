@@ -6,6 +6,7 @@ import random
 import time
 from typing import List, Optional, Tuple
 from torch_profile_utils import profile_to_csv
+import numpy as np
 
 import torch
 from tqdm import tqdm
@@ -157,35 +158,38 @@ def run_vllm(
     
     print("warmup round start")
     llm.generate(prompts, sampling_params, use_tqdm=True)
+
+    E2E_TIME = [] # 端到端推理延时
+    FIRST_LATENCY = [] # 每个并发首token延时 TTFT
+    INFER_LATENCY = [] # 每个并发推理时间延时 ITL
+    DECODER_LATENCY = []
+
     if enable_lora:
         if enable_profile:
             with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:
                 start = time.perf_counter()
-                llm.generate(prompts, sampling_params, lora_request=LoRARequest("sql_adapter", 1, lora_path), use_tqdm=True)
+                output = llm.generate(prompts, sampling_params, lora_request=LoRARequest("sql_adapter", 1, lora_path), use_tqdm=True)
                 end = time.perf_counter()
             profile_to_csv(prof, MX_PROFILE_CSV_NAME)
-            return end - start
         else:
             start = time.perf_counter()
-            llm.generate(prompts, sampling_params, lora_request=LoRARequest("sql_adapter", 1, lora_path), use_tqdm=True)
+            output = llm.generate(prompts, sampling_params, lora_request=LoRARequest("sql_adapter", 1, lora_path), use_tqdm=True)
             end = time.perf_counter()
-            return end - start
+
     else:
         if not use_new_beam_search_impl:
             if enable_profile:
                 with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:
                     start = time.perf_counter()
-                    llm.generate(prompts, sampling_params, use_tqdm=True)
+                    output = llm.generate(prompts, sampling_params, use_tqdm=True)
                     end = time.perf_counter()
 
                 profile_to_csv(prof, MX_PROFILE_CSV_NAME)
-                return end - start
 
             else:
                 start = time.perf_counter()
-                tmp_result = llm.generate(prompts, sampling_params, use_tqdm=True)
+                output = llm.generate(prompts, sampling_params, use_tqdm=True)
                 end = time.perf_counter()
-                return end - start
         else:
             assert use_beam_search
             prompts = [prompt for prompt, _, _ in requests]
@@ -194,12 +198,30 @@ def run_vllm(
             for prompt, input_len, _output_len in requests:
                 assert _output_len == output_len
             start = time.perf_counter()
-            llm.beam_search(prompts,
+            output = llm.beam_search(prompts,
                             beam_width=n,
                             max_tokens=output_len,
                             ignore_eos=True)
             end = time.perf_counter()
-    return end - start
+
+    for out in output:
+        ## 打印输出toknen 长度
+        # print("output token length: ", len((out.outputs[0].token_ids)))
+        
+        ## 每个并发首字完成耗时
+        TTFT = out.metrics.first_token_time - out.metrics.arrival_time
+
+        ## 每个并发推理完成耗时
+        ITL = out.metrics.finished_time - out.metrics.arrival_time
+        
+        ## 每个并发Decoding完成耗时
+        DTL = (out.metrics.finished_time - out.metrics.first_token_time) / (len(out.outputs[0].token_ids) - 1)
+        
+        FIRST_LATENCY.append(TTFT)
+        INFER_LATENCY.append(ITL)
+        DECODER_LATENCY.append(DTL)
+    E2E_TIME.append(end-start)
+    return np.mean(E2E_TIME), np.mean(FIRST_LATENCY), np.mean(DECODER_LATENCY)*1000
 
 
 async def run_vllm_async(
@@ -380,12 +402,14 @@ def main(args: argparse.Namespace):
         requests = sample_requests(args.dataset, args.num_prompts, tokenizer,
                                    args.output_len)
 
+    ttft = None
+    decoder_latency = None
     if args.backend == "vllm":
         if args.async_engine:
             import asyncio
             elapsed_time = asyncio.run(run_vllm_async(requests, args))
         else:
-            elapsed_time = run_vllm(
+            elapsed_time, ttft, decoder_latency = run_vllm(
                 requests, args.model, args.tokenizer, args.quantization,
                 args.tensor_parallel_size, args.seed, args.n, args.use_beam_search,
                 args.trust_remote_code, args.dtype, args.max_model_len,
@@ -409,8 +433,14 @@ def main(args: argparse.Namespace):
         raise ValueError(f"Unknown backend: {args.backend}")
     total_num_tokens = sum(prompt_len + output_len
                            for _, prompt_len, output_len in requests)
-    print(f"Throughput: {len(requests) / elapsed_time:.2f} requests/s, "
-          f"{total_num_tokens / elapsed_time:.2f} tokens/s")
+    
+    if ttft is not None and decoder_latency is not None:
+        print(f"Throughput: {len(requests) / elapsed_time:.2f} requests/s, "
+          f"{total_num_tokens / elapsed_time:.2f} tokens/s, "
+          f"TTFT is {round(ttft*1000, 2)} ms, Decoder Latency is {round(decoder_latency, 2)} ms")
+    else:
+        print(f"Throughput: {len(requests) / elapsed_time:.2f} requests/s, "
+            f"{total_num_tokens / elapsed_time:.2f} tokens/s")
 
     # Output JSON results if specified
     if args.output_json:

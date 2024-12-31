@@ -4,7 +4,7 @@
     "c-eval_param": {
         "dtype": "float16",
         "tensor_parallel_size": 8,
-        "gpu_memory_utilization": 0.8,
+        "gpu_memory_utilization": 0.9,
         "batch_size": 1,
         "task_name": "ceval-valid"
     }
