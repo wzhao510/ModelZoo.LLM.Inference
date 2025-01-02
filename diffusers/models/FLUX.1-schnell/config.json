@@ -1,0 +1,13 @@
+{
+    "//": "",
+    "model_config":{
+        "ori_path":"/pde_ai/models/llm/Flux/FLUX.1-schnell/",
+        "dataset":"./data/PartiPrompts.tsv",
+        "seed": 0,
+        "num_inference_steps": 4,
+        "outputs_size":["1024#1024","1920#1920"],
+        "scheduler":"PNDM",
+        "max_sequence_length":256,
+        "guidance_scale":0.0
+    }
+}
