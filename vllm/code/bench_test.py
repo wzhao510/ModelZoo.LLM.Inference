@@ -1,9 +1,7 @@
 import os
 import argparse
 import platform
-import sys
-import subprocess
-from utils import get_params,write_txt, get_vllm_version
+from utils import get_params, get_vllm_version
 
 def is_int(value):
     try:
@@ -13,12 +11,44 @@ def is_int(value):
         return False
 
 
-def run_benchmark(model_name, num_prompt, input_len, output_len, is_batched, enforce_eager, num_scheduler_steps):
+def run_benchmark_mutlimoda(args, model_config):
+    script_file = "./code/src/benchmark_mutlimoda.py"
+    script_args = [
+        "--model={}".format(model_config["model_path"]),
+        "--model-type={}".format(model_config["model_type"]),
+        "--max-model-len=8192",
+        "--num-prompts={}".format(args.num_prompts),
+        "--trust-remote-code",
+        "--dtype={}".format(model_config["c-eval_param"]["dtype"]),
+        "--input-len={}".format(args.input_len),
+        "--output-len={}".format(args.output_len),
+        "--tensor-parallel-size={}".format(model_config["c-eval_param"]["tensor_parallel_size"]),
+        "--enforce-eager={}".format(args.enforce_eager),
+        "--num-scheduler-steps={}".format(args.num_scheduler_steps),
+    ]
+
+    if args.batched_test:
+        script_args.append("--benchmark-all")
+
+    enable_profile = os.getenv("MX_VLLM_ENABLE_PROFILE", "").lower()
+    if enable_profile in ("yes", "true", "t", "y", "1"):
+        script_args.append("--enable-profile")
+
+    cmd = "python3 '{}' '{}'".format(script_file, "' '".join(script_args))
+    print(cmd)
+    os.system(cmd)
+
+
+def run_benchmark(args, model_name, num_prompt, input_len, output_len, is_batched, enforce_eager, num_scheduler_steps):
     model_config = get_params(model_name)
     vllm_version = get_vllm_version()
     print(f"vLLM version: {vllm_version}")
     if vllm_version is None:
         raise ValueError("Cannot get vllm_version.")
+    
+    if model_config.get("mutlimoda", False):
+        run_benchmark_mutlimoda(args, model_config)
+        return
 
     model_path = model_config["model_path"]
     lora_path = model_config.get("lora_path", None)
@@ -88,15 +118,6 @@ def run_benchmark(model_name, num_prompt, input_len, output_len, is_batched, enf
     os.system(c_eval_cmd)
 
 if __name__ == '__main__':
-    # modelname = sys.argv[1]
-    # num_prompt = sys.argv[2] if len(sys.argv) > 2 else 24
-    # input_len =  sys.argv[3] if len(sys.argv) > 3 else 1024
-    # output_len =  sys.argv[4] if len(sys.argv) > 4 else 1024
-    # is_batched = sys.argv[5] if len(sys.argv) > 5 else 0
-    # enforce_eager = sys.argv[6] if len(sys.argv) > 6 else None
-    # num_scheduler_steps = int(sys.argv[7]) if len(sys.argv) > 7 else None
-    # run_benchmark(modelname, num_prompt, input_len, output_len, is_batched, enforce_eager, num_scheduler_steps)
-
     parser = argparse.ArgumentParser(description="Benchmark the throughput.")
     parser.add_argument("--model",
                         type=str,
@@ -125,4 +146,4 @@ if __name__ == '__main__':
         default=1,
         help="Maximum number of forward steps per scheduler call.")
     args = parser.parse_args()
-    run_benchmark(args.model, args.num_prompts, args.input_len, args.output_len, args.batched_test, args.enforce_eager, args.num_scheduler_steps)
+    run_benchmark(args, args.model, args.num_prompts, args.input_len, args.output_len, args.batched_test, args.enforce_eager, args.num_scheduler_steps)
