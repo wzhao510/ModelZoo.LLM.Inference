@@ -5,7 +5,7 @@
         "dataset":"./data/PartiPrompts.tsv",
         "seed": 0,
         "num_inference_steps": 20,
-        "outputs_size":["1024#1024","2048#2048"],
+        "outputs_size":["1024#1024"],
         "scheduler":"PNDM",
         "max_sequence_length":512,
         "guidance_scale":3.5
