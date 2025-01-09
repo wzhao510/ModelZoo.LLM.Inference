@@ -79,3 +79,62 @@ python code/sample_onnx.py ./models/ox_sd_15_bs/ 2 fp16 norm test maca  # 执行
 python code/sample_onnx_multithreads.py ./models/ox_sd_15/ 1 fp16 norm test maca 8 0  # 执行fp16 C500推理. 使用0号卡，以batch=1，8个线程运行。模型不带_bs 只支持 bs=1 运行
 python code/sample_onnx_multithreads.py ./models/ox_sd_15_bs/ 2 fp16 norm test maca 8 1  # 执行fp16 C500推理. 使用1号卡，以batch=2，8个线程运行
 ```
+
+## Flux
+```python
+python code/sample_flux.py --model /models/Flux/FLUX.1-schnell/ --batchsize 1 --offload false --resolution 1024x1024
+```
+
+参数说明：
+model：需测试的模型路径,可以输入模型的绝对路径或模型名称；
+    a.当输入是模型名称时，代码中将从 models/$modelname/config.json 文件中去读取模型的路劲。
+    b.当输入是模型绝对路径时，如：/models/Flux/FLUX.1-dev/  程序将 “FLUX.1-dev”作为模型名称，并在models/FLUX.1-dev/config.json 读取模型配置信息。
+    c.当前支持 FLUX.1-dev 和 FLUX.1-schnell
+batchsize：目前单卡最大只支持16
+save-iamge: 可选项，默认保存图片，如不保存设置为 0
+offload 是否使用cpu 加载;默认 true，--offload false 则全部用显存加载模型
+resolution  指定生成图像的分辨率，wxh：1024x1024 
+
+demo 输出：
+输出csv和图像；
+csv：
+csv 文件命名方式为：模型名称_分辨率_bs{n}_output_时间.csv   如：FLUX.1-schnell_1024x1024_bs1_output_2025-01-06_02-24-10.csv
+内容：
+promt,bs,hw,e2e time
+a tiny astronaut hatching from an egg on the moon,1,1024x1024,3273.81
+最后1列是 e2e time,单位毫秒；
+
+## OmniGen
+
+安装官方OmniGen依赖包
+```python
+git clone https://github.com/VectorSpaceLab/OmniGen.git
+cd OmniGen
+#注意:将 requirement.txt 中的 torch 注释掉，使用maca torch
+pip install -e .
+```
+
+参数说明
+--model 指定模型路径，一般在 /pde_ai/models/llm/OmniGen-v1 
+--batchsize 指定 batch 数量，此模型默认效果好的情况下 steps=50 ，时间比较长，建议不用测试多batch 性能
+--infertype 推理方式，T2I:文生图，  I2I：图生图，当前demo 是将2张图像中的 两个人合在一起生成另外一张图像的。
+--resolution 生成图像分辨率 默认值 1024x1024
+--offload true 使用cpu 加载权重，false 使用GPU 加载权重； 默认值：false
+--save_image 保存图像，可选值：true 、false；默认值 true
+
+运行文生图
+python  code/sample_omnigen.py --model /models/OmniGen-v1/ --batchsize 1 --infertype T2I
+
+运行图生图
+#图生图 --batchsize 只能是1
+python  code/sample_omnigen.py --model /models/OmniGen-v1/ --batchsize 1 --infertype I2I
+
+输出：
+目录：output/omnigen/
+csv: {infertype}_{resolution}_bs{batchsize}_output_{current_time}.csv,内容如：
+promt,bs,hw,e2e time
+"Realistic photo. A young woman sits on a sofa, holding a book and facing the camera. She wears delicate silver hoop earrings adorned with tiny, sparkling diamonds that catch the light,         with her long chestnut hair cascading over her shoulders. Her eyes are focused and gentle, framed by long, dark lashes. She is dressed in a cozy cream sweater, which complements her warm, inviting smile.        Behind her, there is a table with a cup of water in a sleek, minimalist blue mug. The background is a serene indoor setting with soft natural light filtering through a window, adorned with tasteful art and flowers, creating a cozy and peaceful ambiance. 4K, HD.",1,1024x1024,43661.36
+
+e2e time 时间单位为毫秒
+
+图像：{infertype}{infertype}_bs{batchsize}_image_{i}_{w}x{h}.png
