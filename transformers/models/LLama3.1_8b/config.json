@@ -1,0 +1,9 @@
+{
+    "model_type": "llama",
+    "model_path": "/pde_ai/models/llm/Llama/Meta-Llama-3.1-8B-Instruct/",
+    "param": {
+        "dtype": "float16",
+        "tensor_parallel_size": 1,
+        "batch_size": 16
+    }
+}

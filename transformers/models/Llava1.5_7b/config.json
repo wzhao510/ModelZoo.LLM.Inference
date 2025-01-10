@@ -1,0 +1,9 @@
+{
+    "model_type": "llava-next",
+    "model_path": "/pde_ai/models/llm/LLaVA/llava-1.5-7b-hf/",
+    "param": {
+        "dtype": "float16",
+        "tensor_parallel_size": 1,
+        "batch_size": 16
+    }
+}

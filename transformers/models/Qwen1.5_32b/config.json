@@ -1,0 +1,9 @@
+{
+    "model_type": "Qwen",
+    "model_path": "/pde_ai/models/llm/Qwen/Qwen1.5-32B/",
+    "param": {
+        "dtype": "float16",
+        "tensor_parallel_size": 4,
+        "batch_size": 4
+    }
+}
