@@ -1,0 +1,9 @@
+{
+    "model_type": "llama",
+    "model_path": "/pde_ai/models/llm/Llama/llama-2-13b/",
+    "param": {
+        "dtype": "float16",
+        "tensor_parallel_size": 1,
+        "batch_size": 1
+    }
+}

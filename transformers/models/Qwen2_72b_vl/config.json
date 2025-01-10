@@ -1,0 +1,9 @@
+{
+    "model_type": "Qwen",
+    "model_path": "/pde_ai/models/llm/Qwen/Qwen2-VL-72B-Instruct/",
+    "param": {
+        "dtype": "float16",
+        "tensor_parallel_size": 4,
+        "batch_size": 16
+    }
+}

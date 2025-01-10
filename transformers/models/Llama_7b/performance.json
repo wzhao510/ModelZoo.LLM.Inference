@@ -1,0 +1,18 @@
+{
+    "ceval-valid": {
+        "float16": {
+            "Best Acc": "0.2704",
+            "Best Acc Date": "20241218",
+            "Current Acc": "0.2704",
+            "Date": "20241218"
+        }
+    },
+    "mmlu": {
+        "float16": {
+            "Best Acc": 0.3211,
+            "Best Acc Date": "20241219",
+            "Current Acc": 0.3211,
+            "Date": "20241219"
+        }
+    }
+}
