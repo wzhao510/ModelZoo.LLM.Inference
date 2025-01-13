@@ -281,7 +281,7 @@ def main(args: argparse.Namespace):
             f"{total_num_tokens / elapsed_time:.2f} tokens/s, "
             f"TTFT is {round(ttft*1000, 2)} ms, Decoder Latency is {round(decoder_latency, 2)} ms")
         
-    for batch in [1,8,16,32,64, 128]:
+    for batch in [1,8,16,32,64]:
         for input_len in [256, 512, 1024]:
             for output_len in [128, 512, 1024]:
                 if input_len == 1024 and output_len != 1024:
