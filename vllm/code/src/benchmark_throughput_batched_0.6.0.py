@@ -79,7 +79,6 @@ def get_vllm(
     tensor_parallel_size: int,
     seed: int,
     n: int,
-    use_beam_search: bool,
     trust_remote_code: bool,
     dtype: str,
     max_model_len: Optional[int],
@@ -147,7 +146,6 @@ def run_vllm(
     tensor_parallel_size: int,
     seed: int,
     n: int,
-    use_beam_search: bool,
     trust_remote_code: bool,
     dtype: str,
     max_model_len: Optional[int],
@@ -187,9 +185,8 @@ def run_vllm(
         sampling_params.append(
             SamplingParams(
                 n=n,
-                temperature=0.0 if use_beam_search else 1.0,
+                temperature=1.0,
                 top_p=1.0,
-                use_beam_search=use_beam_search,
                 ignore_eos=True,
                 max_tokens=output_len,
             ))
@@ -252,7 +249,7 @@ def main(args: argparse.Namespace):
     
     random.seed(args.seed)
     llm = get_vllm(args.model, args.tokenizer, args.quantization,
-            args.tensor_parallel_size, args.seed, args.n, args.use_beam_search,
+            args.tensor_parallel_size, args.seed, args.n, 
             args.trust_remote_code, args.dtype, args.max_model_len,
             args.enforce_eager, args.kv_cache_dtype,
             args.quantization_param_path, args.device,
@@ -268,7 +265,7 @@ def main(args: argparse.Namespace):
         requests = [(prompt, 256, 256)
                     for _ in range(8)]
         elapsed_time, ttft, decoder_latency = run_vllm(llm, requests, args.model, args.tokenizer, args.quantization,
-                                    args.tensor_parallel_size, args.seed, args.n, args.use_beam_search,
+                                    args.tensor_parallel_size, args.seed, args.n,
                                     args.trust_remote_code, args.dtype, args.max_model_len,
                                     args.enforce_eager, args.kv_cache_dtype,
                                     args.quantization_param_path, args.device,
@@ -284,7 +281,7 @@ def main(args: argparse.Namespace):
             f"{total_num_tokens / elapsed_time:.2f} tokens/s, "
             f"TTFT is {round(ttft*1000, 2)} ms, Decoder Latency is {round(decoder_latency, 2)} ms")
         
-    for batch in [1,8,16,32,64, 128]:
+    for batch in [1,8,16,32,64]:
         for input_len in [256, 512, 1024]:
             for output_len in [128, 512, 1024]:
                 if input_len == 1024 and output_len != 1024:
@@ -305,7 +302,7 @@ def main(args: argparse.Namespace):
                 requests = [(prompt, input_len, output_len)
                             for _ in range(batch)]
                 elapsed_time, ttft, decoder_latency = run_vllm(llm, requests, args.model, args.tokenizer, args.quantization,
-                                    args.tensor_parallel_size, args.seed, args.n, args.use_beam_search,
+                                    args.tensor_parallel_size, args.seed, args.n, 
                                     args.trust_remote_code, args.dtype, args.max_model_len,
                                     args.enforce_eager, args.kv_cache_dtype,
                                     args.quantization_param_path, args.device,
@@ -522,8 +519,6 @@ if __name__ == "__main__":
             raise ValueError("dtype must be auto for MII backend.")
         if args.n != 1:
             raise ValueError("n must be 1 for MII backend.")
-        if args.use_beam_search:
-            raise ValueError("Beam search is not supported for MII backend.")
         if args.quantization is not None:
             raise ValueError("Quantization is only for vLLM backend.")
         if args.hf_max_batch_size is not None:
