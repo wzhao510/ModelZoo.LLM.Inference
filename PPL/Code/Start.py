@@ -230,7 +230,7 @@ def MMLUAccuracyTest(config_str, config_file):
         start_server_cmd = '{}/ppl_llm_server {} > server.log 2>&1 &'.format(server_dir, tmp_file.name)
         print(f'start_server_cmd is {start_server_cmd}')
         os.system(start_server_cmd)
-        time.sleep(1)
+        time.sleep(5)
     
     # 2. check server ready or not, and get server process id    
     model_name = config_file.split('/')[-2]
