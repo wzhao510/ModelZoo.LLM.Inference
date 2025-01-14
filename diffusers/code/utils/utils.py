@@ -90,9 +90,11 @@ def macaOptFp16(input_model_path, output_model_path, dynamic_batch):
         print('\n\n ################### dynamic_batch false ################# \n\n')
         os.system("python -m maca_converter --model_path %s --output %s --model_type onnx --fp32_to_fp16 1 --simplify 2 --dynamic_batch 0"%(input_model_path,output_model_path))
 
-def convertModel(input_model_path,output_model_path, input_shape_dict={}, dynamic_batch=False):
+def convertModel(input_model_path,output_model_path, input_shape_dict={}, dynamic_batch=False, skip_convert=False):
     temp_path = output_model_path+"_bak"
-    
-    fixShape(input_model_path,output_model_path=temp_path, input_shape_dict=input_shape_dict)
-    macaOptFp16(temp_path,output_model_path, dynamic_batch)
+    if os.path.isfile(temp_path) and skip_convert:
+        pass
+    else:
+        fixShape(input_model_path,output_model_path=temp_path, input_shape_dict=input_shape_dict)
+        macaOptFp16(temp_path,output_model_path, dynamic_batch)
     # os.remove(temp_path)
