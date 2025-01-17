@@ -97,7 +97,8 @@ def get_vllm(
     load_format: str = 'auto',
     disable_async_output_proc: bool = False,
     use_new_beam_search_impl: bool = False,
-    lora_path: Optional[str] = None):
+    lora_path: Optional[str] = None,    
+    disable_sliding_window: Optional[bool] = False,):
 
     from vllm import LLM, SamplingParams
     from vllm.lora.request import LoRARequest
@@ -132,7 +133,7 @@ def get_vllm(
         use_v2_block_manager=use_v2_block_manager,
         disable_async_output_proc=disable_async_output_proc,
         enable_lora=enable_lora,
-        disable_sliding_window=True
+        disable_sliding_window=disable_sliding_window
     )
 
     return llm
@@ -224,18 +225,17 @@ def run_vllm(
         ## 打印输出toknen 长度
         # print("output token length: ", len((out.outputs[0].token_ids)))
         
-        ## 每个并发首字完成耗时
-        TTFT = out.metrics.first_token_time - out.metrics.arrival_time
+        if out.metrics.first_token_time is not None:
+            ## 每个并发首字完成耗时
+            TTFT = out.metrics.first_token_time - out.metrics.arrival_time
+            FIRST_LATENCY.append(TTFT)
+            ## 每个并发Decoding完成耗时
+            DTL = (out.metrics.finished_time - out.metrics.first_token_time) / (len(out.outputs[0].token_ids) - 1)            
+            DECODER_LATENCY.append(DTL)
 
         ## 每个并发推理完成耗时
         ITL = out.metrics.finished_time - out.metrics.arrival_time
-        
-        ## 每个并发Decoding完成耗时
-        DTL = (out.metrics.finished_time - out.metrics.first_token_time) / (len(out.outputs[0].token_ids) - 1)
-        
-        FIRST_LATENCY.append(TTFT)
         INFER_LATENCY.append(ITL)
-        DECODER_LATENCY.append(DTL)
     E2E_TIME.append(end-start)
     return np.mean(E2E_TIME), np.mean(FIRST_LATENCY), np.mean(DECODER_LATENCY)*1000
 
@@ -257,7 +257,9 @@ def main(args: argparse.Namespace):
             args.max_num_batched_tokens, args.distributed_executor_backend,
             args.gpu_memory_utilization, args.num_scheduler_steps,
             args.use_v2_block_manager, args.download_dir, args.load_format,
-            args.disable_async_output_proc, args.use_new_beam_search_impl, args.lora_path)
+            args.disable_async_output_proc, args.use_new_beam_search_impl, args.lora_path,
+            args.disable_sliding_window
+            )
 
     # Sample the requests.
     for idx in range(args.warmup_loops):
@@ -273,7 +275,7 @@ def main(args: argparse.Namespace):
                                     args.max_num_batched_tokens, args.distributed_executor_backend,
                                     args.gpu_memory_utilization, args.num_scheduler_steps,
                                     args.use_v2_block_manager, args.download_dir, args.load_format,
-                                    args.disable_async_output_proc, args.use_new_beam_search_impl, args.lora_path)
+                                    args.disable_async_output_proc, args.use_new_beam_search_impl, args.lora_path,)
                 
         total_num_tokens = sum(prompt_len + output_len
                             for _, prompt_len, output_len in requests)
@@ -476,6 +478,11 @@ if __name__ == "__main__":
         action='store_true',
         default=False,
         help="Disable async output processor for vLLM backend.")
+    parser.add_argument(
+        "--disable-sliding-window",
+        action='store_true',
+        default=False,
+        help="Disable sliding window for vLLM backend.")
     parser.add_argument("--async-engine",
                         action='store_true',
                         default=False,

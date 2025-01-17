@@ -109,6 +109,9 @@ def run_benchmark(args, model_name, num_prompt, input_len, output_len, is_batche
     machine = platform.machine()
     if enforce_eager:
         c_eval_cmd += f" --enforce-eager"
+    
+    if args.disable_sliding_window:
+        c_eval_cmd += f" --disable-sliding-window"
 
     if num_scheduler_steps is not None and vllm_version.startswith("0.6"):
         c_eval_cmd += f" --num-scheduler-steps={num_scheduler_steps}"
@@ -140,6 +143,11 @@ if __name__ == '__main__':
     parser.add_argument("--enforce-eager",
                         action="store_true",
                         help="enforce eager execution")
+    parser.add_argument(
+        "--disable-sliding-window",
+        action='store_true',
+        default=False,
+        help="Disable sliding window for vLLM backend.")
     parser.add_argument(
         "--num-scheduler-steps",
         type=int,

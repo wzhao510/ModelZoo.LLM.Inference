@@ -104,6 +104,7 @@ def run_vllm(
     use_new_beam_search_impl: bool = False,
     lora_path: Optional[str] = None,
     enable_profile: Optional[bool] = False,
+    disable_sliding_window: Optional[bool] = False,
 ) -> float:
     from vllm import LLM, SamplingParams
     from vllm.lora.request import LoRARequest
@@ -138,7 +139,7 @@ def run_vllm(
         use_v2_block_manager=use_v2_block_manager,
         disable_async_output_proc=disable_async_output_proc,
         enable_lora=enable_lora,
-        disable_sliding_window=True
+        disable_sliding_window=disable_sliding_window
     )
 
     # Add the requests to the engine.
@@ -184,7 +185,6 @@ def run_vllm(
                     end = time.perf_counter()
 
                 profile_to_csv(prof, MX_PROFILE_CSV_NAME)
-
             else:
                 start = time.perf_counter()
                 output = llm.generate(prompts, sampling_params, use_tqdm=True)
@@ -419,7 +419,7 @@ def main(args: argparse.Namespace):
                 args.gpu_memory_utilization, args.num_scheduler_steps,
                 args.use_v2_block_manager, args.download_dir, args.load_format,
                 args.disable_async_output_proc, args.use_new_beam_search_impl, 
-                args.lora_path, args.enable_profile)
+                args.lora_path, args.enable_profile, args.disable_sliding_window)
     elif args.backend == "hf":
         assert args.tensor_parallel_size == 1
         elapsed_time = run_hf(requests, args.model, tokenizer, args.n,
@@ -611,6 +611,11 @@ if __name__ == "__main__":
         action='store_true',
         default=False,
         help="Disable async output processor for vLLM backend.")
+    parser.add_argument(
+        "--disable-sliding-window",
+        action='store_true',
+        default=False,
+        help="Disable sliding window for vLLM backend.")
     parser.add_argument("--async-engine",
                         action='store_true',
                         default=False,
