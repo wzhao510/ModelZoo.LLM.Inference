@@ -102,8 +102,8 @@ def check_fp16_cfg_file(params):
         cmd = f"cp -r {params['ori_path']}/tokenizer {params['fp16_path']}"
         os.system(cmd)
 
-    if "must_convert" not in params:
-        params["must_convert"] = False
+    if "static_convert" not in params:
+        params["static_convert"] = False
     if "dynamic_batch" not in params:
         params["dynamic_batch"] = False
 
@@ -117,7 +117,7 @@ def check_fp16_cfg_file(params):
         cmd = f"cp -r {params['ori_path']}/scheduler {params['fp16_path']}"
         os.system(cmd)
 
-def convert_fp16_model(params, module_name, batchsize):
+def convert_fp16_model(params, module_name, batchsize, skip_fp16_convert=False):
 
     fp16_path = os.path.join(params["fp16_path"], module_name)
     fp32_path = os.path.join(params["ori_path"], module_name)
@@ -130,29 +130,32 @@ def convert_fp16_model(params, module_name, batchsize):
     fp32_model_path = os.path.join(fp32_path, fp32_modelname)
     fp16_model_path = os.path.join(fp16_path, fp16_modelname)
 
-    if params["must_convert"]:
+    if params["static_convert"]:
         img_size = params["outputs_size"].split("#")
         dynamic_batch = params["dynamic_batch"]
         encoder_hidden_dim = params["encoder_hidden_dim"]
         input_shape = get_input_shape_info(module_name, [int(img_size[0]), int(img_size[1])], batchsize, encoder_hidden_dim, dynamic_batch)
         print(f'input shape is {input_shape}')
         print(f'start convert module {module_name}')
-        convertModel(fp32_model_path, fp16_model_path, input_shape, dynamic_batch)
-
-    if os.path.isfile(fp16_model_path):
-        return fp16_model_path
-    if not os.path.isfile(fp32_model_path):
-        raise ValueError(f"Try to converter from fp32..\n \
-                Howerver fp32 path:{fp32_model_path} does not exit" )
-    print("fp16 model start convert....")
-    cmd = f"python -m maca_converter --model_path {fp32_model_path} --model_type onnx --output {fp16_model_path} --fp32_to_fp16 1"
-    if module_name in ["vae_encoder", "vae_decoder"]:
-        cmd = cmd + " --fuse_mha 0"
-    os.system(cmd)
+        convertModel(fp32_model_path, fp16_model_path, input_shape, dynamic_batch, skip_fp16_convert)
+    else:
+        if os.path.isfile(fp16_model_path):
+            if skip_fp16_convert:
+                return fp16_model_path
+            print(f"fp16 model existed, overwriting...")
+            os.system(f"rm -rf {fp16_model_path}")
+        if not os.path.isfile(fp32_model_path):
+            raise ValueError(f"Try to converter from fp32..\n \
+                    Howerver fp32 path:{fp32_model_path} does not exit" )
+        print("fp16 model start convert....")
+        cmd = f"python -m maca_converter --model_path {fp32_model_path} --model_type onnx --output {fp16_model_path} --fp32_to_fp16 1"
+        if module_name in ["vae_encoder", "vae_decoder"]:
+            cmd = cmd + " --fuse_mha 0"
+        os.system(cmd)
     return fp16_model_path
 
 
-def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca", th_num="8", device_id=0, is_sd15=False):
+def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca", th_num="8", device_id=0, skip_fp16_convert=False):
     if not os.path.isfile(EVAL_MODEL_PATH):
         raise ValueError(f"{EVAL_MODEL_PATH} dose not exist. Please check on file.")
 
@@ -173,9 +176,9 @@ def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca",
     
     check_fp16_cfg_file(params)
     if precision == "fp16":
-        text_encoder_path = convert_fp16_model(params, "text_encoder",batchsize)
-        unet_path = convert_fp16_model(params, "unet",batchsize)
-        vae_decoder_path = convert_fp16_model(params, "vae_decoder",batchsize)
+        text_encoder_path = convert_fp16_model(params, "text_encoder",batchsize, skip_fp16_convert)
+        unet_path = convert_fp16_model(params, "unet",batchsize, skip_fp16_convert)
+        vae_decoder_path = convert_fp16_model(params, "vae_decoder",batchsize, skip_fp16_convert)
     else:
         text_encoder_path = os.path.join(params["ori_path"], params["text_encoder"])
         unet_path = os.path.join(params["ori_path"], params["unet"])
@@ -257,5 +260,10 @@ if __name__ == '__main__':
     model_path = sys.argv[5] if len(sys.argv) > 5 else "./"
     EP = sys.argv[6] if len(sys.argv) > 6 else "maca"
     th_num = sys.argv[7] if len(sys.argv) > 7 else "16"
-    device_id = int(sys.argv[8]) if len(sys.argv) > 8 else 0
-    main(modelname,batchsize,precision,task,model_path, EP, th_num, device_id)
+    skip_fp16_convert = int(sys.argv[8]) if len(sys.argv) > 8 else 0
+    device_id = int(sys.argv[9]) if len(sys.argv) > 9 else 0
+    if skip_fp16_convert == 0:
+        skip_fp16_convert = False
+    else:
+        skip_fp16_convert = True
+    main(modelname,batchsize,precision,task,model_path, EP, th_num, device_id, skip_fp16_convert)
