@@ -19,10 +19,10 @@ def run_benchmark_mutlimoda(args, model_config):
         "--max-model-len=8192",
         "--num-prompts={}".format(args.num_prompts),
         "--trust-remote-code",
-        "--dtype={}".format(model_config["c-eval_param"]["dtype"]),
+        "--dtype={}".format(model_config["model_param"]["dtype"]),
         "--input-len={}".format(args.input_len),
         "--output-len={}".format(args.output_len),
-        "--tensor-parallel-size={}".format(model_config["c-eval_param"]["tensor_parallel_size"]),
+        "--tensor-parallel-size={}".format(model_config["model_param"]["tensor_parallel_size"]),
         "--enforce-eager={}".format(args.enforce_eager),
         "--num-scheduler-steps={}".format(args.num_scheduler_steps),
     ]
