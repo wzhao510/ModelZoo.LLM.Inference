@@ -1,6 +1,7 @@
 import argparse
 import inspect
 import os
+import numpy as np
 import sys
 import time
 import torch
@@ -112,7 +113,7 @@ class VllmBenchmark:
         print(
             f"bs_{batch_size}_input_{in_len}_output_{out_len} "
             f"Throughput: {qps:.2f} requests/s, {tps:.2f} tokens/s, "
-            f"TTFT is {res.ttft:.3f}ms, Decoder Latency is {res.tpot:.3f}ms"
+            f"TTFT is {res.ttft:.3f}ms, Decoder Latency is {res.decoder_latency:.3f}ms"
         )
         print(f"benchmark result: {res}")
         return res
@@ -133,6 +134,7 @@ class VllmBenchmark:
         first_token_time = arrival_time
         finished_time = 0
         # texts = []
+        decoder_latency = []
         for i in data:
             # texts.append(list(map(lambda x: x.text, i.outputs)))
             input_tokens_number += len(i.prompt_token_ids)
@@ -143,6 +145,7 @@ class VllmBenchmark:
             )
             first_token_time = min(first_token_time, i.metrics.first_token_time)
             finished_time = max(finished_time, i.metrics.finished_time)
+            decoder_latency.append((i.metrics.finished_time - i.metrics.first_token_time) / (len(i.outputs[0].token_ids) - 1))
 
         res = BenchData()
         # res.texts = texts
@@ -155,10 +158,11 @@ class VllmBenchmark:
         res.finished_time = finished_time
         res.elapsed_time = finished_time - first_scheduled_time
 
-        res.ttft = first_token_time - arrival_time
-        res.tpot = (finished_time - first_token_time) / (
+        res.ttft = (first_token_time - arrival_time)*1000
+        res.tpot = (finished_time - first_token_time)*1000 / (
             output_tokens_number - len(data)
         )
+        res.decoder_latency = np.mean(decoder_latency)*1000
         res.tps = res.tokens_number / res.elapsed_time
         res.output_pts = output_tokens_number / res.elapsed_time
         return res

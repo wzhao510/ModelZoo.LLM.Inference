@@ -15,13 +15,15 @@ from PIL import Image
 
 question = "What is the content of this image?"
 
-def inital_LLM(model_path, dtype, enforce_eager, gpu_memory_utilization=0.9, tensor_parallel_size=1, max_num_seqs=5):  
+def inital_LLM(model_path, dtype, enforce_eager, gpu_memory_utilization=0.9, tensor_parallel_size=1, max_model_len=4096, max_num_seqs=5):  
     llm = LLM(model=model_path, 
               dtype=dtype, 
               enforce_eager=enforce_eager,
               gpu_memory_utilization=gpu_memory_utilization, 
               tensor_parallel_size=tensor_parallel_size,
-              max_num_seqs=max_num_seqs)
+              max_model_len=max_model_len,
+              max_num_seqs=max_num_seqs,
+              trust_remote_code=True)
     return llm
 
 # LLaVA-1.5
@@ -39,6 +41,38 @@ def generate_prompt_llava_next(question, model_path):
     prompt = "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions. USER: <image>\nWhat is shown in this image?\n ASSISTANT:"
     return prompt
 
+
+def generate_prompt_qwen_vl(question: str, model_path: str) -> str:
+    return (
+        "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n"
+        "<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>"
+        f"{question}<|im_end|>\n"
+        "<|im_start|>assistant\n"
+    )
+
+def generate_prompt_glm4v(question, model_path):
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+
+    # query = '描述这张图片'
+    image = Image.open("your image").convert('RGB')
+    prompts = tokenizer.apply_chat_template([{"role": "user", "image": image, "content": question}],
+                                        add_generation_prompt=True, tokenize=True, return_tensors="pt",
+                                        return_dict=True)  # chat mode
+    return prompts
+
+def generate_prompt_glm4v(question: str, model_path: str):
+    # assert modality == "image"
+    # model_name = "THUDM/glm-4v-9b"
+
+    # llm = LLM(model=model_name,
+    #           max_model_len=2048,
+    #           max_num_seqs=2,
+    #           trust_remote_code=True,
+    #           enforce_eager=True,
+    #           disable_mm_preprocessor_cache=args.disable_mm_preprocessor_cache)
+    prompt = question
+    
+    return prompt
 
 # Fuyu
 def generate_prompt_fuyu(question, model_path):
@@ -137,6 +171,8 @@ model_prompt_map = {
     "minicpmv": generate_prompt_minicpmv,
     "blip-2": generate_prompt_blip2,
     "internvl_chat": generate_prompt_internvl,
+    "qwen_vl": generate_prompt_qwen_vl, 
+    "glm4v": generate_prompt_glm4v,
 }
 
 def get_prompt(model_type, question, model_path):
@@ -155,12 +191,16 @@ def main(args):
                      enforce_eager=args.enforce_eager,
                      gpu_memory_utilization=args.gpu_memory_utilization,
                      tensor_parallel_size=args.tensor_parallel_size,
+                     max_model_len=args.max_model_len,
                      max_num_seqs=args.max_num_seqs)
 
     image = Image.open(args.image_path).convert("RGB")
     # We set temperature to 0.2 so that outputs can be different
     # even when all prompts are identical when running batch inference.
-    sampling_params = SamplingParams(temperature=0.98, max_tokens=512,top_k=1)
+    stop_token_ids = None
+    if model_type == 'glm4v':
+        stop_token_ids = [151329, 151336, 151338]
+    sampling_params = SamplingParams(temperature=0.98, max_tokens=512,top_k=1, stop_token_ids=stop_token_ids)
 
     assert args.num_prompts > 0
     if args.num_prompts == 1:
@@ -208,6 +248,10 @@ if __name__ == "__main__":
                         type=int,
                         default=128,
                         help='Number of max seqs.')
+    parser.add_argument('--max-model-len',
+                        type=int,
+                        default=4096,
+                        help='Number of max model length.')
     parser.add_argument('--num-prompts',
                         type=int,
                         default=1,

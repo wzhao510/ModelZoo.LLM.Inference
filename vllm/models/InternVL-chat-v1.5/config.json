@@ -1,6 +1,7 @@
 {
     "model_type": "internvl_chat",
     "model_path": "/pde_ai/models/llm/Internlm/InternVL-Chat-V1-5",
+    "mutlimoda": true,
     "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 2,

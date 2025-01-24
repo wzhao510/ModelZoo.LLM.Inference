@@ -1,0 +1,6 @@
+{
+    "name" : "QwQ-32B-Preview",
+    "fp16":{
+        "acc": 0.00
+    }
+}
