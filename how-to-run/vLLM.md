@@ -212,3 +212,56 @@ python openai_chatcompletion_client.py
 ```
 python openai_completion_client.py
 ```
+
+## 6、测试vllm 0.6.6 APC （Automatic Prefix Caching）
+参数说明
+--model 模型路径
+
+使用pytext 启动 APC 命令
+```
+python code/test_prefix_caching.py --model /pde_ai/models/llm/Llama/Meta-Llama-3-8B-Instruct/
+```
+
+## 7、测试vllm 0.6.6 Chunked Prefill 
+#默认max_num_batched_tokens=512
+```
+python ./code/bench_test.py --model models/Llama_7b  --enable-chunked-prefill
+#注意：--model 指的是 模型名称，如果在镜像中运行请确认模型路径是否正确，模型路径配置在：./models/Llama_7b/config.json 中的 model_path 字段。
+```
+## 8.Speculative Decoding
+参数说明
+--model 主模型路径
+--prompts 提示词，""The future of AI is","hello"
+--tensor-parallel-size 张量并行数量 默认值 1
+--speculative-model speculative 模型的路径，MLP Speculators ，EAGLE based draft models 等。
+--num-speculative-tokens 推测令牌 数量，3-10 ，默认值 5
+--ngram 开启Speculating by matching n-grams in the prompt
+--ngram-prompt-lk-max  looup  最大数量，默认值4
+
+注意事项：
+HF 上下载的EAGLE 模型文件不能直接被vllm 使用，可以使用convert_EAGLE_ckpt_to_vllm_compatible.py 转换为vllm 可用的模型文件和配置文件。
+命令如：
+```
+python code/convert_EAGLE_ckpt_to_vllm_compatible.py /pde_ai/models/llm/Qwen/EAGLE-Qwen2-7B-Instruct/pytorch_model.bin /pde_ai/models//llm/Qwen/Qwen2-7B-Instruct/model-00004-of-00004.safetensors
+```
+参数及结果说明：
+/pde_ai/models/llm/Qwen/EAGLE-Qwen2-7B-Instruct/pytorch_model.bin 为原始模型权重
+/pde_ai/models//llm/Qwen/Qwen2-7B-Instruct/model-00004-of-00004.safetensors 主模型的权重最后一个分片
+转换后的文件保存在： /pde_ai/models/llm/Qwen/EAGLE-Qwen2-7B-Instruct_vllm/ 规则  EAGLE-xxx_vllm
+
+```
+python code/test_Speculative_Decoding.py --model $modelpath --prompts "The future of AI is" --speculative-model $spmodel
+```
+#MLP 推测解码
+```
+python code/test_Speculative_Decoding.py --model /pde_ai/models/llm/Llama/Meta-Llama-3-8B-Instruct --prompts "The future of AI is" --speculative-model /pde_ai/models/llm/Llama/llama3-8b-accelerator
+```
+#使用4张GPU卡
+#speculative models currently need to be run without tensor parallelism
+python code/test_Speculative_Decoding.py --model /pde_ai/models/llm/Llama/Meta-Llama-3.1-70B-Instruct  --tensor-parallel-size 4 --prompts "The future of AI is" --speculative-model /pde_ai/models/llm/Llama/llama3-70b-accelerator
+
+#使用 ngram
+python code/test_Speculative_Decoding.py --model /pde_ai/models/llm/Llama/Meta-Llama-3-8B-Instruct --prompts "The future of AI is" --ngram  --ngram-prompt-lk-max 4
+
+#使用 eagle draft model
+python code/test_Speculative_Decoding.py --model /pde_ai/models/llm/Llama/Meta-Llama-3-8B-Instruct --prompts "The future of AI is" --speculative-model /pde_ai/models/llm/Llama/EAGLE-LLaMA3-Instruct-8B
