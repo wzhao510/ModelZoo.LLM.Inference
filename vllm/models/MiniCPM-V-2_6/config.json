@@ -1,0 +1,12 @@
+{
+    "model_type": "minicpmv",
+    "model_path": "/pde_ai/models/llm/MiniCPM-V-2_6",
+    "mutlimoda": true,
+    "model_param": {
+        "dtype": "float16",
+        "tensor_parallel_size": 1,
+        "gpu_memory_utilization": 0.9,
+        "batch_size": 1,
+	"max_num_seqs": 128
+    }
+}
