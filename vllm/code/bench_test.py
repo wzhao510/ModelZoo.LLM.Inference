@@ -39,7 +39,7 @@ def run_benchmark_mutlimoda(args, model_config):
     os.system(cmd)
 
 
-def run_benchmark(args, model_name, num_prompt, input_len, output_len, is_batched, enforce_eager, num_scheduler_steps):
+def run_benchmark(args, model_name, num_prompt, input_len, output_len, is_batched, enforce_eager, num_scheduler_steps,enable_chunked_prefill):
     model_config = get_params(model_name)
     vllm_version = get_vllm_version()
     print(f"vLLM version: {vllm_version}")
@@ -94,7 +94,12 @@ def run_benchmark(args, model_name, num_prompt, input_len, output_len, is_batche
                         --backend=vllm --max-model-len 2048 --num-prompts {num_prompt} --trust-remote-code --dtype {dtype} \
                         --input-len {input_len} --output-len {output_len} --tensor-parallel-size {tensor_parallel_size}'
         else:
-            c_eval_cmd = f'python ./code/src/benchmark_throughput_batched_0.6.0.py  --model={model_path}  \
+            if enable_chunked_prefill:
+                 c_eval_cmd = f'python ./code/src/benchmark_throughput_batched_0.6.0.py  --model={model_path}  \
+                        --backend=vllm --max-model-len 2048 --num-prompts {num_prompt} --trust-remote-code --dtype {dtype} \
+                        --input-len {input_len} --output-len {output_len} --tensor-parallel-size {tensor_parallel_size} --enable-chunked-prefill '
+            else:
+                c_eval_cmd = f'python ./code/src/benchmark_throughput_batched_0.6.0.py  --model={model_path}  \
                         --backend=vllm --max-model-len 2048 --num-prompts {num_prompt} --trust-remote-code --dtype {dtype} \
                         --input-len {input_len} --output-len {output_len} --tensor-parallel-size {tensor_parallel_size}'
     
@@ -153,5 +158,8 @@ if __name__ == '__main__':
         type=int,
         default=1,
         help="Maximum number of forward steps per scheduler call.")
+    parser.add_argument("--enable-chunked-prefill",
+                        action="store_true",
+                        help="enforce chunked prefill")
     args = parser.parse_args()
-    run_benchmark(args, args.model, args.num_prompts, args.input_len, args.output_len, args.batched_test, args.enforce_eager, args.num_scheduler_steps)
+    run_benchmark(args, args.model, args.num_prompts, args.input_len, args.output_len, args.batched_test, args.enforce_eager, args.num_scheduler_steps,args.enable_chunked_prefill)

@@ -82,7 +82,7 @@ python code/sample_onnx_multithreads.py ./models/ox_sd_15_bs/ 2 fp16 norm test m
 
 ## Flux
 ```python
-python code/sample_flux.py --model /models/Flux/FLUX.1-schnell/ --batchsize 1 --offload false --resolution 1024x1024
+python code/sample_flux.py --model /pde_ai/models/llm/Flux/FLUX.1-schnell/ --batchsize 1 --offload false --resolution 1024x1024
 ```
 
 参数说明：

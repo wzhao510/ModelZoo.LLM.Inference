@@ -30,3 +30,4 @@ def get_vllm_version():
     except AttributeError:
         print("Can not get vLLM version")
         return None
+    
