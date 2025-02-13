@@ -103,7 +103,6 @@ async def send_request(
     prompt_len: int,
     output_len: int,
     best_of: int,
-    use_beam_search: bool,
 ) -> None:
     request_start_time = time.perf_counter()
 
@@ -113,15 +112,13 @@ async def send_request(
             "prompt": prompt,
             "n": 1,
             "best_of": best_of,
-            "use_beam_search": use_beam_search,
-            "temperature": 0.0 if use_beam_search else 1.0,
+            "temperature": 1.0,
             "top_p": 1.0,
             "max_tokens": output_len,
             "ignore_eos": True,
             "stream": False,
         }
     elif backend == "tgi":
-        assert not use_beam_search
         params = {
             "best_of": best_of,
             "max_new_tokens": output_len,
@@ -158,7 +155,6 @@ async def benchmark(
     api_url: str,
     input_requests: List[Tuple[str, int, int]],
     best_of: int,
-    use_beam_search: bool,
     request_rate: float,
 ) -> None:
     tasks: List[asyncio.Task] = []
@@ -166,7 +162,7 @@ async def benchmark(
         prompt, prompt_len, output_len = request
         task = asyncio.create_task(send_request(backend, api_url, prompt,
                                                 prompt_len, output_len,
-                                                best_of, use_beam_search))
+                                                best_of))
         tasks.append(task)
     await asyncio.gather(*tasks)
 
@@ -182,7 +178,7 @@ def main(args: argparse.Namespace):
 
     benchmark_start_time = time.perf_counter()
     asyncio.run(benchmark(args.backend, api_url, input_requests, args.best_of,
-                          args.use_beam_search, args.request_rate))
+                          args.request_rate))
     benchmark_end_time = time.perf_counter()
     benchmark_time = benchmark_end_time - benchmark_start_time
     print(f"Total time: {benchmark_time:.2f} s")
@@ -218,7 +214,6 @@ if __name__ == "__main__":
     parser.add_argument("--best-of", type=int, default=1,
                         help="Generates `best_of` sequences per prompt and "
                              "returns the best one.")
-    parser.add_argument("--use-beam-search", action="store_true")
     parser.add_argument("--num-prompts", type=int, default=1000,
                         help="Number of prompts to process.")
     parser.add_argument("--request-rate", type=float, default=float("inf"),
