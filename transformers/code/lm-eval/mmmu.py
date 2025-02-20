@@ -27,7 +27,7 @@ def run_eval(model_name):
     --batch_size {batch_size}'
     
     print(eval_cmd)
-    use_cmd = False
+    use_cmd = True
     if use_cmd:
         os.system(eval_cmd)
     else:
