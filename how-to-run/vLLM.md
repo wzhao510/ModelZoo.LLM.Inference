@@ -101,9 +101,10 @@ python code/c-eval.py ./models/${Model_name}
 ## benchmark throughput 性能测试
 使用方式：
 ```
-python code/bench_test.py  ./models/${Model_name} 24                # 跑24条数据测试 ，默认： 输入长度1024 输出长度1024
-python code/bench_test.py  ./models/${Model_name} 1024 512 128      # 跑1024条数据测试，设置: 输入长度512 输出长度 128
-python code/bench_test.py  ./models/${Model_name} 1024 512 128 1     # 最后一个1 表示进行批次跑；前面设置批次、输入长度、输出长度不生效，将会一次加载模型跑看护的35个case性能数据
+python code/bench_test.py --model ./models/${Model_name}    # 默认跑32条测试数据，默认输入长度1024 默认输出长度 1024
+python code/bench_test.py --model ./models/${Model_name} --num-prompts 24    # 设置跑24条数据测试 ，默认： 输入长度1024 输出长度1024
+python code/bench_test.py --model ./models/${Model_name} --num-prompts 1024 --input-len 512 --output-len 128    # 设置跑1024条数据测试，输入长度512，输出长度 128
+python code/bench_test.py --model ./models/${Model_name} --batched-test    # 表示进行批次跑，将会一次加载模型跑看护的35个case性能数据
 其中${Model_name}为models中目录名。
 ```
 ----  2024.07.31  ----

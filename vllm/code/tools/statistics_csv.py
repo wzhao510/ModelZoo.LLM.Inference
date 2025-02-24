@@ -35,9 +35,9 @@ def get_json(file_path):
 
     name_mapping = {
         # c500 mapping
-        "mcblas__Mck_hge" : "gemm",
+        "mcblas__Mck" : "gemm",
         "mcclKernel" : "mccl",
-        "void flash_fwd_kernel" : "flash-attn",
+        "void flash_fwd" : "flash-attn",
         "void vllm::paged_attention_v1" : "vllm:paged_attn_v1",
         "void vllm::paged_attention_v2" : "vllm:paged_attn_v2",
         "void vllm::rotary_embedding_kernel" : "vllm:rotary_embeded",
@@ -81,7 +81,8 @@ def main(dataset_path):
 
     for csv_file in csv_files:
         print(csv_file)
-        info = csv_file.split(".")[0]
+        #info = csv_file.split(".")[0]  # 这行会导致带.的模型分不出bs_inputlen_outputlen
+        info = csv_file.split[:-4]
         all_data_dict[info] = get_json(os.path.join(dataset_path, csv_file))
     
     

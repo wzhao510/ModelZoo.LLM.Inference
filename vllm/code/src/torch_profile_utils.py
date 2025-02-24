@@ -42,4 +42,4 @@ def profile_to_csv(prof,  output_name="profile_data.csv"):
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(headers)
         csvwriter.writerows(rows)
-    prof.export_chrome_trace(f"./mx_profile/{output_name}.json")
+    prof.export_chrome_trace(f"./mx_profile/{output_name[:-4]}.json")
