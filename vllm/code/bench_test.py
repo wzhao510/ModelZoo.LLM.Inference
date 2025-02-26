@@ -36,7 +36,8 @@ def run_benchmark_mutlimoda(args, model_config):
 
     cmd = "python3 '{}' '{}'".format(script_file, "' '".join(script_args))
     print(cmd)
-    os.system(cmd)
+    if os.system(cmd) != 0:
+        exit(1)
 
 
 def run_benchmark(args, model_name, num_prompt, input_len, output_len, is_batched, enforce_eager, num_scheduler_steps,enable_chunked_prefill):

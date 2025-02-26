@@ -39,7 +39,8 @@ def run_eval(model_name, enforce_eager=True):
     print(c_eval_cmd)
     use_cmd = True
     if use_cmd:
-        os.system(c_eval_cmd)
+        if os.system(c_eval_cmd) != 0:
+            exit(1)
     else:
         ret = subprocess.run(c_eval_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8')
         data = ret.stdout
