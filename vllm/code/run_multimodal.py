@@ -1,38 +1,47 @@
-import os
 import argparse
-from utils import get_params
+import subprocess
 
-def run_multimodal(args):
-    model_config = get_params(args.model)
+import utils
+
+
+def run_multimodal(args, other_args):
+    model_config = utils.get_params(args.model)
 
     model_path = model_config["model_path"]
     model_type = model_config["model_type"]
-    tp_size = model_config["model_param"]["tensor_parallel_size"]
-    dtype = model_config["model_param"]["dtype"]
-    gpu_memory_utilization = model_config["model_param"]["gpu_memory_utilization"]
-    max_num_seqs = model_config["model_param"]["max_num_seqs"]
+    model_param = model_config["model_param"]
+    tp_size = model_param["tensor_parallel_size"]
+    dtype = model_param["dtype"]
+    gpu_memory_utilization = model_param.get("gpu_memory_utilization", 0.95)
+    max_num_seqs = model_param.get("max_num_seqs", 64)
+    max_model_len = model_param.get("max_model_len", 4096)
 
     image_path = "./data/demo.jpeg"
-    script = "python ./code/src/offline_inference_vison_language.py"
-    if args.enforce_eager:
-            run_cmd = "{} --model-type {} --model-path {} --image-path {} --tensor_parallel_size {} --dtype {} --enforce-eager --gpu-memory-utilization {} --max-num-seqs {} --trust-remote-code".format(
-                    script, model_type, model_path, image_path, tp_size, dtype, gpu_memory_utilization, max_num_seqs)
-    else:
-        run_cmd = "{} --model-type {} --model-path {} --image-path {} --tensor_parallel_size {} --dtype {} --gpu-memory-utilization {} --max-num-seqs {} --trust-remote-code".format(
-                    script, model_type, model_path, image_path, tp_size, dtype, gpu_memory_utilization, max_num_seqs)
-    print(run_cmd)    
-    if os.system(run_cmd) != 0:
-        exit(1)
+    run_cmd = [
+        "python",
+        utils.get_modelzoo_vllm_dir() / "code/src/offline_inference_vison_language.py",
+        f"--model-type={model_type}",
+        f"--model-path={model_path}",
+        f"--image-path={image_path}",
+        f"--tensor-parallel-size={tp_size}",
+        f"--dtype={dtype}",
+        f"--gpu-memory-utilization={gpu_memory_utilization}",
+        f"--max-num-seqs={max_num_seqs}",
+        f"--max-model-len={max_model_len}",
+        f"--trust-remote-code",
+    ]
 
-if __name__ == '__main__':
+    # 这个排在后面会覆盖配置文件中的同名参数
+    run_cmd.extend(other_args)
+    print(run_cmd)
+    subprocess.run(run_cmd, check=True)
 
-    parser = argparse.ArgumentParser(description="Run vison language demo with offline inference.")
-    parser.add_argument("--model",
-                        type=str,
-                        required=True)
-    parser.add_argument("--enforce-eager",
-                        action="store_true",
-                        help="enforce eager execution")
-    
-    args = parser.parse_args()
-    run_multimodal(args)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Run vison language demo with offline inference."
+    )
+    parser.add_argument("--model", type=str, required=True)
+
+    args, other_args = parser.parse_known_args()
+    run_multimodal(args, other_args)

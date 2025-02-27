@@ -5,9 +5,11 @@ with the correct prompt format on vision language models.
 For most models, the prompt format should follow corresponding examples
 on HuggingFace model repository.
 """
+
 from transformers import AutoTokenizer
 
 from vllm import LLM, SamplingParams
+
 # from vllm.assets.image import ImageAsset
 from vllm.utils import FlexibleArgumentParser
 from PIL import Image
@@ -15,15 +17,19 @@ from PIL import Image
 
 question = "What is the content of this image?"
 
-def inital_LLM(model_path, dtype, enforce_eager, gpu_memory_utilization=0.9, tensor_parallel_size=1, max_num_seqs=5, trust_remote_code=True):  
-    llm = LLM(model=model_path, 
-              dtype=dtype, 
-              enforce_eager=enforce_eager,
-              gpu_memory_utilization=gpu_memory_utilization, 
-              tensor_parallel_size=tensor_parallel_size,
-              max_num_seqs=max_num_seqs,
-              trust_remote_code=trust_remote_code)
-    return llm
+
+def inital_LLM(args):
+    return LLM(
+        model=args.model_path,
+        dtype=args.dtype,
+        enforce_eager=args.enforce_eager,
+        gpu_memory_utilization=args.gpu_memory_utilization,
+        tensor_parallel_size=args.tensor_parallel_size,
+        max_num_seqs=args.max_num_seqs,
+        max_model_len=args.max_model_len,
+        trust_remote_code=args.trust_remote_code,
+    )
+
 
 # LLaVA-1.5
 def generate_prompt_llava(question, model_path):
@@ -92,15 +98,11 @@ def generate_prompt_minicpmv(question, model_path):
     # model_name = "HwwwH/MiniCPM-V-2"
 
     # 2.5
-    tokenizer = AutoTokenizer.from_pretrained(model_path,
-                                              trust_remote_code=True)
-    messages = [{
-        'role': 'user',
-        'content': f'(<image>./</image>)\n{question}'
-    }]
-    prompt = tokenizer.apply_chat_template(messages,
-                                           tokenize=False,
-                                           add_generation_prompt=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    messages = [{"role": "user", "content": f"(<image>./</image>)\n{question}"}]
+    prompt = tokenizer.apply_chat_template(
+        messages, tokenize=False, add_generation_prompt=True
+    )
     return prompt
 
 
@@ -120,6 +122,16 @@ def generate_prompt_internvl(question, model_path):
     return prompt
 
 
+# Qwen2 VL
+def generate_prompt_qwen_vl(question, model_path):
+    return (
+        "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n"
+        "<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>"
+        f"{question}<|im_end|>\n"
+        "<|im_start|>assistant\n"
+    )
+
+
 # BLIP-2
 def generate_prompt_blip2(question, model_path):
 
@@ -127,6 +139,7 @@ def generate_prompt_blip2(question, model_path):
     # See https://huggingface.co/Salesforce/blip2-opt-2.7b/discussions/15#64ff02f3f8cf9e4f5b038262 #noqa
     prompt = f"Question: {question} Answer:"
     return prompt
+
 
 model_prompt_map = {
     "llava": generate_prompt_llava,
@@ -138,7 +151,10 @@ model_prompt_map = {
     "minicpmv": generate_prompt_minicpmv,
     "blip-2": generate_prompt_blip2,
     "internvl_chat": generate_prompt_internvl,
+    "intern_vl": generate_prompt_internvl,
+    "qwen_vl": generate_prompt_qwen_vl,
 }
+
 
 def get_prompt(model_type, question, model_path):
     if model_type not in model_prompt_map:
@@ -149,42 +165,35 @@ def get_prompt(model_type, question, model_path):
 def main(args):
     model_type = args.model_type
     model_path = args.model_path
-        
+
     prompt = get_prompt(model_type=model_type, question=question, model_path=model_path)
-    llm = inital_LLM(model_path=args.model_path,
-                     dtype=args.dtype,
-                     enforce_eager=args.enforce_eager,
-                     gpu_memory_utilization=args.gpu_memory_utilization,
-                     tensor_parallel_size=args.tensor_parallel_size,
-                     max_num_seqs=args.max_num_seqs,
-                     trust_remote_code=args.trust_remote_code)
+    llm = inital_LLM(args)
 
     image = Image.open(args.image_path).convert("RGB")
     # We set temperature to 0.2 so that outputs can be different
     # even when all prompts are identical when running batch inference.
-    sampling_params = SamplingParams(temperature=0.98, max_tokens=512,top_k=1)
+    sampling_params = SamplingParams(temperature=0.98, max_tokens=512, top_k=1)
 
     assert args.num_prompts > 0
     if args.num_prompts == 1:
         # Single inference
         inputs = {
             "prompt": prompt,
-            "multi_modal_data": {
-                "image": image
-            },
+            "multi_modal_data": {"image": image},
         }
 
     else:
         # Batch inference
-        inputs = [{
-            "prompt": prompt,
-            "multi_modal_data": {
-                "image": image
-            },
-        } for _ in range(args.num_prompts)]
+        inputs = [
+            {
+                "prompt": prompt,
+                "multi_modal_data": {"image": image},
+            }
+            for _ in range(args.num_prompts)
+        ]
 
     outputs = llm.generate(inputs, sampling_params=sampling_params)
-    #print(outputs)
+    # print(outputs)
     for o in outputs:
         generated_text = o.outputs[0].text
         print(f"generated_text :{generated_text}")
@@ -192,50 +201,58 @@ def main(args):
 
 if __name__ == "__main__":
     parser = FlexibleArgumentParser(
-        description='Demo on using vLLM for offline inference with '
-        'vision language models')
-    parser.add_argument('--model-type',
-                        type=str,
-                        required=True,
-                        help='model type of vision language')
-    parser.add_argument('--model-path',
-                        type=str,
-                        required=True,
-                        help='model path of vision language')
-    parser.add_argument('--image-path',
-                        type=str,
-                        required=True,
-                        help='path of input image')
-    parser.add_argument('--max-num-seqs',
-                        type=int,
-                        default=128,
-                        help='Number of max seqs.')
-    parser.add_argument('--num-prompts',
-                        type=int,
-                        default=1,
-                        help='Number of prompts to run.')
-    parser.add_argument("--tensor-parallel-size", "-tp", type=int, default=1)
-    parser.add_argument('--trust-remote-code',
-                        action='store_true',
-                        help='trust remote code from huggingface')
-    parser.add_argument("--enforce-eager",
-                        action="store_true",
-                        help="enforce eager execution")
+        description="Demo on using vLLM for offline inference with "
+        "vision language models"
+    )
     parser.add_argument(
-        '--dtype',
+        "--model-type", type=str, required=True, help="model type of vision language"
+    )
+    parser.add_argument(
+        "--model-path", type=str, required=True, help="model path of vision language"
+    )
+    parser.add_argument(
+        "--image-path", type=str, required=True, help="path of input image"
+    )
+    parser.add_argument(
+        "--max-num-seqs", type=int, default=128, help="Number of max seqs."
+    )
+    parser.add_argument(
+        "--max-model-len",
+        type=int,
+        default=None,
+        help="Maximum length of a sequence (including prompt and output). "
+        "If None, will be derived from the model.",
+    )
+    parser.add_argument(
+        "--num-prompts", type=int, default=1, help="Number of prompts to run."
+    )
+    parser.add_argument("--tensor-parallel-size", "-tp", type=int, default=1)
+    parser.add_argument(
+        "--trust-remote-code",
+        action="store_true",
+        help="trust remote code from huggingface",
+    )
+    parser.add_argument(
+        "--enforce-eager", action="store_true", help="enforce eager execution"
+    )
+    parser.add_argument(
+        "--dtype",
         type=str,
-        default='auto',
-        choices=['auto', 'half', 'float16', 'bfloat16', 'float', 'float32'],
-        help='data type for model weights and activations. '
+        default="auto",
+        choices=["auto", "half", "float16", "bfloat16", "float", "float32"],
+        help="data type for model weights and activations. "
         'The "auto" option will use FP16 precision '
-        'for FP32 and FP16 models, and BF16 precision '
-        'for BF16 models.')
-    parser.add_argument('--gpu-memory-utilization',
-                        type=float,
-                        default=0.9,
-                        help='the fraction of GPU memory to be used for '
-                        'the model executor, which can range from 0 to 1.'
-                        'If unspecified, will use the default value of 0.9.')
+        "for FP32 and FP16 models, and BF16 precision "
+        "for BF16 models.",
+    )
+    parser.add_argument(
+        "--gpu-memory-utilization",
+        type=float,
+        default=0.9,
+        help="the fraction of GPU memory to be used for "
+        "the model executor, which can range from 0 to 1."
+        "If unspecified, will use the default value of 0.9.",
+    )
 
     args = parser.parse_args()
     main(args)
