@@ -1,0 +1,13 @@
+{
+    "chatglm3-6b-32k": "/pde_ai/models/llm/ChatGLM/chatglm3-6b-32k/",
+    "qwen2.5-72b-gptq-int4":"/pde_ai/models/llm/Qwen/Qwen2___5-72B-Instruct-GPTQ-Int4/",
+    "llama3-8b":"/pde_ai/models/llm/Llama/Meta-Llama-3-8B-Instruct/",
+    "llama3-70b":"/pde_ai/models/llm/Llama/Meta-Llama-3-70B/",
+    "qwen2.5-7b":"/pde_ai/models/llm/Qwen/Qwen2.5-7B-Instruct/",
+    "qwen2.5-72b":"/pde_ai/models/llm/Qwen/Qwen2.5-72B-Instruct/",
+    "qwen2-7b":"/pde_ai/models/llm/Qwen/Qwen2-7B-Instruct/",
+    "chatglm2-6b":"/pde_ai/models/llm/ChatGLM/chatglm2-6b/",
+    "qwen2-72b":"/pde_ai/models/llm/Qwen/Qwen2-72B-Instruct/",
+    "glm4-9b":"/pde_ai/models/llm/ChatGLM/glm-4-9b/",
+    "mixtral8x7b":"/pde_ai/models/llm/Mistral/Mixtral-8x7B-v0.1/"
+}

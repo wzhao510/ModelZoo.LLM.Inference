@@ -167,4 +167,20 @@ python -m vllm.entrypoints.openai.api_server --model /pde_ai/models/llm/Llama/Ll
 ```
  python ./code/run_multimodal.py --model ./models/InternVL-chat-v1.5/
 ```
-
+---- 2025.02.27 ----
+新增longbench v1长文本精度测试集:
+'''shell
+pip install -r code/longbench/requirements.txt 
+'''
+跑GPTQ模型
+'''
+python code/longbench/pred_vllm.py --model qwen2.5-72b-gptq-int4 --checkpoint /pde_ai/models/llm/Qwen/Qwen2___5-72B-Instruct-GPTQ-Int4/ --s 8 --tp 2 --quantize
+'''
+跑非GPTQ模型
+'''
+python pred_vllm.py --model qwen2-7b --checkpoint /pde_ai/models/llm/Qwen2-7B-Instruct --tp 1  --s 8
+'''
+通过开源脚本https://github.com/THUDM/LongBench/blob/main/LongBench/eval.py得到模型的longbench结果,保存在./pred
+'''
+python eval.py --model qwen2-7b
+'''
