@@ -39,7 +39,6 @@ class VllmBenchmark:
             gpu_memory_utilization=args.gpu_memory_utilization,
             enforce_eager=args.enforce_eager,
             kv_cache_dtype=args.kv_cache_dtype,
-            quantization_param_path=args.quantization_param_path,
             device=args.device,
             enable_prefix_caching=args.enable_prefix_caching,
             download_dir=args.download_dir,
@@ -145,7 +144,10 @@ class VllmBenchmark:
             )
             first_token_time = min(first_token_time, i.metrics.first_token_time)
             finished_time = max(finished_time, i.metrics.finished_time)
-            decoder_latency.append((i.metrics.finished_time - i.metrics.first_token_time) / (len(i.outputs[0].token_ids) - 1))
+            decoder_latency.append(
+                (i.metrics.finished_time - i.metrics.first_token_time)
+                / (len(i.outputs[0].token_ids) - 1)
+            )
 
         res = BenchData()
         # res.texts = texts
@@ -158,11 +160,13 @@ class VllmBenchmark:
         res.finished_time = finished_time
         res.elapsed_time = finished_time - first_scheduled_time
 
-        res.ttft = (first_token_time - arrival_time)*1000
-        res.tpot = (finished_time - first_token_time)*1000 / (
-            output_tokens_number - len(data)
+        res.ttft = (first_token_time - arrival_time) * 1000
+        res.tpot = (
+            (finished_time - first_token_time)
+            * 1000
+            / (output_tokens_number - len(data))
         )
-        res.decoder_latency = np.mean(decoder_latency)*1000
+        res.decoder_latency = np.mean(decoder_latency) * 1000
         res.tps = res.tokens_number / res.elapsed_time
         res.output_pts = output_tokens_number / res.elapsed_time
         return res
@@ -186,7 +190,13 @@ class PromptTemplate:
         )
 
     def intern_vl(self, question: str) -> str:
-        return f"<image>\n{question}"
+        return f"<|im_start|>user\n<image>\n{question}\n<|im_end|>\n<|im_start|>assistant\n"
+
+    def internvl_chat(self, question: str) -> str:
+        return self.intern_vl(question)
+
+    def glm4v(self, question: str) -> str:
+        return f"<|user|>\n<|begin_of_image|><|endoftext|><|end_of_image|>{question}<|assistant|>"
 
 
 def main(args: argparse.Namespace):
@@ -334,17 +344,6 @@ if __name__ == "__main__":
         help='Data type for kv cache storage. If "auto", will use model '
         "data type. CUDA 11.8+ supports fp8 (=fp8_e4m3) and fp8_e5m2. "
         "ROCm (AMD GPU) supports fp8 (=fp8_e4m3)",
-    )
-    parser.add_argument(
-        "--quantization-param-path",
-        type=str,
-        default=None,
-        help="Path to the JSON file containing the KV cache scaling factors. "
-        "This should generally be supplied, when KV cache dtype is FP8. "
-        "Otherwise, KV cache scaling factors default to 1.0, which may cause "
-        "accuracy issues. FP8_E5M2 (without scaling) is only supported on "
-        "cuda version greater than 11.8. On ROCm (AMD GPU), FP8_E4M3 is "
-        "instead supported for common inference criteria.",
     )
     parser.add_argument(
         "--device",
