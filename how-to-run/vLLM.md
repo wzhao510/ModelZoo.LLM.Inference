@@ -127,7 +127,7 @@ python code/src/offline_inference_multi_lora.py --model /pde_ai/models/llm/Llama
 ```
 LoRA 跑性能数据 --当前性能较差，后续会对其进行优化
 ```python
-python code/bench_test.py ./models/Llama2_7b_sql_lora/ 64 1024 1024
+python code/bench_test.py --model ./models/Llama2_7b_sql_lora/ --num-prompts 64 --input-len 1024 --output-len 1024
 ```
 
 ## 量化特性支持（Released版本大于等于 2.23）

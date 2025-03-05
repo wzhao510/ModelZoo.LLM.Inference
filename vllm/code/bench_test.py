@@ -40,8 +40,8 @@ def run_benchmark_mutlimoda(args, model_config):
         exit(1)
 
 
-def run_benchmark(args, model_name, num_prompt, input_len, output_len, is_batched, enforce_eager, num_scheduler_steps,enable_chunked_prefill):
-    model_config = get_params(model_name)
+def run_benchmark(args):
+    model_config = get_params(args.model)
     vllm_version = get_vllm_version()
     print(f"vLLM version: {vllm_version}")
     if vllm_version is None:
@@ -57,74 +57,43 @@ def run_benchmark(args, model_name, num_prompt, input_len, output_len, is_batche
     pipeline_parallel_size = model_config["c-eval_param"].get("pipeline_parallel_size")
     async_engine = model_config.get("async_engine")
     dtype = model_config["c-eval_param"]["dtype"]
-    gpu_memory_utilization = model_config["c-eval_param"]["gpu_memory_utilization"]
-    task_name = model_config["c-eval_param"]["task_name"]
-    batch_size = model_config["c-eval_param"]["batch_size"]
-
+    gpu_memory_utilization = args.gpu_memory_utilization if args.gpu_memory_utilization is not None else model_config["c-eval_param"]["gpu_memory_utilization"]
+    
     enable_profile = os.getenv("MX_VLLM_ENABLE_PROFILE", None)
     enable_profile= False if enable_profile is None else True
 
+    benchmark_cmd = f'python ./code/src/benchmark_throughput.py  --model={model_path}  \
+                        --backend=vllm --max-model-len 2048 --num-prompts {args.num_prompts} --trust-remote-code --dtype {dtype} \
+                        --input-len {args.input_len} --output-len {args.output_len} --tensor-parallel-size {tensor_parallel_size} --gpu-memory-utilization {gpu_memory_utilization}'
+    if args.batched_test:
+        benchmark_cmd += " --batched-test"  
 
-    if is_int(is_batched) and int(is_batched) == 0:
-        if vllm_version.startswith("0.4.0"):
-            c_eval_cmd = f'python ./code/src/benchmark_throughput.py  --model={model_path}  \
-                        --backend=vllm --max-model-len 2048 --num-prompts {num_prompt} --trust-remote-code --dtype {dtype} \
-                        --input-len {input_len} --output-len {output_len} --tensor-parallel-size {tensor_parallel_size} '
-        elif vllm_version.startswith("0.5"):
-             c_eval_cmd = f'python ./code/src/benchmark_throughput_0.5.0.py  --model={model_path}  \
-                        --backend=vllm --max-model-len 2048 --num-prompts {num_prompt} --trust-remote-code --dtype {dtype} \
-                        --input-len {input_len} --output-len {output_len} --tensor-parallel-size {tensor_parallel_size}'
-        elif vllm_version.startswith("0.6"):
-            extra_args = ""
-            if pipeline_parallel_size is not None:
-                extra_args = f"{extra_args} --pipeline-parallel-size={pipeline_parallel_size}"
-            if async_engine is not None and async_engine:
-                extra_args = f"{extra_args} --async-engine"
-            print(f"extra_args: {extra_args}")
-            c_eval_cmd = f'python ./code/src/benchmark_throughput_0.6.0.py  --model={model_path}  \
-                        --backend=vllm --max-model-len 2048 --num-prompts {num_prompt} --trust-remote-code --dtype {dtype} \
-                        --input-len {input_len} --output-len {output_len} --tensor-parallel-size {tensor_parallel_size} \
-                        {extra_args}'
-    else:
-        if vllm_version.startswith("0.4.0"):
-            c_eval_cmd = f'python ./code/src/benchmark_throughput_batched.py  --model={model_path}  \
-                        --backend=vllm --max-model-len 2048 --num-prompts {num_prompt} --trust-remote-code --dtype {dtype} \
-                        --input-len {input_len} --output-len {output_len} --tensor-parallel-size {tensor_parallel_size}'
-        elif vllm_version.startswith("0.5"):
-            c_eval_cmd = f'python ./code/src/benchmark_throughput_batched_0.5.0.py  --model={model_path}  \
-                        --backend=vllm --max-model-len 2048 --num-prompts {num_prompt} --trust-remote-code --dtype {dtype} \
-                        --input-len {input_len} --output-len {output_len} --tensor-parallel-size {tensor_parallel_size}'
-        else:
-            if enable_chunked_prefill:
-                 c_eval_cmd = f'python ./code/src/benchmark_throughput_batched_0.6.0.py  --model={model_path}  \
-                        --backend=vllm --max-model-len 2048 --num-prompts {num_prompt} --trust-remote-code --dtype {dtype} \
-                        --input-len {input_len} --output-len {output_len} --tensor-parallel-size {tensor_parallel_size} --enable-chunked-prefill '
-            else:
-                c_eval_cmd = f'python ./code/src/benchmark_throughput_batched_0.6.0.py  --model={model_path}  \
-                        --backend=vllm --max-model-len 2048 --num-prompts {num_prompt} --trust-remote-code --dtype {dtype} \
-                        --input-len {input_len} --output-len {output_len} --tensor-parallel-size {tensor_parallel_size}'
+    if async_engine is not None and async_engine:
+        benchmark_cmd += " --async-engine"
     
+    if pipeline_parallel_size is not None:
+        benchmark_cmd += f" --pipeline-parallel-size={pipeline_parallel_size}"
+
     if lora_path is not None and os.path.isdir(lora_path):
-        c_eval_cmd += f" --lora_path {lora_path}"
+        benchmark_cmd += f" --lora_path {lora_path}"
     
     if enable_profile:
-        c_eval_cmd += " --enable-profile"
+        benchmark_cmd += " --enable-profile"
     
     # if arm, we set enforce_eager=false to turn on CUDA_GRAPH for better performance.
     # if you want to test another option, please modify this code.
-    machine = platform.machine()
-    if enforce_eager:
-        c_eval_cmd += f" --enforce-eager"
+    if args.enforce_eager:
+        benchmark_cmd += f" --enforce-eager"
     
     if args.disable_sliding_window:
-        c_eval_cmd += f" --disable-sliding-window"
+        benchmark_cmd += f" --disable-sliding-window"
 
-    if num_scheduler_steps is not None and vllm_version.startswith("0.6"):
-        c_eval_cmd += f" --num-scheduler-steps={num_scheduler_steps}"
+    if args.num_scheduler_steps is not None:
+        benchmark_cmd += f" --num-scheduler-steps={args.num_scheduler_steps}"
 
-    print(c_eval_cmd)
+    print(benchmark_cmd)
     
-    os.system(c_eval_cmd)
+    os.system(benchmark_cmd)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Benchmark the throughput.")
@@ -162,5 +131,11 @@ if __name__ == '__main__':
     parser.add_argument("--enable-chunked-prefill",
                         action="store_true",
                         help="enforce chunked prefill")
+    parser.add_argument('--gpu-memory-utilization',
+                        type=float,
+                        default=0.9,
+                        help='the fraction of GPU memory to be used for '
+                        'the model executor, which can range from 0 to 1.'
+                        'If unspecified, will use the default value of 0.9.')
     args = parser.parse_args()
-    run_benchmark(args, args.model, args.num_prompts, args.input_len, args.output_len, args.batched_test, args.enforce_eager, args.num_scheduler_steps,args.enable_chunked_prefill)
+    run_benchmark(args)

@@ -1,19 +1,24 @@
 """Benchmark offline inference throughput."""
-
 import os
 import argparse
 import json
 import random
 import time
 from typing import List, Optional, Tuple
+from torch_profile_utils  import profile_to_csv
 
 import torch
+import numpy as np
 from tqdm import tqdm
-
-from torch_profile_utils  import profile_to_csv
 from transformers import (AutoModelForCausalLM, AutoTokenizer,
                           PreTrainedTokenizerBase)
 
+from vllm.model_executor.layers.quantization import QUANTIZATION_METHODS
+from vllm import LLM, SamplingParams, AsyncLLMEngine
+from vllm.distributed import cleanup_dist_env_and_memory
+
+import asyncio
+import uuid
 
 MX_PROFILE_CSV_NAME = "default_1_1_1.csv"
 
@@ -26,76 +31,163 @@ def str2bool(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
+        
+async def run_vllm_async(
+    # requests: List[Tuple[str, int, int]],
+    args: argparse.Namespace,
+) -> float:
+    def post_process(requests, results):
+        begin_time = time.time()
+        end_time = 0
+        for i in results:
+            begin_time = min(begin_time, i.metrics.first_scheduled_time)
+            end_time = max(end_time, i.metrics.finished_time)
 
-def sample_requests(
-    dataset_path: str,
-    num_requests: int,
-    tokenizer: PreTrainedTokenizerBase,
-    fixed_output_len: Optional[int],
-) -> List[Tuple[str, int, int]]:
-    if fixed_output_len is not None and fixed_output_len < 4:
-        raise ValueError("output_len too small")
+        elasped_time = end_time - begin_time
+        show_result(requests, (elasped_time, None, None))
 
-    # Load the dataset.
-    with open(dataset_path) as f:
-        dataset = json.load(f)
-    # Filter out the conversations with less than 2 turns.
-    dataset = [data for data in dataset if len(data["conversations"]) >= 2]
-    # Only keep the first two turns of each conversation.
-    dataset = [(data["conversations"][0]["value"],
-                data["conversations"][1]["value"]) for data in dataset]
+    from vllm.engine.arg_utils import AsyncEngineArgs
+    engine = AsyncLLMEngine.from_engine_args(
+        AsyncEngineArgs(
+            model=args.model,
+            tokenizer=args.tokenizer,
+            quantization=args.quantization,
+            tensor_parallel_size=args.tensor_parallel_size,
+            pipeline_parallel_size=args.pipeline_parallel_size,
+            seed=args.seed,
+            trust_remote_code=args.trust_remote_code,
+            dtype=args.dtype,
+            max_model_len=args.max_model_len,
+            gpu_memory_utilization=args.gpu_memory_utilization,
+            enforce_eager=args.enforce_eager,
+            kv_cache_dtype=args.kv_cache_dtype,
+            device=args.device,
+            enable_prefix_caching=args.enable_prefix_caching,
+            download_dir=args.download_dir,
+            enable_chunked_prefill=args.enable_chunked_prefill,
+            max_num_batched_tokens=args.max_num_batched_tokens,
+            distributed_executor_backend=args.distributed_executor_backend,
+            load_format=args.load_format,
+            num_scheduler_steps=args.num_scheduler_steps,
+            use_v2_block_manager=args.use_v2_block_manager,
+            disable_async_output_proc=args.disable_async_output_proc,
+        )
+    )
 
-    # Tokenize the prompts and completions.
-    prompts = [prompt for prompt, _ in dataset]
-    prompt_token_ids = tokenizer(prompts).input_ids
-    completions = [completion for _, completion in dataset]
-    completion_token_ids = tokenizer(completions).input_ids
-    tokenized_dataset = []
-    for i in range(len(dataset)):
-        output_len = len(completion_token_ids[i])
-        if fixed_output_len is not None:
-            output_len = fixed_output_len
-        tokenized_dataset.append((prompts[i], prompt_token_ids[i], output_len))
+    params = SamplingParams(
+        n=args.n,
+        temperature=1.0,
+        top_p=1.0,
+        ignore_eos=True,
+        max_tokens=args.output_len,
+    )
 
-    # Filter out too long sequences.
-    filtered_dataset: List[Tuple[str, int, int]] = []
-    for prompt, prompt_token_ids, output_len in tokenized_dataset:
-        prompt_len = len(prompt_token_ids)
-        if prompt_len < 4 or output_len < 4:
-            # Prune too short sequences.
-            continue
-        if prompt_len > 1024 or prompt_len + output_len > 2048:
-            # Prune too long sequences.
-            continue
-        filtered_dataset.append((prompt, prompt_len, output_len))
+    print("Start warm up....")
+    for idx in range(args.warmup_loops):
+        print(f"warm up {idx}...")
+        requests = prepare_request(args.input_len, args.output_len, args.num_prompts)
+        
+        tasks = list(map(lambda x: asyncio.create_task(
+            vllm_async_generate(engine, x[0], params, uuid.uuid4())), requests))
+        res = [await task for task in tasks]
+        post_process(requests, res)
+        
+    if args.batched_test:
+        print("Start batched test....")
+        for batch in [1,8,16,32,64]:
+            for input_len in [256, 512, 1024]:
+                for output_len in [128, 512, 1024]:
+                    if input_len == 1024 and output_len != 1024:
+                        continue
 
-    # Sample the requests.
-    sampled_requests = random.sample(filtered_dataset, num_requests)
-    return sampled_requests
+                    # Synthesize a prompt with the given input length.
+                    requests = prepare_request(input_len, output_len, batch) 
+                    params = SamplingParams(
+                        n=args.n,
+                        temperature=1.0,
+                        top_p=1.0,
+                        ignore_eos=True,
+                        max_tokens=args.output_len,
+                    )
+                    
+                    tasks = list(map(lambda x: asyncio.create_task(
+                    vllm_async_generate(engine, x[0], params, uuid.uuid4())), requests))
+                    res = [await task for task in tasks]
+                    post_process(requests, res)
+    else:
+        print("Start performance test....")
+        if not args.enable_profile:
+            tasks = list(map(lambda x: asyncio.create_task(
+                vllm_async_generate(engine, x[0], params, uuid.uuid4())), requests))
+            res = [await task for task in tasks]
+        else:
+            with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:
+                tasks = list(map(lambda x: asyncio.create_task(
+                    vllm_async_generate(engine, x[0], params, uuid.uuid4())), requests))
+                res = [await task for task in tasks]
 
+            profile_to_csv(prof, MX_PROFILE_CSV_NAME)
+
+        post_process(requests, res)
+
+    engine.shutdown_background_loop()
+    del engine
+    await asyncio.sleep(0.1)
+    cleanup_dist_env_and_memory()
+
+async def vllm_async_generate(engine, prompt, params, id):
+    results_generator = engine.generate(prompt, params, id)
+
+    final_output = None
+
+    async for request_output in results_generator:
+        final_output = request_output
+
+    return final_output
+
+def get_vllm(args):
+    enable_lora = False
+    if args.lora_path is not None:
+        if os.path.isdir(args.lora_path):
+            enable_lora = True
+        else:
+            raise ValueError(f"lora path: {args.lora_path} does not exit")
+    
+    llm = LLM(
+        model=args.model,
+        tokenizer=args.tokenizer,
+        quantization=args.quantization,
+        tensor_parallel_size=args.tensor_parallel_size,
+        seed=args.seed,
+        trust_remote_code=args.trust_remote_code,
+        dtype=args.dtype,
+        max_model_len=args.max_model_len,
+        gpu_memory_utilization=args.gpu_memory_utilization,
+        enforce_eager=args.enforce_eager,
+        kv_cache_dtype=args.kv_cache_dtype,
+        device=args.device,
+        enable_prefix_caching=args.enable_prefix_caching,
+        download_dir=args.download_dir,
+        enable_chunked_prefill=args.enable_chunked_prefill,
+        max_num_batched_tokens=args.max_num_batched_tokens,
+        distributed_executor_backend=args.distributed_executor_backend,
+        load_format=args.load_format,
+        num_scheduler_steps=args.num_scheduler_steps,
+        use_v2_block_manager=args.use_v2_block_manager,
+        disable_async_output_proc=args.disable_async_output_proc,
+        enable_lora=enable_lora,
+        disable_sliding_window=args.disable_sliding_window
+    )
+    return llm
 
 def run_vllm(
+    llm,
     requests: List[Tuple[str, int, int]],
-    model: str,
-    tokenizer: str,
-    quantization: Optional[str],
-    tensor_parallel_size: int,
-    seed: int,
     n: int,
-    use_beam_search: bool,
-    trust_remote_code: bool,
-    dtype: str,
-    max_model_len: Optional[int],
-    enforce_eager: bool,
-    kv_cache_dtype: str,
-    device: str,
-    enable_prefix_caching: bool,
-    gpu_memory_utilization: float = 0.9,
-    download_dir: Optional[str] = None,
     lora_path: Optional[str] = None,
     enable_profile: Optional[bool] = False,
 ) -> float:
-    from vllm import LLM, SamplingParams
+    from vllm import SamplingParams
     from vllm.lora.request import LoRARequest
     enable_lora = False
     if lora_path is not None:
@@ -103,191 +195,137 @@ def run_vllm(
             enable_lora = True
         else:
             raise ValueError(f"lora path: {lora_path} does not exit")
-    llm = LLM(model=model,
-              tokenizer=tokenizer,
-              quantization=quantization,
-              tensor_parallel_size=tensor_parallel_size,
-              seed=seed,
-              trust_remote_code=trust_remote_code,
-              dtype=dtype,
-              max_model_len=max_model_len,
-              gpu_memory_utilization=gpu_memory_utilization,
-              enforce_eager=enforce_eager,
-              kv_cache_dtype=kv_cache_dtype,
-              device=device,
-              enable_prefix_caching=enable_prefix_caching,
-              download_dir=download_dir,
-              enable_lora=enable_lora)
-
+        
     # Add the requests to the engine.
+    prompts = []
+    sampling_params = []
     for prompt, _, output_len in requests:
-        sampling_params = SamplingParams(
-            n=n,
-            temperature=0.0 if use_beam_search else 1.0,
-            top_p=1.0,
-            use_beam_search=use_beam_search,
-            ignore_eos=True,
-            max_tokens=output_len,
-        )
-        # FIXME(woosuk): Do not use internal method.
-        if not enable_lora:
-            llm._add_request(
-                prompt=prompt,
-                prompt_token_ids=None,
-                sampling_params=sampling_params,
-            )
+        prompts.append(prompt)
+        sampling_params.append(
+            SamplingParams(
+                n=n,
+                temperature=1.0,
+                top_p=1.0,
+                ignore_eos=True,
+                max_tokens=output_len,
+            ))
+    
+    E2E_TIME = [] # 端到端推理延时
+    FIRST_LATENCY = [] # 每个并发首token延时 TTFT
+    INFER_LATENCY = [] # 每个并发推理时间延时 ITL
+    DECODER_LATENCY = []
+
+    if enable_lora:
+        if enable_profile:
+            with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:
+                start = time.perf_counter()
+                output = llm.generate(prompts, sampling_params, lora_request=LoRARequest("sql_adapter", 1, lora_path), use_tqdm=True)
+                end = time.perf_counter()
+            profile_to_csv(prof, MX_PROFILE_CSV_NAME)
         else:
-            llm._add_request(
-                prompt=prompt,
-                prompt_token_ids=None,
-                sampling_params=sampling_params,
-                lora_request=LoRARequest("sql_adapter", 1, lora_path)
-            )
+            start = time.perf_counter()
+            output = llm.generate(prompts, sampling_params, lora_request=LoRARequest("sql_adapter", 1, lora_path), use_tqdm=True)
+            end = time.perf_counter()
+    else:
+        if enable_profile:
+            with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:
+                start = time.perf_counter()
+                output = llm.generate(prompts, sampling_params, use_tqdm=True)
+                end = time.perf_counter()
 
-    if not enable_profile:
-        start = time.perf_counter()
-        # FIXME(woosuk): Do not use internal method.
-        llm._run_engine(use_tqdm=True)
-        end = time.perf_counter()
-        return end - start
-    
-    # with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,],on_trace_ready=trace_handler_f) as p:
-    with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:
-        start = time.perf_counter()
-        # FIXME(woosuk): Do not use internal method.
-        llm._run_engine(use_tqdm=True)
-        end = time.perf_counter()
+            profile_to_csv(prof, MX_PROFILE_CSV_NAME)
+        else:
+            start = time.perf_counter()
+            output = llm.generate(prompts, sampling_params, use_tqdm=True)
+            end = time.perf_counter()
+        
+    for out in output:
+        ## 打印输出toknen 长度
+        # print("output token length: ", len((out.outputs[0].token_ids)))
+        
+        if out.metrics.first_token_time is not None:
+            ## 每个并发首字完成耗时
+            TTFT = out.metrics.first_token_time - out.metrics.arrival_time
+            FIRST_LATENCY.append(TTFT)
+            ## 每个并发Decoding完成耗时
+            DTL = (out.metrics.finished_time - out.metrics.first_token_time) / (len(out.outputs[0].token_ids) - 1)            
+            DECODER_LATENCY.append(DTL)
 
-    profile_to_csv(prof, MX_PROFILE_CSV_NAME)
-    return end - start
+        ## 每个并发推理完成耗时
+        ITL = out.metrics.finished_time - out.metrics.arrival_time
+        INFER_LATENCY.append(ITL)
+    E2E_TIME.append(end-start)
+    return np.mean(E2E_TIME), np.mean(FIRST_LATENCY), np.mean(DECODER_LATENCY)*1000
 
-    
+def prepare_request(input_len, output_len, num_prompts):
+    prompt = "hi" * input_len
+    requests = [(prompt, input_len, output_len)
+                    for _ in range(num_prompts)]
+    return requests
 
+def show_result(requests: List, 
+                infer_costs: Tuple):
+    total_num_tokens = sum(prompt_len + output_len
+                            for _, prompt_len, output_len in requests)
+    _, prompt_len, output_len = requests[0]
+    elapsed_time, ttft, decoder_latency = infer_costs
 
-def run_hf(
-    requests: List[Tuple[str, int, int]],
-    model: str,
-    tokenizer: PreTrainedTokenizerBase,
-    n: int,
-    use_beam_search: bool,
-    max_batch_size: int,
-    trust_remote_code: bool,
-) -> float:
-    assert not use_beam_search
-    llm = AutoModelForCausalLM.from_pretrained(
-        model, torch_dtype=torch.float16, trust_remote_code=trust_remote_code)
-    if llm.config.model_type == "llama":
-        # To enable padding in the HF backend.
-        tokenizer.pad_token = tokenizer.eos_token
-    llm = llm.cuda()
-
-    pbar = tqdm(total=len(requests))
-    start = time.perf_counter()
-    batch: List[str] = []
-    max_prompt_len = 0
-    max_output_len = 0
-    for i in range(len(requests)):
-        prompt, prompt_len, output_len = requests[i]
-        # Add the prompt to the batch.
-        batch.append(prompt)
-        max_prompt_len = max(max_prompt_len, prompt_len)
-        max_output_len = max(max_output_len, output_len)
-        if len(batch) < max_batch_size and i != len(requests) - 1:
-            # Check if we can add more requests to the batch.
-            _, next_prompt_len, next_output_len = requests[i + 1]
-            if (max(max_prompt_len, next_prompt_len) +
-                    max(max_output_len, next_output_len)) <= 2048:
-                # We can add more requests to the batch.
-                continue
-
-        # Generate the sequences.
-        input_ids = tokenizer(batch, return_tensors="pt",
-                              padding=True).input_ids
-        llm_outputs = llm.generate(
-            input_ids=input_ids.cuda(),
-            do_sample=not use_beam_search,
-            num_return_sequences=n,
-            temperature=1.0,
-            top_p=1.0,
-            use_cache=True,
-            max_new_tokens=max_output_len,
-        )
-        # Include the decoding time.
-        tokenizer.batch_decode(llm_outputs, skip_special_tokens=True)
-        pbar.update(len(batch))
-
-        # Clear the batch.
-        batch = []
-        max_prompt_len = 0
-        max_output_len = 0
-    end = time.perf_counter()
-    return end - start
-
-
-def run_mii(
-    requests: List[Tuple[str, int, int]],
-    model: str,
-    tensor_parallel_size: int,
-    output_len: int,
-) -> float:
-    from mii import client, serve
-    llm = serve(model, tensor_parallel=tensor_parallel_size)
-    prompts = [prompt for prompt, _, _ in requests]
-
-    start = time.perf_counter()
-    llm.generate(prompts, max_new_tokens=output_len)
-    end = time.perf_counter()
-    client = client(model)
-    client.terminate_server()
-    return end - start
-
+    if ttft is None and decoder_latency is None:
+        print(f"bs_{len(requests)}_input_{prompt_len}_output_{output_len} Throughput: {len(requests) / elapsed_time:.2f} requests/s, "
+            f"{total_num_tokens / elapsed_time:.2f} tokens/s")        
+    else:
+        print(f"bs_{len(requests)}_input_{prompt_len}_output_{output_len} Throughput: {len(requests) / elapsed_time:.2f} requests/s, "
+                f"{total_num_tokens / elapsed_time:.2f} tokens/s, "
+                f"TTFT is {round(ttft*1000, 2)} ms, Decoder Latency is {round(decoder_latency, 2)} ms")
 
 def main(args: argparse.Namespace):
     print(args)
-    if not args.enforce_eager:
-        os.environ['MACA_GRAPH_LAUNCH_MODE'] = "1"
+    
+    if args.enable_profile:
+        print("[INFO] Seems that you turn on PROFILE. It will slower than normal.")    
+
     random.seed(args.seed)
+    if not args.async_engine:        
+        llm = get_vllm(args)
+    
+        # Sample the requests.
+        print("Start warm up....")
+        for idx in range(args.warmup_loops):
+            print(f"warm up {idx}...")
+            requests = prepare_request(args.input_len, args.output_len, args.num_prompts)
+            
+            elapsed_time, ttft, decoder_latency = run_vllm(llm, requests, args.n,
+                                        args.lora_path, args.enable_profile)
+            infer_costs = (elapsed_time, ttft, decoder_latency)
+            show_result(requests, infer_costs)
 
-    global MX_PROFILE_CSV_NAME
-    model_name_list = args.model.split("/")
-    model_name = model_name_list[-2] if len(model_name_list[-1]) == 0 else model_name_list[-1]
-    MX_PROFILE_CSV_NAME = f"{model_name}_{args.num_prompts}_{args.input_len}_{args.output_len}.csv"
-    # Sample the requests.
-    tokenizer = AutoTokenizer.from_pretrained(
-        args.tokenizer, trust_remote_code=args.trust_remote_code)
-    if args.dataset is None:
-        # Synthesize a prompt with the given input length.
-        prompt = "hi " * (args.input_len - 1)
-        requests = [(prompt, args.input_len, args.output_len)
-                    for _ in range(args.num_prompts)]
-    else:
-        requests = sample_requests(args.dataset, args.num_prompts, tokenizer,
-                                   args.output_len)
+        if args.batched_test:
+            print("Start batched test....")
+            for batch in [1,8,16,32,64]:
+                for input_len in [256, 512, 1024]:
+                    for output_len in [128, 512, 1024]:
+                        if input_len == 1024 and output_len != 1024:
+                            continue
 
-    if args.backend == "vllm":
-        elapsed_time = run_vllm(requests, args.model, args.tokenizer,
-                                args.quantization, args.tensor_parallel_size,
-                                args.seed, args.n, args.use_beam_search,
-                                args.trust_remote_code, args.dtype,
-                                args.max_model_len, args.enforce_eager,
-                                args.kv_cache_dtype, args.device,
-                                args.enable_prefix_caching,
-                                args.gpu_memory_utilization, args.download_dir,
-                                args.lora_path, args.enable_profile)
-    elif args.backend == "hf":
-        assert args.tensor_parallel_size == 1
-        elapsed_time = run_hf(requests, args.model, tokenizer, args.n,
-                              args.use_beam_search, args.hf_max_batch_size,
-                              args.trust_remote_code)
-    elif args.backend == "mii":
-        elapsed_time = run_mii(requests, args.model, args.tensor_parallel_size,
-                               args.output_len)
+                        # Synthesize a prompt with the given input length.
+                        requests = prepare_request(input_len, output_len, batch) 
+                        
+                        elapsed_time, ttft, decoder_latency = run_vllm(llm, requests, args.n,
+                                                    args.lora_path, args.enable_profile)
+                        infer_costs = (elapsed_time, ttft, decoder_latency)
+                        show_result(requests, infer_costs)
+        
+        else:
+            print("Start performance test....")
+            requests = prepare_request(args.input_len, args.output_len, args.num_prompts)   
+            
+            elapsed_time, ttft, decoder_latency = run_vllm(llm, requests, args.n,
+                                        args.lora_path, args.enable_profile)
+            infer_costs = (elapsed_time, ttft, decoder_latency)
+            show_result(requests, infer_costs)
     else:
-        raise ValueError(f"Unknown backend: {args.backend}")
-    total_num_tokens = sum(prompt_len + output_len
-                           for _, prompt_len, output_len in requests)
-    print(f"Throughput: {len(requests) / elapsed_time:.2f} requests/s, "
-          f"{total_num_tokens / elapsed_time:.2f} tokens/s")
+        import asyncio
+        asyncio.run(run_vllm_async(args=args))
 
 
 if __name__ == "__main__":
@@ -313,14 +351,16 @@ if __name__ == "__main__":
     parser.add_argument("--tokenizer", type=str, default=None)
     parser.add_argument('--quantization',
                         '-q',
-                        choices=['awq', 'gptq', 'squeezellm', None],
+                        choices=[*QUANTIZATION_METHODS, None],
                         default=None)
     parser.add_argument("--tensor-parallel-size", "-tp", type=int, default=1)
+    parser.add_argument("--pipeline-parallel-size", "-pp", type=int, default=1)
     parser.add_argument("--n",
                         type=int,
                         default=1,
                         help="Number of generated sequences per prompt.")
     parser.add_argument("--use-beam-search", action="store_true")
+    parser.add_argument("--use-new-beam-search-impl", action="store_true")
     parser.add_argument("--num-prompts",
                         type=int,
                         default=1000,
@@ -358,31 +398,108 @@ if __name__ == "__main__":
                         action="store_true",
                         help="enforce eager execution")
     parser.add_argument(
-        "--kv-cache-dtype",
+        '--kv-cache-dtype',
         type=str,
-        choices=["auto", "fp8_e5m2"],
+        choices=['auto', 'fp8', 'fp8_e5m2', 'fp8_e4m3'],
         default="auto",
-        help=
-        'Data type for kv cache storage. If "auto", will use model data type.')
+        help='Data type for kv cache storage. If "auto", will use model '
+        'data type. CUDA 11.8+ supports fp8 (=fp8_e4m3) and fp8_e5m2. '
+        'ROCm (AMD GPU) supports fp8 (=fp8_e4m3)')
+    parser.add_argument("--batched-test",
+                        action="store_true",
+                        help="Test 35 case but load model once.")
+    parser.add_argument("--device",
+                        type=str,
+                        default="auto",
+                        choices=['cuda', 'cpu', 'auto'],
+                        help='device type for vLLM execution')
     parser.add_argument(
-        "--device",
-        type=str,
-        default="cuda",
-        choices=["cuda"],
-        help='device type for vLLM execution, supporting CUDA only currently.')
+        "--num-scheduler-steps",
+        type=int,
+        default=1,
+        help="Maximum number of forward steps per scheduler call.")
+    parser.add_argument("--use-v2-block-manager",
+                        action='store_true',
+                        help="Enable block manager v2.")
     parser.add_argument(
         "--enable-prefix-caching",
         action='store_true',
-        help="enable automatic prefix caching for vLLM backend.")
+        help="Enable automatic prefix caching for vLLM backend.")
+    parser.add_argument("--enable-chunked-prefill",
+                        action='store_true',
+                        help="enable chunked prefill for vLLM backend.")
+    parser.add_argument('--max-num-batched-tokens',
+                        type=int,
+                        default=None,
+                        help='maximum number of batched tokens per '
+                        'iteration')
     parser.add_argument('--download-dir',
                         type=str,
                         default=None,
                         help='directory to download and load the weights, '
                         'default to the default cache dir of huggingface')
+    parser.add_argument(
+        '--output-json',
+        type=str,
+        default=None,
+        help='Path to save the throughput results in JSON format.')
+    parser.add_argument(
+        '--distributed-executor-backend',
+        choices=['ray', 'mp'],
+        default=None,
+        help='Backend to use for distributed serving. When more than 1 GPU '
+        'is used, will be automatically set to "ray" if installed '
+        'or "mp" (multiprocessing) otherwise.')
+    parser.add_argument(
+        '--load-format',
+        type=str,
+        default='auto',
+        choices=[
+            'auto', 'pt', 'safetensors', 'npcache', 'dummy', 'tensorizer',
+            'bitsandbytes'
+        ],
+        help='The format of the model weights to load.\n\n'
+        '* "auto" will try to load the weights in the safetensors format '
+        'and fall back to the pytorch bin format if safetensors format '
+        'is not available.\n'
+        '* "pt" will load the weights in the pytorch bin format.\n'
+        '* "safetensors" will load the weights in the safetensors format.\n'
+        '* "npcache" will load the weights in pytorch format and store '
+        'a numpy cache to speed up the loading.\n'
+        '* "dummy" will initialize the weights with random values, '
+        'which is mainly for profiling.\n'
+        '* "tensorizer" will load the weights using tensorizer from '
+        'CoreWeave. See the Tensorize vLLM Model script in the Examples'
+        'section for more information.\n'
+        '* "bitsandbytes" will load the weights using bitsandbytes '
+        'quantization.\n')
+    parser.add_argument(
+        "--disable-async-output-proc",
+        action='store_true',
+        default=False,
+        help="Disable async output processor for vLLM backend.")
+    parser.add_argument(
+        "--disable-sliding-window",
+        action='store_true',
+        default=False,
+        help="Disable sliding window for vLLM backend.")
+    parser.add_argument("--async-engine",
+                        action='store_true',
+                        default=False,
+                        help="Use vLLM async engine rather than LLM class.")
+    parser.add_argument("--disable-frontend-multiprocessing",
+                        action='store_true',
+                        default=False,
+                        help="Disable decoupled async engine frontend.")
     parser.add_argument('--lora_path',
                         type=str,
                         default=None,
                         help='directory to lora model path')
+    parser.add_argument(
+        '--warmup-loops',
+        type=int,
+        default=1,
+        help='warmup loops before performance benchmark')
     parser.add_argument(
         "--enable-profile",
         action='store_true',
@@ -409,8 +526,6 @@ if __name__ == "__main__":
             raise ValueError("dtype must be auto for MII backend.")
         if args.n != 1:
             raise ValueError("n must be 1 for MII backend.")
-        if args.use_beam_search:
-            raise ValueError("Beam search is not supported for MII backend.")
         if args.quantization is not None:
             raise ValueError("Quantization is only for vLLM backend.")
         if args.hf_max_batch_size is not None:
