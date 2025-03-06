@@ -1,0 +1,12 @@
+{
+    "model_type": "DeepSeek",
+    "model_path": "/pde_ai/ssd_models/llm/DeepSeek/DeepSeek-R1-BF16",
+    "async_engine": true,
+    "c-eval_param": {
+        "dtype": "bfloat16",
+        "tensor_parallel_size": 8,
+        "pipeline_parallel_size": 4,
+        "gpu_memory_utilization": 0.95,
+        "batch_size": 1
+    }
+}

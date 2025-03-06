@@ -1,3 +1,4 @@
+# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 from openai import OpenAI
 
 # Modify OpenAI's API key and API base to use vLLM's API server.

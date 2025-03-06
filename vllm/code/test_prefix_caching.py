@@ -1,4 +1,5 @@
 
+# 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
 from vllm import LLM, SamplingParams
 from vllm.distributed import cleanup_dist_env_and_memory
 import argparse
