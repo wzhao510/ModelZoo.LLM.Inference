@@ -43,6 +43,10 @@ def run(args):
     tokenizer.pad_token = tokenizer.eos_token
     input_ids = tokenizer(requests, padding = True,return_tensors="pt").to("cuda")
 
+    #warm up
+    for _ in range(args.warmup_loops):
+        model.generate(**input_ids, generation_config=generation_config)
+
     # 进行推理生成文本
     if args.enable_profile:
         with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:
@@ -74,9 +78,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-path", type=str,default="/pde_ai/models/llm/Qwen/Qwen2.5-7B-Instruct/")
     parser.add_argument("--tensor-parallel-size", "-tp", type=int, default=1)
-    parser.add_argument('--trust_remote_code',
-                        action='store_true',
-                        help='trust remote code from huggingface')
     parser.add_argument(
         '--dtype',
         type=str,
@@ -112,15 +113,15 @@ if __name__ == "__main__":
         '--top-p',
         type=int,
         default=1)
-    parser.add_argument(
-        '--max-new-tokens',
-        type=int,
-        default=128,
-        help='Maximum length of a sequence generate.')
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--enable-profile",
         action='store_true',
         help="enable profile to collect kernel info.")
+    parser.add_argument(
+        '--warmup-loops',
+        type=int,
+        default=1,
+        help='warmup loops before performance benchmark')
     args = parser.parse_args()
     run(args)

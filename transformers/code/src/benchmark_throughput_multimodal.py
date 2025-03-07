@@ -84,6 +84,10 @@ def run(args):
     #使用处理器对图像和问题进行预处理，将其转换为模型能够接受的张量格式
     inputs = processor(images=images, text=prompts, return_tensors="pt").to("cuda")
     
+    #预热
+    for _ in range(args.warmup_loops):
+        outputs = model.generate(**inputs, generation_config=generation_config)
+
     # 将预处理后的输入传递给模型进行推理，获取生成的回答
     if args.enable_profile:
         with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:
@@ -147,15 +151,10 @@ if __name__ == "__main__":
         type=int,
         default=1)
     parser.add_argument(
-        '--min-new-tokens',
+        '--warmup-loops',
         type=int,
-        default=128,
-        help='Maximum length of a sequence generate.')
-    parser.add_argument(
-        '--max-new-tokens',
-        type=int,
-        default=128,
-        help='Maximum length of a sequence generate.')
+        default=1,
+        help='warmup loops before performance benchmark')
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--enable-profile",
