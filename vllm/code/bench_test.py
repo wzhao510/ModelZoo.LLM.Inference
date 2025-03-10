@@ -62,10 +62,17 @@ def run_benchmark(args):
     
     enable_profile = os.getenv("MX_VLLM_ENABLE_PROFILE", None)
     enable_profile= False if enable_profile is None else True
-
-    benchmark_cmd = f'python ./code/src/benchmark_throughput.py  --model={model_path}  \
+    if args.speculative_model is  None:
+        benchmark_cmd = f'python ./code/src/benchmark_throughput.py  --model={model_path}  \
                         --backend=vllm --max-model-len 2048 --num-prompts {args.num_prompts} --trust-remote-code --dtype {dtype} \
                         --input-len {args.input_len} --output-len {args.output_len} --tensor-parallel-size {tensor_parallel_size} --gpu-memory-utilization {gpu_memory_utilization}'
+    else:
+        benchmark_cmd = f'python ./code/src/benchmark_throughput.py  --model={model_path}  \
+                        --backend=vllm --max-model-len 2048 --num-prompts {args.num_prompts} --trust-remote-code --dtype {dtype} \
+                        --input-len {args.input_len} --output-len {args.output_len} --tensor-parallel-size {tensor_parallel_size} --gpu-memory-utilization {gpu_memory_utilization} \
+                        --speculative-model {args.speculative_model} \
+                        --num-speculative-tokens {args.num_speculative_tokens} \
+                        --ngram-prompt-lk-max {args.ngram_prompt_lk_max}'
     if args.batched_test:
         benchmark_cmd += " --batched-test"  
 
@@ -138,5 +145,18 @@ if __name__ == '__main__':
                         help='the fraction of GPU memory to be used for '
                         'the model executor, which can range from 0 to 1.'
                         'If unspecified, will use the default value of 0.9.')
+    parser.add_argument("--speculative-model",
+                        type=str,
+                        default=None,
+                        help="speculative model path")
+    
+    parser.add_argument("--num-speculative-tokens",
+                        type=int,
+                        default=4,
+                        help="")
+    parser.add_argument("--ngram-prompt-lk-max",
+                        type=int,
+                        default=4,
+                        help="ngram_prompt_lookup_max")
     args = parser.parse_args()
     run_benchmark(args)

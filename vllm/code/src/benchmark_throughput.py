@@ -153,32 +153,91 @@ def get_vllm(args):
             enable_lora = True
         else:
             raise ValueError(f"lora path: {args.lora_path} does not exit")
-    
-    llm = LLM(
-        model=args.model,
-        tokenizer=args.tokenizer,
-        quantization=args.quantization,
-        tensor_parallel_size=args.tensor_parallel_size,
-        seed=args.seed,
-        trust_remote_code=args.trust_remote_code,
-        dtype=args.dtype,
-        max_model_len=args.max_model_len,
-        gpu_memory_utilization=args.gpu_memory_utilization,
-        enforce_eager=args.enforce_eager,
-        kv_cache_dtype=args.kv_cache_dtype,
-        device=args.device,
-        enable_prefix_caching=args.enable_prefix_caching,
-        download_dir=args.download_dir,
-        enable_chunked_prefill=args.enable_chunked_prefill,
-        max_num_batched_tokens=args.max_num_batched_tokens,
-        distributed_executor_backend=args.distributed_executor_backend,
-        load_format=args.load_format,
-        num_scheduler_steps=args.num_scheduler_steps,
-        use_v2_block_manager=args.use_v2_block_manager,
-        disable_async_output_proc=args.disable_async_output_proc,
-        enable_lora=enable_lora,
-        disable_sliding_window=args.disable_sliding_window
-    )
+    if   args.speculative_model is None:
+        llm = LLM(
+            model=args.model,
+            tokenizer=args.tokenizer,
+            quantization=args.quantization,
+            tensor_parallel_size=args.tensor_parallel_size,
+            seed=args.seed,
+            trust_remote_code=args.trust_remote_code,
+            dtype=args.dtype,
+            max_model_len=args.max_model_len,
+            gpu_memory_utilization=args.gpu_memory_utilization,
+            enforce_eager=args.enforce_eager,
+            kv_cache_dtype=args.kv_cache_dtype,
+            device=args.device,
+            enable_prefix_caching=args.enable_prefix_caching,
+            download_dir=args.download_dir,
+            enable_chunked_prefill=args.enable_chunked_prefill,
+            max_num_batched_tokens=args.max_num_batched_tokens,
+            distributed_executor_backend=args.distributed_executor_backend,
+            load_format=args.load_format,
+            num_scheduler_steps=args.num_scheduler_steps,
+            use_v2_block_manager=args.use_v2_block_manager,
+            disable_async_output_proc=args.disable_async_output_proc,
+            enable_lora=enable_lora,
+            disable_sliding_window=args.disable_sliding_window
+        )
+    elif  "[ngram]" in  args.speculative_model :
+        llm = LLM(
+            model=args.model,
+            tokenizer=args.tokenizer,
+            quantization=args.quantization,
+            tensor_parallel_size=args.tensor_parallel_size,
+            seed=args.seed,
+            trust_remote_code=args.trust_remote_code,
+            dtype=args.dtype,
+            max_model_len=args.max_model_len,
+            gpu_memory_utilization=args.gpu_memory_utilization,
+            enforce_eager=args.enforce_eager,
+            kv_cache_dtype=args.kv_cache_dtype,
+            device=args.device,
+            enable_prefix_caching=args.enable_prefix_caching,
+            download_dir=args.download_dir,
+            enable_chunked_prefill=args.enable_chunked_prefill,
+            max_num_batched_tokens=args.max_num_batched_tokens,
+            distributed_executor_backend=args.distributed_executor_backend,
+            load_format=args.load_format,
+            num_scheduler_steps=args.num_scheduler_steps,
+            use_v2_block_manager=args.use_v2_block_manager,
+            disable_async_output_proc=args.disable_async_output_proc,
+            enable_lora=enable_lora,
+            disable_sliding_window=args.disable_sliding_window,
+            speculative_model=args.speculative_model,
+            num_speculative_tokens=args.num_speculative_tokens,
+            ngram_prompt_lookup_max=args.ngram_prompt_lk_max,
+        )
+    else :
+        llm = LLM(
+            model=args.model,
+            tokenizer=args.tokenizer,
+            quantization=args.quantization,
+            tensor_parallel_size=args.tensor_parallel_size,
+            seed=args.seed,
+            trust_remote_code=args.trust_remote_code,
+            dtype=args.dtype,
+            max_model_len=args.max_model_len,
+            gpu_memory_utilization=args.gpu_memory_utilization,
+            enforce_eager=args.enforce_eager,
+            kv_cache_dtype=args.kv_cache_dtype,
+            device=args.device,
+            enable_prefix_caching=args.enable_prefix_caching,
+            download_dir=args.download_dir,
+            enable_chunked_prefill=args.enable_chunked_prefill,
+            max_num_batched_tokens=args.max_num_batched_tokens,
+            distributed_executor_backend=args.distributed_executor_backend,
+            load_format=args.load_format,
+            num_scheduler_steps=args.num_scheduler_steps,
+            use_v2_block_manager=args.use_v2_block_manager,
+            disable_async_output_proc=args.disable_async_output_proc,
+            enable_lora=enable_lora,
+            disable_sliding_window=args.disable_sliding_window,
+            speculative_model=args.speculative_model,
+            num_speculative_tokens=args.num_speculative_tokens,
+            speculative_draft_tensor_parallel_size=1,
+        )
+
     return llm
 
 def run_vllm(
@@ -198,6 +257,11 @@ def run_vllm(
             raise ValueError(f"lora path: {lora_path} does not exit")
         
     # Add the requests to the engine.
+    global MX_PROFILE_CSV_NAME
+    model_name_list = args.model.split("/")
+    model_name = model_name_list[-2] if len(model_name_list[-1]) == 0 else model_name_list[-1]
+    MX_PROFILE_CSV_NAME = f"{model_name}_{args.num_prompts}_{args.input_len}_{args.output_len}_tp{args.tensor_parallel_size}.csv"
+    
     prompts = []
     sampling_params = []
     for prompt, _, output_len in requests:
@@ -505,6 +569,22 @@ if __name__ == "__main__":
         "--enable-profile",
         action='store_true',
         help="enable profile to collect kernel info.")
+    
+    parser.add_argument("--speculative-model",
+                        type=str,
+                        default=None,
+                        help="speculative model path")
+    
+    parser.add_argument("--num-speculative-tokens",
+                        type=int,
+                        default=4,
+                        help="")
+    parser.add_argument("--ngram-prompt-lk-max",
+                        type=int,
+                        default=4,
+                        help="ngram_prompt_lookup_max")
+
+
     args = parser.parse_args()
     if args.tokenizer is None:
         args.tokenizer = args.model
