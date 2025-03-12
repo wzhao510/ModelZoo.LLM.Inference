@@ -184,3 +184,14 @@ python pred_vllm.py --model qwen2-7b --checkpoint /pde_ai/models/llm/Qwen2-7B-In
 '''
 python eval.py --model qwen2-7b
 '''
+
+---- 2025.03.12 ----
+新增client ceval测试方法：
+vllm server 
+'''shell
+vllm serve ${model_path}  --trust-remote-code
+'''
+数据集默认路径 /pde_ai/datasets/ceval_vllm_client/ceval_val_cmcc.jsonl
+'''python
+python ./code/run_ceval_client.py --model ${model_path, 路径最后加“/”} -b ${请求并发数，默认为8} --save_dir ${结果路径，默认为 ./results}
+'''
