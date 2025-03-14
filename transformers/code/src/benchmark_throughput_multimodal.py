@@ -60,8 +60,8 @@ def run(args):
 
     # 设置生成的参数
     generation_config = model.generation_config
-    generation_config.max_new_tokens = args.max_new_tokens  # 生成的最大新token数量，可根据需求调整
-    generation_config.min_new_tokens = args.min_new_tokens  # 生成的最小新token数量，可根据需求调整
+    generation_config.max_new_tokens = args.output_len  # 生成的最大新token数量，可根据需求调整
+    generation_config.min_new_tokens = args.output_len  # 生成的最小新token数量，可根据需求调整
     generation_config.temperature = args.temperature  # 控制生成的随机性，值越高越随机
     generation_config.top_p = args.top_p  # 用于sampling，控制生成的多样性
     generation_config.top_k = args.top_k  # 用于sampling，控制生成的多样性
