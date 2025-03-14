@@ -3,6 +3,7 @@ import os
 import argparse
 import platform
 from utils import get_params, get_vllm_version
+from vllm.model_executor.layers.quantization import QUANTIZATION_METHODS
 
 def is_int(value):
     try:
@@ -64,17 +65,20 @@ def run_benchmark(args):
     enable_profile= False if enable_profile is None else True
     if args.speculative_model is  None:
         benchmark_cmd = f'python ./code/src/benchmark_throughput.py  --model={model_path}  \
-                        --backend=vllm --max-model-len 2048 --num-prompts {args.num_prompts} --trust-remote-code --dtype {dtype} \
+                        --backend=vllm --max-model-len {args.max_model_len} --num-prompts {args.num_prompts} --trust-remote-code --dtype {dtype} \
                         --input-len {args.input_len} --output-len {args.output_len} --tensor-parallel-size {tensor_parallel_size} --gpu-memory-utilization {gpu_memory_utilization}'
     else:
         benchmark_cmd = f'python ./code/src/benchmark_throughput.py  --model={model_path}  \
-                        --backend=vllm --max-model-len 2048 --num-prompts {args.num_prompts} --trust-remote-code --dtype {dtype} \
+                        --backend=vllm --max-model-len {args.max_model_len} --num-prompts {args.num_prompts} --trust-remote-code --dtype {dtype} \
                         --input-len {args.input_len} --output-len {args.output_len} --tensor-parallel-size {tensor_parallel_size} --gpu-memory-utilization {gpu_memory_utilization} \
                         --speculative-model {args.speculative_model} \
                         --num-speculative-tokens {args.num_speculative_tokens} \
                         --ngram-prompt-lk-max {args.ngram_prompt_lk_max}'
     if args.batched_test:
         benchmark_cmd += " --batched-test"  
+
+    if args.quantization is not None:
+        benchmark_cmd += f" --quantization {args.quantization}"  
 
     if async_engine is not None and async_engine:
         benchmark_cmd += " --async-engine"
@@ -126,6 +130,16 @@ if __name__ == '__main__':
     parser.add_argument("--enforce-eager",
                         action="store_true",
                         help="enforce eager execution")
+    parser.add_argument(
+        '--max-model-len',
+        type=int,
+        default=2048,
+        help='Maximum length of a sequence (including prompt and output). '
+        'If None, will be derived from the model.')
+    parser.add_argument('--quantization',
+                        '-q',
+                        choices=[*QUANTIZATION_METHODS, None],
+                        default=None)
     parser.add_argument(
         "--disable-sliding-window",
         action='store_true',

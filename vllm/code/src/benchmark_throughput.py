@@ -18,6 +18,11 @@ from vllm.model_executor.layers.quantization import QUANTIZATION_METHODS
 from vllm import LLM, SamplingParams, AsyncLLMEngine
 from vllm.distributed import cleanup_dist_env_and_memory
 
+try:
+    from vllm.transformers_utils.tokenizer import get_tokenizer
+except ImportError:
+    from backend_request_func import get_tokenizer
+
 import asyncio
 import uuid
 
@@ -36,6 +41,7 @@ def str2bool(v):
 async def run_vllm_async(
     # requests: List[Tuple[str, int, int]],
     args: argparse.Namespace,
+    tokenizer
 ) -> float:
     def post_process(requests, results):
         begin_time = time.time()
@@ -86,7 +92,7 @@ async def run_vllm_async(
     print("Start warm up....")
     for idx in range(args.warmup_loops):
         print(f"warm up {idx}...")
-        requests = prepare_request(args.input_len, args.output_len, args.num_prompts)
+        requests = prepare_request(args.input_len, args.output_len, args.num_prompts, tokenizer)
         
         tasks = list(map(lambda x: asyncio.create_task(
             vllm_async_generate(engine, x[0], params, uuid.uuid4())), requests))
@@ -102,7 +108,7 @@ async def run_vllm_async(
                         continue
 
                     # Synthesize a prompt with the given input length.
-                    requests = prepare_request(input_len, output_len, batch) 
+                    requests = prepare_request(input_len, output_len, batch, tokenizer) 
                     params = SamplingParams(
                         n=args.n,
                         temperature=1.0,
@@ -322,8 +328,17 @@ def run_vllm(
     E2E_TIME.append(end-start)
     return np.mean(E2E_TIME), np.mean(FIRST_LATENCY), np.mean(DECODER_LATENCY)*1000
 
-def prepare_request(input_len, output_len, num_prompts):
-    prompt = "hi" * input_len
+def prepare_request(input_len, output_len, num_prompts, tokenizer):
+    from pathlib import Path
+    with open("{}/../../data/input_data.txt".format(Path(__file__).absolute().parent)) as file:
+        lines = [line.strip() for line in file if line.strip()]
+        txt_data = " ".join(lines)
+    all_tokens = tokenizer(txt_data)
+    all_tokens.input_ids = all_tokens.input_ids[:8192]
+    token_len = len(all_tokens.input_ids)
+    offsets = np.random.randint(0, token_len-input_len-1)
+    tmp_tokens = all_tokens.input_ids[offsets:offsets+input_len-1]
+    prompt = tokenizer.decode(tmp_tokens)
     requests = [(prompt, input_len, output_len)
                     for _ in range(num_prompts)]
     return requests
@@ -346,6 +361,11 @@ def show_result(requests: List,
 def main(args: argparse.Namespace):
     print(args)
     
+    tokenizer_id = args.tokenizer if args.tokenizer is not None else args.model
+    tokenizer = get_tokenizer(tokenizer_id,
+                    tokenizer_mode='auto',
+                    trust_remote_code=args.trust_remote_code)
+
     if args.enable_profile:
         print("[INFO] Seems that you turn on PROFILE. It will slower than normal.")    
 
@@ -357,7 +377,7 @@ def main(args: argparse.Namespace):
         print("Start warm up....")
         for idx in range(args.warmup_loops):
             print(f"warm up {idx}...")
-            requests = prepare_request(args.input_len, args.output_len, args.num_prompts)
+            requests = prepare_request(args.input_len, args.output_len, args.num_prompts, tokenizer)
             
             elapsed_time, ttft, decoder_latency = run_vllm(llm, requests, args.n,
                                         args.lora_path, args.enable_profile)
@@ -373,7 +393,7 @@ def main(args: argparse.Namespace):
                             continue
 
                         # Synthesize a prompt with the given input length.
-                        requests = prepare_request(input_len, output_len, batch) 
+                        requests = prepare_request(input_len, output_len, batch, tokenizer) 
                         
                         elapsed_time, ttft, decoder_latency = run_vllm(llm, requests, args.n,
                                                     args.lora_path, args.enable_profile)
@@ -382,7 +402,7 @@ def main(args: argparse.Namespace):
         
         else:
             print("Start performance test....")
-            requests = prepare_request(args.input_len, args.output_len, args.num_prompts)   
+            requests = prepare_request(args.input_len, args.output_len, args.num_prompts, tokenizer)   
             
             elapsed_time, ttft, decoder_latency = run_vllm(llm, requests, args.n,
                                         args.lora_path, args.enable_profile)
@@ -390,7 +410,7 @@ def main(args: argparse.Namespace):
             show_result(requests, infer_costs)
     else:
         import asyncio
-        asyncio.run(run_vllm_async(args=args))
+        asyncio.run(run_vllm_async(args=args, tokenizer=tokenizer))
 
 
 if __name__ == "__main__":
