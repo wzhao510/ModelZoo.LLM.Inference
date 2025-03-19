@@ -1,0 +1,16 @@
+{
+    "//": "",
+    "model_config":{
+        "ori_path":"/pde_ai/models/llm/StableDiffusion/stable-diffusion-onnx/sd3_onnx_fuse_MACA/",
+        "dataset":"",
+        "seed": 0,
+        "num_inference_steps": 50,
+        "text_encoder":"model.onnx",
+        "text_encoder_2":"model.onnx",
+	"text_encoder_3":"model.onnx",
+        "transformer": "model.onnx",
+        "vae_decoder":"model.onnx",
+        "outputs_size":"512#512",
+        "scheduler":"FlowMatchEulerDiscrete"
+    }
+}
