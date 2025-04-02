@@ -152,15 +152,8 @@ python -m vllm.entrypoints.api_server --model /pde_ai/models/llm/Llama/Llama-2-7
 ## 5、启动openai_api服务端 
 简易启动命令: 
 ```
-python -m vllm.entrypoints.openai.api_server --model /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --host localhost --port 8000 --chat-template /workspace/ModelZoo.LLM.Inference/vllm/code/src/template_chatml.jinja
+vllm serve /pde_ai/models/llm/Llama/Llama-2-7b-hf/ -pp 1 -tp 1  --trust-remote-code --distributed-executor-backend ray --max-model-len 4096 --swap-space 16 --gpu-memory-utilization 0.95
 ```
----- 2024.09.30 ----  
-
-新增开启 enforce-eager 参数 （false 为 开启cuda-graph；true 为不开启 cuda-graph）。请注意 开启 cuda-graph 需要开启环境变量 `export MACA_GRAPH_LAUNCH_MODE=1` 加速这部分
-```
-python -m vllm.entrypoints.openai.api_server --model /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --host localhost --port 8000 --chat-template /workspace/ModelZoo.LLM.Inference/vllm/code/src/template_chatml.jinja --enforce-eager=false
-``` 
-/workspace/ModelZoo.LLM.Inference/vllm/code目录下包含completion和chatcompletion两个客户端sample
     
 ## 多模态模型 特性支持（Released版本大于等于 2.25.2）
 简易启动命令：
@@ -168,14 +161,19 @@ python -m vllm.entrypoints.openai.api_server --model /pde_ai/models/llm/Llama/Ll
  python ./code/run_multimodal.py --model ./models/InternVL-chat-v1.5/
 ```
 ---- 2025.02.27 ----
+
 新增longbench v1长文本精度测试集:
-'''shell
+
+```
 pip install -r code/longbench/requirements.txt 
-'''
+```
+
 跑GPTQ模型
-'''
+
+```
 python code/longbench/pred_vllm.py --model qwen2.5-72b-gptq-int4 --checkpoint /pde_ai/models/llm/Qwen/Qwen2___5-72B-Instruct-GPTQ-Int4/ --s 8 --tp 2 --quantize
-'''
+```
+
 跑非GPTQ模型
 '''
 python pred_vllm.py --model qwen2-7b --checkpoint /pde_ai/models/llm/Qwen2-7B-Instruct --tp 1  --s 8
@@ -186,12 +184,15 @@ python eval.py --model qwen2-7b
 '''
 
 ---- 2025.03.12 ----
+
 新增client ceval测试方法：
 vllm server 
-'''shell
+```
 vllm serve ${model_path}  --trust-remote-code
-'''
+```
+
 数据集默认路径 /pde_ai/datasets/ceval_vllm_client/ceval_val_cmcc.jsonl
-'''python
+
+```
 python ./code/run_ceval_client.py --model ${model_path, 路径最后加“/”} -b ${请求并发数，默认为8} --save_dir ${结果路径，默认为 ./results}
-'''
+```

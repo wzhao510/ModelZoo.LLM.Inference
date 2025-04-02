@@ -91,6 +91,9 @@ def run_benchmark(args):
     
     if enable_profile:
         benchmark_cmd += " --enable-profile"
+
+    if tensor_parallel_size > 1:
+        benchmark_cmd += " --distributed-executor-backend ray"
     
     # if arm, we set enforce_eager=false to turn on CUDA_GRAPH for better performance.
     # if you want to test another option, please modify this code.
