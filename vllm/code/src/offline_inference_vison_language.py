@@ -29,6 +29,7 @@ def inital_LLM(args):
         max_num_seqs=args.max_num_seqs,
         max_model_len=args.max_model_len,
         trust_remote_code=args.trust_remote_code,
+        distributed_executor_backend=args.distributed_executor_backend,
     )
 
 
@@ -100,11 +101,28 @@ def generate_prompt_minicpmv(question, model_path):
 
     # 2.5
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
-    messages = [{"role": "user", "content": f"(<image>./</image>)\n{question}"}]
-    prompt = tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True
-    )
-    return prompt
+    # messages = [{"role": "user", "content": f"(<image>./</image>)\n{question}"}]
+    # prompt = tokenizer.apply_chat_template(
+    #     messages, tokenize=False, add_generation_prompt=True
+    # )
+
+    stop_tokens = ['<|im_end|>', '<|endoftext|>']
+    stop_token_ids = [tokenizer.convert_tokens_to_ids(i) for i in stop_tokens]
+
+    modality_placeholder = {
+        "image": "(<image>./</image>)",
+        "video": "(<video>./</video>)",
+    }
+
+    modality = "image"
+    messages = [{
+        'role': 'user',
+        'content': f'{modality_placeholder[modality]}\n{question}'
+    }]
+    prompt = tokenizer.apply_chat_template(messages,
+                                           tokenize=False,
+                                           add_generation_prompt=True)
+    return (prompt, stop_token_ids)
 
 
 # InternVL
@@ -173,7 +191,14 @@ def main(args):
     image = Image.open(args.image_path).convert("RGB")
     # We set temperature to 0.2 so that outputs can be different
     # even when all prompts are identical when running batch inference.
-    sampling_params = SamplingParams(temperature=0.98, max_tokens=512, top_k=1)
+    if type(prompt) is tuple:
+        prompt, stop_token_ids = prompt
+        sampling_params = SamplingParams(temperature=0.2,
+                                         max_tokens=64,
+                                         stop_token_ids=stop_token_ids
+                                         )
+    else:
+        sampling_params = SamplingParams(temperature=0.98, max_tokens=512, top_k=1)
 
     assert args.num_prompts > 0
     if args.num_prompts == 1:
@@ -254,6 +279,13 @@ if __name__ == "__main__":
         "the model executor, which can range from 0 to 1."
         "If unspecified, will use the default value of 0.9.",
     )
+    parser.add_argument(
+        '--distributed-executor-backend',
+        choices=['ray', 'mp'],
+        default=None,
+        help='Backend to use for distributed serving. When more than 1 GPU '
+        'is used, will be automatically set to "ray" if installed '
+        'or "mp" (multiprocessing) otherwise.')
 
     args = parser.parse_args()
     main(args)

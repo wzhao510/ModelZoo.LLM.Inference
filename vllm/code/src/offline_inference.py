@@ -17,7 +17,7 @@ def run(args):
     llm = LLM(model=args.model,tensor_parallel_size=args.tensor_parallel_size, 
               trust_remote_code=args.trust_remote_code, max_model_len=args.max_model_len, 
               enforce_eager=args.enforce_eager, dtype=args.dtype,
-              gpu_memory_utilization=0.95)
+              gpu_memory_utilization=0.95, distributed_executor_backend=args.distributed_executor_backend)
     # Generate texts from the prompts. The output is a list of RequestOutput objects
     # that contain the prompt, generated text, and other information.
     outputs = llm.generate(prompts, sampling_params)
@@ -44,6 +44,13 @@ if __name__ == "__main__":
     parser.add_argument("--enforce-eager",
                         action="store_true",
                         help="enforce eager execution")
+    parser.add_argument(
+        '--distributed-executor-backend',
+        choices=['ray', 'mp'],
+        default=None,
+        help='Backend to use for distributed serving. When more than 1 GPU '
+        'is used, will be automatically set to "ray" if installed '
+        'or "mp" (multiprocessing) otherwise.')
     parser.add_argument(
         '--dtype',
         type=str,

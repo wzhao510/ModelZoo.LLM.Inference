@@ -31,6 +31,9 @@ def run_benchmark_mutlimoda(args, model_config):
 
     if args.batched_test:
         script_args.append("--benchmark-all")
+    
+    if args.distributed_executor_backend is not None:
+        script_args.append(f" --distributed-executor-backend {args.distributed_executor_backend}")
 
     enable_profile = os.getenv("MX_VLLM_ENABLE_PROFILE", "").lower()
     if enable_profile in ("yes", "true", "t", "y", "1"):
@@ -92,8 +95,8 @@ def run_benchmark(args):
     if enable_profile:
         benchmark_cmd += " --enable-profile"
 
-    if tensor_parallel_size > 1:
-        benchmark_cmd += " --distributed-executor-backend ray"
+    if args.distributed_executor_backend is not None:
+        benchmark_cmd += f" --distributed-executor-backend {args.distributed_executor_backend}"
     
     # if arm, we set enforce_eager=false to turn on CUDA_GRAPH for better performance.
     # if you want to test another option, please modify this code.
@@ -162,6 +165,13 @@ if __name__ == '__main__':
                         help='the fraction of GPU memory to be used for '
                         'the model executor, which can range from 0 to 1.'
                         'If unspecified, will use the default value of 0.9.')
+    parser.add_argument(
+        '--distributed-executor-backend',
+        choices=['ray', 'mp'],
+        default=None,
+        help='Backend to use for distributed serving. When more than 1 GPU '
+        'is used, will be automatically set to "ray" if installed '
+        'or "mp" (multiprocessing) otherwise.')
     parser.add_argument("--speculative-model",
                         type=str,
                         default=None,
