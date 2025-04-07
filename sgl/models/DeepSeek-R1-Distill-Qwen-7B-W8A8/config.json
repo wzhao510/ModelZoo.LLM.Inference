@@ -1,0 +1,13 @@
+{
+    "model_type": "llama",
+    "model_path": "/workspace/mnt/storage/admin@metax.com/pde-ai-models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-32B-quantized.w8a8/",
+    "c-eval_param": {
+        "disable_cuda_graph":"True",
+        "trust_remote_code":"True",
+        "tp": 1,
+        "dataset-name":"random",
+        "dataset-path":"../data/ShareGPT_V3/ShareGPT_V3_unfiltered_cleaned_split.json",
+        "random_range_ratio":1.0,
+        "task_name": "ceval-valid"
+    }
+}
