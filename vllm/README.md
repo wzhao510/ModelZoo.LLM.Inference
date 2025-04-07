@@ -137,14 +137,9 @@ python code/bench_test.py --model ./models/Llama2_7b_int4_gptq/ --num-prompts 32
 ##    Benchmark online serving throughput.
 执行benchmark前需要有对应服务启动，简易启动命令: 
 ```
-python -m vllm.entrypoints.api_server --model /pde_ai/models/llm/Llama/Llama-2-7b-hf/
+vllm serve /pde_ai/models/llm/Llama/Llama-2-7b-hf/ -pp 1 -tp 1  --trust-remote-code --distributed-executor-backend ray --max-model-len 4096 --swap-space 16 --gpu-memory-utilization 0.95
 ```
----- 2024.09.30 ----   
 
-新增开启 enforce-eager 参数 （默认不开启cuda-graph； false 为 开启cuda-graph；true 为不开启 cuda-graph）。请注意 开启 cuda-graph 需要开启环境变量 `export MACA_GRAPH_LAUNCH_MODE=1` 加速这部分
-```
-python -m vllm.entrypoints.api_server --model /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --enforce-eager=false # 开启cuda-graph
-``` 
 服务启动后可在脚本内修改参数，详细参数信息见code/src/benchmark_serving.py
     
 若使用code/run_benchmark_serving.sh测试，需要准备ShareGPT_V3_unfiltered_cleaned_split.json数据，请从https://huggingface.co/datasets/anon8231489123/ShareGPT_Vicuna_unfiltered/blob/main/ShareGPT_V3_unfiltered_cleaned_split.json下载，并拷贝至./dataset路径。

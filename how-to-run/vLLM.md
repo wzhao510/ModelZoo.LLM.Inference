@@ -186,7 +186,7 @@ bash run_benchmark_throughput.sh
 Benchmark online serving throughput.  
 执行online benchmark前需要有对应服务启动，简易启动命令: 
 ```
-python -m vllm.entrypoints.api_server --model /pde_ai/models/llm/Llama/Llama-2-7b-hf
+vllm serve /pde_ai/models/llm/Llama/Llama-2-7b-hf/ -pp 1 -tp 1  --trust-remote-code --distributed-executor-backend ray --max-model-len 4096 --swap-space 16 --gpu-memory-utilization 0.95
 ```
 脚本为 /code/run_benchmark_serving.sh:
 ```
