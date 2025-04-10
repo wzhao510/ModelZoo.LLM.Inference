@@ -9,3 +9,4 @@ python ./bench_test.py \
 --random-output-len 32 \
 --num-prompts 1 \
 --batched-test 
+

@@ -167,6 +167,9 @@ def run_benchmark(args):
     if "dtype" in ceval_param:
         benchmark_cmd += f' --dtype {ceval_param["dtype"]}'
 
+    if "mem-fraction-static" in ceval_param:
+        benchmark_cmd += f' --mem-fraction-static {ceval_param["mem-fraction-static"]}'
+
     if "disable_cuda_graph" in ceval_param and ceval_param["disable_cuda_graph"] == "True":
         benchmark_cmd += " --disable-cuda-graph"
 
