@@ -191,3 +191,59 @@ vllm serve ${model_path}  --trust-remote-code
 ```
 python ./code/run_ceval_client.py --model ${model_path, 路径最后加“/”} -b ${请求并发数，默认为8} --save_dir ${结果路径，默认为 ./results}
 ```
+
+---- 2025.04.08 ----
+
+新增DeepSeek opencompass serve-client精度测试方法：
+'''opencompass 环境准备
+pip install opencompass
+pip install math_verify latex2sympy2_extended
+'''
+ceval数据集需要离线下载，其他数据集可以联网环境使用
+'''ceval数据集路径修改
+vim /opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/ceval/ceval_gen_5f30c7.py	#line 95
+->
+path='${ceval-exam}路径',
+'''
+opencompas在测试ceval精度时，如果不修改提示词，会导致很多正确的回答提取出来错误的答案选项，精度偏低，所以在本方法中需要修改ceval的提示词
+'''ceval提示词修改
+vim /opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/ceval/ceval_gen_5f30c7.py      #line 77
+->
+prompt=
+f'以下是中国关于{_ch_name}考试的单项选择题，请选出其中的正确答案。你的回答的最后一行应该是这样的格式：“答案是：LETTER”（不带引号），其中 LETTER 是 A、B、C、D 中的一个。\n{{question}}\nA. {{A}}\nB. {{B}}\nC. {{C}}\nD. {{D}}\n'
+'''
+'''ceval其他修改
+vim /opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/ceval/ceval_gen_5f30c7.py	#line 2
+->
+from opencompass.openicl.icl_retriever import FixKRetriever, ZeroRetriever
+
+vim /opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/ceval/ceval_gen_5f30c7.py      #line 6
+->
+from opencompass.utils.text_postprocessors import first_capital_postprocess, first_option_postprocess
+
+vim /opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/ceval/ceval_gen_5f30c7.py      #line 84
+->
+retriever=dict(type=ZeroRetriever),
+
+vim /opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/ceval/ceval_gen_5f30c7.py      #line 90
+->
+pred_postprocessor=dict(type=first_option_postprocess, options='ABCD'))
+
+vim /opt/conda/lib/python3.10/site-packages/opencompass/datasets/ceval.py      #line 25
+->
+for split in ['val']:
+'''
+'''mmlu其他修改
+vim /opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/mmlu/mmlu_gen_4d595a.py	#line 2
+->
+from opencompass.openicl.icl_retriever import FixKRetriever, ZeroRetriever
+
+vim /opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/mmlu/mmlu_gen_4d595a.py        #line 104
+->
+retriever=dict(type=ZeroRetriever),
+'''
+deepseek r1 serve启动方式参考钉钉文档《Metax C500-DeepSeek V3&R1 671B推理部署手册》
+opencompass精度测试:
+'''shell
+opencompass ./code/opencompass/eval_ceval.py
+'''
