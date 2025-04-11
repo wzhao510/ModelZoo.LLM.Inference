@@ -31,9 +31,8 @@ def run_benchmark_mutlimoda(args, model_config):
 
     if args.batched_test:
         script_args.append("--benchmark-all")
-    
     if args.distributed_executor_backend is not None:
-        script_args.append(f" --distributed-executor-backend {args.distributed_executor_backend}")
+        script_args.append(f"--distributed-executor-backend={args.distributed_executor_backend}")
 
     enable_profile = os.getenv("MX_VLLM_ENABLE_PROFILE", "").lower()
     if enable_profile in ("yes", "true", "t", "y", "1"):
