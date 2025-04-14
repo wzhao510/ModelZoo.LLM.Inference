@@ -7,6 +7,8 @@
         "disable_cuda_graph":"False",
         "trust_remote_code":"True",
         "tp": 4,
+        "enable-dp-attention":"False",
+        "dp-size":2,
         "dataset-name":"random",
         "dataset-path":"./data/ShareGPT_V3/ShareGPT_V3_unfiltered_cleaned_split.json",
         "random_range_ratio":1.0,

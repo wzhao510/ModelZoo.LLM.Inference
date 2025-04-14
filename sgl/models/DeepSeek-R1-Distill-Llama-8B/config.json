@@ -3,10 +3,10 @@
     "model_path": "/workspace/mnt/storage/admin@metax.com/pde-ai-models/llm/DeepSeek/DeepSeek-R1-Distill-Llama-8B/",
     "c-eval_param": {
         "dtype":"bfloat16",
+        "tp": 1,
         "mem-fraction-static":0.9,
         "disable_cuda_graph":"False",
         "trust_remote_code":"True",
-        "tp": 4,
         "dataset-name":"random",
         "dataset-path":"./data/ShareGPT_V3/ShareGPT_V3_unfiltered_cleaned_split.json",
         "random_range_ratio":1.0,
