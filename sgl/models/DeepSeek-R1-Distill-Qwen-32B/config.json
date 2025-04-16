@@ -6,7 +6,7 @@
         "mem-fraction-static":0.9,
         "disable_cuda_graph":"False",
         "trust_remote_code":"True",
-        "tp": 4,
+        "tp": 2,
         "enable-dp-attention":"False",
         "dp-size":2,
         "dataset-name":"random",
