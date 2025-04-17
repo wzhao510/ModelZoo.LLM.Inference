@@ -1,1 +1,1 @@
-python ./run_ceval_client.py --model /workspace/mnt/storage/admin@metax.com/pde-ai-models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B --test_jsonl /workspace/mnt/storage/admin@metax.com/pde-ai-datasets/ceval_vllm_client/ceval_val_cmcc.jsonl
+python ./run_ceval_client.py --model /pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B --test_jsonl /pde_ai/datasets/ceval_vllm_client/ceval_val_cmcc.jsonl
