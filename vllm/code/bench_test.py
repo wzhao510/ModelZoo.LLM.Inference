@@ -38,7 +38,7 @@ def run_benchmark_mutlimoda(args, model_config):
     if enable_profile in ("yes", "true", "t", "y", "1"):
         script_args.append("--enable-profile")
 
-    cmd = "python3 '{}' '{}'".format(script_file, "' '".join(script_args))
+    cmd = "python3 {} {}".format(script_file, " ".join(script_args))
     print(cmd)
     if os.system(cmd) != 0:
         exit(1)

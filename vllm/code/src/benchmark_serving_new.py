@@ -18,7 +18,7 @@ On the client side, run:
         --dataset-name sharegpt \
         --dataset-path <path to dataset> \
         --request-rate <request_rate> \ # By default <request_rate> is inf
-        --num-prompts <num_prompts> # By default <num_prompts> is 1000
+        --num-samples <num_samples> # By default <num_samples> is 1000
 
     when using tgi backend, add
         --endpoint /generate_stream
@@ -368,13 +368,13 @@ def sample_random_requests(
     prefix_len: int,
     input_len: int,
     output_len: int,
-    num_prompts: int,
+    num_requests: int,
     range_ratio: float,
     tokenizer: PreTrainedTokenizerBase,
 ) -> List[Tuple[str, int, int, None]]:
-    prefix_token_ids = np.random.randint(0,
-                                         tokenizer.vocab_size,
-                                         size=prefix_len).tolist()
+    # prefix_token_ids = np.random.randint(0,
+    #                                      tokenizer.vocab_size,
+    #                                      size=prefix_len).tolist()
     
     from pathlib import Path
     with open("{}/../../data/input_data.txt".format(Path(__file__).absolute().parent)) as file:
@@ -384,27 +384,30 @@ def sample_random_requests(
     input_lens = np.random.randint(
         int(input_len * range_ratio),
         input_len + 1,
-        size=num_prompts,
+        size=num_requests,
     )
     output_lens = np.random.randint(
         int(output_len * range_ratio),
         output_len + 1,
-        size=num_prompts,
+        size=num_requests,
     )
-    # offsets = np.random.randint(0, tokenizer.vocab_size, size=num_prompts)
+    # offsets = np.random.randint(0, tokenizer.vocab_size, size=num_requests)
     all_tokens = tokenizer(txt_data)
     # all_tokens.input_ids = all_tokens.input_ids[:8192]
     token_len = len(all_tokens.input_ids)
-    offsets = np.random.randint(0, token_len - input_lens - 1, size=num_prompts)
+    print(f"Total tokens is {token_len}")
+    offsets = np.random.randint(0, token_len - (input_lens - 1), size=num_requests)
     input_requests = []
-    for i in range(num_prompts):
+    for i in range(num_requests):
         '''
         prompt = tokenizer.decode(prefix_token_ids +
                                   [(offsets[i] + i + j) % tokenizer.vocab_size
                                    for j in range(input_lens[i])])
         '''
+        # DO NOT set the length of tmp_tokens as input_len
+        # unless, it will cause the length of tokens after decoding and encoding change.
         tmp_tokens = all_tokens.input_ids[offsets[i]:offsets[i] + input_lens[i] - 1]
-        prompt = tokenizer.decode(tmp_tokens)
+        prompt = tokenizer.decode(tmp_tokens, skip_special_tokens=True)
         input_requests.append((prompt, int(prefix_len + input_lens[i]),
                                int(output_lens[i]), None))
 
@@ -415,6 +418,8 @@ async def get_request(
     input_requests: List[Tuple[str, int, int]],
     request_rate: float,
     burstiness: float = 1.0,
+    semp_empty_slot: asyncio.Semaphore = None,
+    semp_request: asyncio.Semaphore = None
 ) -> AsyncGenerator[Tuple[str, int, int], None]:
     """
     Asynchronously generates requests at a specified rate
@@ -443,11 +448,12 @@ async def get_request(
 
     is_First = True
     for request in input_requests:
+        # producer
+        if semp_empty_slot:
+            await semp_empty_slot.acquire()
         if not is_First:
-            if request_rate == float("inf"):
-                # If the request rate is infinity, then we don't need to wait.
-                # continue
-
+            # If the request rate is infinity, then we don't need to wait.
+            if request_rate != float("inf"):
                 # Sample the request interval from the gamma distribution.
                 # If burstiness is 1, it follows exponential distribution.
                 interval = np.random.gamma(shape=burstiness, scale=theta)
@@ -455,7 +461,8 @@ async def get_request(
                 await asyncio.sleep(interval)
         else:
             is_First = False
-
+        if semp_request:
+            semp_request.release()
         yield request
 
 
@@ -596,6 +603,10 @@ async def benchmark(
     print("Starting initial single prompt test run...")
     test_prompt, test_prompt_len, test_output_len, test_mm_content = (
         input_requests[0])
+    print("***********************************")
+    print(f"input len: {test_prompt_len}")
+    print(f"output len: {test_output_len}")
+    print("***********************************")
     if backend != "openai-chat" and test_mm_content is not None:
         # multi-modal benchmark is only available on OpenAI Chat backend.
         raise ValueError(
@@ -657,20 +668,26 @@ async def benchmark(
     # and it will simplify the code in limited_request_func.
     #    semaphore = (asyncio.Semaphore(max_concurrency)
     #                 if max_concurrency else contextlib.nullcontext())
-    semaphore = (asyncio.Semaphore(max_concurrency)
+    semp_empty_slot = (asyncio.Semaphore(max_concurrency)
                  if max_concurrency else None)
+    semp_request = (asyncio.Semaphore(0)
+                      if semp_empty_slot else None)
 
     async def limited_request_func(request_func_input, pbar):
-        if semaphore is None:
+        if semp_request is None:
             return await request_func(request_func_input=request_func_input,
                                       pbar=pbar)
-        async with semaphore:
-            return await request_func(request_func_input=request_func_input,
-                                      pbar=pbar)
+        # consumer
+        await semp_request.acquire()
+        request_out = await request_func(request_func_input=request_func_input,
+                                         pbar=pbar)
+        semp_empty_slot.release()
+        return request_out
+    
 
     benchmark_start_time = time.perf_counter()
     tasks: List[asyncio.Task] = []
-    async for request in get_request(input_requests, request_rate, burstiness):
+    async for request in get_request(input_requests, request_rate, burstiness, semp_empty_slot, semp_request):
         prompt, prompt_len, output_len, mm_content = request
         req_model_id, req_model_name = model_id, model_name
         if lora_modules:
@@ -687,7 +704,7 @@ async def benchmark(
                                               best_of=best_of,
                                               multi_modal_content=mm_content,
                                               ignore_eos=ignore_eos)
-        # TODO: whenever the requests are generated, the logic shows, it will pack them all together and send them concurrently
+        
         tasks.append(
             asyncio.create_task(
                 limited_request_func(request_func_input=request_func_input,
@@ -893,7 +910,7 @@ def main(args: argparse.Namespace):
             stacklevel=2)
         input_requests = sample_sharegpt_requests(
             dataset_path=args.dataset,
-            num_requests=args.num_prompts,
+            num_requests=args.num_samples,
             tokenizer=tokenizer,
             fixed_output_len=args.sharegpt_output_len,
         )
@@ -901,7 +918,7 @@ def main(args: argparse.Namespace):
     elif args.dataset_name == "sharegpt":
         input_requests = sample_sharegpt_requests(
             dataset_path=args.dataset_path,
-            num_requests=args.num_prompts,
+            num_requests=args.num_samples,
             tokenizer=tokenizer,
             fixed_output_len=args.sharegpt_output_len,
         )
@@ -909,7 +926,7 @@ def main(args: argparse.Namespace):
     elif args.dataset_name == "burstgpt":
         input_requests = sample_burstgpt_requests(
             dataset_path=args.dataset_path,
-            num_requests=args.num_prompts,
+            num_requests=args.num_samples,
             random_seed=args.seed,
             tokenizer=tokenizer,
         )
@@ -919,7 +936,7 @@ def main(args: argparse.Namespace):
         if args.backend == "openai-chat":
             input_requests = sample_sonnet_requests(
                 dataset_path=args.dataset_path,
-                num_requests=args.num_prompts,
+                num_requests=args.num_samples,
                 input_len=args.sonnet_input_len,
                 output_len=args.sonnet_output_len,
                 prefix_len=args.sonnet_prefix_len,
@@ -934,7 +951,7 @@ def main(args: argparse.Namespace):
             ), "Tokenizer/model must have chat template for sonnet dataset."
             input_requests = sample_sonnet_requests(
                 dataset_path=args.dataset_path,
-                num_requests=args.num_prompts,
+                num_requests=args.num_samples,
                 input_len=args.sonnet_input_len,
                 output_len=args.sonnet_output_len,
                 prefix_len=args.sonnet_prefix_len,
@@ -949,7 +966,7 @@ def main(args: argparse.Namespace):
             dataset_path=args.dataset_path,
             dataset_subset=args.hf_subset,
             dataset_split=args.hf_split,
-            num_requests=args.num_prompts,
+            num_requests=args.num_samples,
             tokenizer=tokenizer,
             random_seed=args.seed,
             fixed_output_len=args.hf_output_len,
@@ -960,7 +977,7 @@ def main(args: argparse.Namespace):
             prefix_len=args.random_prefix_len,
             input_len=args.random_input_len,
             output_len=args.random_output_len,
-            num_prompts=args.num_prompts,
+            num_requests=args.num_samples,
             range_ratio=args.random_range_ratio,
             tokenizer=tokenizer,
         )
@@ -1010,7 +1027,7 @@ def main(args: argparse.Namespace):
         result_json["model_id"] = model_id
         result_json["tokenizer_id"] = tokenizer_id
         result_json["best_of"] = args.best_of
-        result_json["num_prompts"] = args.num_prompts
+        result_json["num_samples"] = args.num_samples
 
         # Metadata
         if args.metadata:
@@ -1123,10 +1140,10 @@ if __name__ == "__main__":
     )
     parser.add_argument("--use-beam-search", action="store_true")
     parser.add_argument(
-        "--num-prompts",
+        "--num-samples",
         type=int,
         default=1000,
-        help="Number of prompts to process.",
+        help="Number of request (samples) to process.",
     )
     parser.add_argument(
         "--logprobs",
