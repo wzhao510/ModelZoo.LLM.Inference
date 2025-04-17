@@ -1,4 +1,5 @@
 import os
+import re
 import argparse
 import dataclasses
 from typing import Optional
@@ -156,7 +157,46 @@ class BenchArgs:
     def from_cli_args(cls, args: argparse.Namespace):
         attrs = [attr.name for attr in dataclasses.fields(cls)]
         return cls(**{attr: getattr(args, attr) for attr in attrs})
+
+
+def get_bench_serving_args(command):
+    input_len_match = re.search(r"--random-input-len\s+(\d+)", command)
+    output_len_match = re.search(r"--random-output-len\s+(\d+)", command)
+    num_prompt_match = re.search(r"--num-prompts\s+(\d+)", command)
+    input_len = input_len_match.group(1) if input_len_match else "0"
+    output_len = output_len_match.group(1) if output_len_match else "0"
+    num_prompt = num_prompt_match.group(1) if num_prompt_match else "0"
+    result = f"In{input_len}-out{output_len}-bs{num_prompt}"
+    print(result)
+    return result
+
+
+def get_launch_server_args(command):
+    output_string = ""
+    output_string += "-TCON" if re.search(r"--enable-torch-compile+", command) else "-TCOFF"
+    output_string += "-NEXTNON" if re.search(r'--speculative-algo\s+NEXTN', command) else "-NEXTNOFF"
+    output_string += "-CGOFF" if re.search(r"--disable-cuda-graph+", command) else "-CGON"
+
+    if re.search(r"--attention-backend\s+(\S+)", command):
+        output_string += "-" + re.search(r"--attention-backend\s+(\S+)", command).group(1)
+    if re.search(r"--enable-flashinfer-mla", command):
+        output_string += "-flashmla"
     
+    output_string += "-epmoe" if re.search(r"--enable-ep-moe", command) else ""
+    output_string += "-dpatt" if re.search(r"--enable-dp-attention", command) else ""
+
+    tp_size_match = re.search(r"--tp\s+(\d+)",command)
+    ep_size_match = re.search(r"--ep\s+(\d+)",command)
+    dp_size_match = re.search(r"--dp\s+(\d+)",command)
+    if tp_size_match:
+        output_string += f"-tp{tp_size_match.group(1)}" 
+    if ep_size_match:
+        output_string += f"-ep{ep_size_match.group(1)}" 
+    if dp_size_match:
+        output_string += f"-dp{dp_size_match.group(1)}" 
+    
+    return output_string
+
 
 def run_benchmark(args):
     model_config = get_params(args.model_path)
@@ -223,7 +263,10 @@ def run_benchmark(args):
         benchmark_cmd += " --batched-test"  
 
     if args.result_filename:
-        benchmark_cmd += f' --result-filename {args.result_filename}'
+        file_server_args = get_launch_server_args(benchmark_cmd)
+        file_bench_args = get_bench_serving_args(benchmark_cmd)
+        model_name = args.model_path.split('/')[-2] if args.model_path[-1]=='/' else args.model_path.split('/')[-2]
+        benchmark_cmd += f' --result-filename ./result/{model_name}{file_server_args}_{file_bench_args}_{args.result_filename}'
 
     print(benchmark_cmd)
     
