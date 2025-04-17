@@ -26,7 +26,7 @@ code下存放的是测试代码和脚本,data目录下是benchmark测试需要�
 ```
 python ./code/bench_test.py \
 --model ./models/DeepSeek-R1-Distill-Qwen-7B/ \
---dataset-path /workspace/mnt/storage/admin@metax.com/pde-ai-datasets/ShareGPT_V3/ShareGPT_V3_unfiltered_cleaned_split.json \
+--dataset-path /pde_ai/datasets/ShareGPT_V3/ShareGPT_V3_unfiltered_cleaned_split.json \
 --enable-ep-moe \
 --ep-size 1 \
 --enable-dp-attention \
@@ -41,7 +41,7 @@ python ./code/bench_test.py \
 ```
 python ./code/bench_test.py \
 --model ./models/DeepSeek-R1-Distill-Qwen-7B/ \
---dataset-path /workspace/mnt/storage/admin@metax.com/pde-ai-datasets/ShareGPT_V3/ShareGPT_V3_unfiltered_cleaned_split.json \
+--dataset-path /pde_ai/datasets/ShareGPT_V3/ShareGPT_V3_unfiltered_cleaned_split.json \
 --enable-ep-moe \
 --ep-size 1 \
 --enable-dp-attention \
@@ -72,10 +72,10 @@ pip install eval-type-backport
 
 * 首先需要启动sglang server端：
 ```
-python3 -m sglang.launch_server --model /workspace/mnt/storage/admin@metax.com/pde-ai-models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B --trust-remote-code --disable-cuda-graph
+python3 -m sglang.launch_server --model /pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B --trust-remote-code --disable-cuda-graph
 ```
 * 然后运行client端：
 ```
-python ./run_ceval_client.py --model /workspace/mnt/storage/admin@metax.com/pde-ai-models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B --test_jsonl /workspace/mnt/storage/admin@metax.com/pde-ai-datasets/ceval_vllm_client/ceval_val_cmcc.jsonl
+python ./run_ceval_client.py --model /pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B --test_jsonl /pde_ai/datasets/ceval_vllm_client/ceval_val_cmcc.jsonl
 ```
 * 测试集ceval_val_cmcc.jsonl需要自行准备
