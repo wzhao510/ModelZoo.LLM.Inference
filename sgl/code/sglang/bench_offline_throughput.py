@@ -340,7 +340,8 @@ def throughput_test(
 
     logging.info("\nBenchmark...")
     if bench_args.result_filename:
-        with open(bench_args.result_filename, "w") as fout:
+        create_file(bench_args.result_filename)
+        with open(bench_args.result_filename, 'w') as file:
             pass
 
     if args.batched_test:
@@ -387,6 +388,15 @@ def throughput_test(
 
 
     return result
+
+def create_file(filename):
+    directory = os.path.dirname(filename)
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory)
+    if not os.path.exists(filename):
+        with open(filename, 'w') as file:
+            pass
+    print(f"File {filename} has been created or already exists.")
 
 def show_result(result):
     """ show throughput result """
