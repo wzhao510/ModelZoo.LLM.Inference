@@ -186,8 +186,8 @@ def get_launch_server_args(command):
     output_string += "-dpatt" if re.search(r"--enable-dp-attention", command) else ""
 
     tp_size_match = re.search(r"--tp\s+(\d+)",command)
-    ep_size_match = re.search(r"--ep\s+(\d+)",command)
-    dp_size_match = re.search(r"--dp\s+(\d+)",command)
+    ep_size_match = re.search(r"--ep-size\s+(\d+)",command)
+    dp_size_match = re.search(r"--dp-size\s+(\d+)",command)
     if tp_size_match:
         output_string += f"-tp{tp_size_match.group(1)}" 
     if ep_size_match:
@@ -223,11 +223,6 @@ def run_benchmark(args):
         benchmark_cmd += " --enable-ep-moe"
     elif "enable_ep_moe" in ceval_param and ceval_param["enable_ep_moe"] == "True":
         benchmark_cmd += " --enable-ep-moe"
-    
-    if args.ep_size:
-        benchmark_cmd += f' --ep-size {args.ep_size}'
-    if "ep_size" in ceval_param:
-        benchmark_cmd += f' --ep-size {ceval_param["ep_size"]}'
     
     if args.enable_dp_attention:
         benchmark_cmd += " --enable-dp-attention"
@@ -266,7 +261,7 @@ def run_benchmark(args):
         file_server_args = get_launch_server_args(benchmark_cmd)
         file_bench_args = get_bench_serving_args(benchmark_cmd)
         model_name = args.model_path.split('/')[-2] if args.model_path[-1]=='/' else args.model_path.split('/')[-2]
-        benchmark_cmd += f' --result-filename ./result/{model_name}{file_server_args}_{file_bench_args}_{args.result_filename}'
+        benchmark_cmd += f' --result-filename ./result/{model_name}{file_server_args}/{file_bench_args}_{args.result_filename}'
 
     print(benchmark_cmd)
     
