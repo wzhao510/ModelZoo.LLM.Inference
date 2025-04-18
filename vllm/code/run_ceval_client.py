@@ -86,7 +86,7 @@ def first_option_postprocess(text: str, options: str = "ABCD", cushion: bool = T
         
     return ''  # 安全容错
     
-def query_llm(prompt):
+def query_llm(prompt, max_tokens_in):
     input_ids = tokenizer.encode(prompt)
     tries = 0
 
@@ -97,7 +97,7 @@ def query_llm(prompt):
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.6,
-                max_tokens=15000,
+                max_tokens=max_tokens_in,
                 top_p=0.7,
             )
             content = completion.choices[0].message.content
@@ -141,7 +141,7 @@ def main(args):
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.batch_size) as executor:
         # 提交所有任务并保留索引
         future_to_index = {
-            executor.submit(query_llm, task["origin_prompt"]): idx
+            executor.submit(query_llm, task["origin_prompt"], max_tokens_in = args.max_tokens): idx
             for idx, task in enumerate(tasks)
         }
         
@@ -182,11 +182,27 @@ def main(args):
     total = len(tasks)
     print(f"Total: {total}, Correct: {total_correct}, Accuracy: {total_correct/total:.4f}")
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+
+def create_parser():
+    parser = argparse.ArgumentParser(
+        description = "run ceval on client",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+
+    parser.add_argument(
+        "-mt", "--max-tokens", type = int, default = 15000,
+        help="set the max_tokens parameter"
+    )
+
     parser.add_argument("--batch_size", "-b", type=int, default=8)
     parser.add_argument("--test_jsonl", "-t", type=str, default="/pde_ai/datasets/ceval_vllm_client/ceval_val_cmcc.jsonl")
     parser.add_argument("--save_dir", "-s", type=str, default="results")
     parser.add_argument("--model", "-m", type=str, required=True)
+
+    return parser
+
+
+if __name__ == "__main__":
+    parser = create_parser()
     args = parser.parse_args()
     main(args)
