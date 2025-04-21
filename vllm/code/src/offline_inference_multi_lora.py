@@ -49,7 +49,6 @@ def create_test_prompts(
             "[user] Write a SQL query to answer the question based on the table schema.\n\n context: CREATE TABLE table_name_11 (nationality VARCHAR, elector VARCHAR)\n\n question: When Anchero Pantaleone was the elector what is under nationality? [/user] [assistant]",  # noqa: E501
             SamplingParams(n=3,
                            best_of=3,
-                           use_beam_search=True,
                            temperature=0,
                            max_tokens=128,
                            stop_token_ids=[32003]),
@@ -66,7 +65,6 @@ def create_test_prompts(
             "[user] Write a SQL query to answer the question based on the table schema.\n\n context: CREATE TABLE table_name_11 (nationality VARCHAR, elector VARCHAR)\n\n question: When Anchero Pantaleone was the elector what is under nationality? [/user] [assistant]",  # noqa: E501
             SamplingParams(n=3,
                            best_of=3,
-                           use_beam_search=True,
                            temperature=0,
                            max_tokens=128,
                            stop_token_ids=[32003]),
