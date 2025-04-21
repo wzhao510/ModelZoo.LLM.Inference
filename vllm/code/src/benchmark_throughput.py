@@ -336,9 +336,30 @@ def prepare_request(input_len, output_len, num_prompts, tokenizer):
     all_tokens = tokenizer(txt_data)
     all_tokens.input_ids = all_tokens.input_ids[:8192]
     token_len = len(all_tokens.input_ids)
-    offsets = np.random.randint(0, token_len-input_len-1)
-    tmp_tokens = all_tokens.input_ids[offsets:offsets+input_len-1]
-    prompt = tokenizer.decode(tmp_tokens)
+
+    need_gen_req = True
+    token_diff = 0
+    while need_gen_req:
+        offsets = np.random.randint(0, token_len - (input_len - token_diff))
+        tmp_tokens = all_tokens.input_ids[offsets : offsets + (input_len - token_diff)]
+
+        prompt = tokenizer.decode(tmp_tokens)
+        
+        # verify effectiveness
+        ver_tokens = tokenizer(prompt).input_ids
+        token_diff = len(ver_tokens) - len(tmp_tokens)
+        
+        if token_diff > 0:
+            prompt = tokenizer.decode(tmp_tokens[: -(token_diff)])
+            need_gen_req = False
+        elif token_diff == 0:
+            need_gen_req = False
+        else:
+            # if the length of re-encoding token list is less than intercapted length,
+            # we must re-intercapte the tmp_tokens with new parameter
+            print(f"re-tokenized length is less than the first. ver_tokens: {len(ver_tokens)}, tmp_tokens: {len(tmp_tokens)}")
+            continue
+
     requests = [(prompt, input_len, output_len)
                     for _ in range(num_prompts)]
     return requests

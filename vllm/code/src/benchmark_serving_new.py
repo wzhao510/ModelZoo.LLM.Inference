@@ -396,8 +396,9 @@ def sample_random_requests(
     # all_tokens.input_ids = all_tokens.input_ids[:8192]
     token_len = len(all_tokens.input_ids)
     print(f"Total tokens is {token_len}")
-    offsets = np.random.randint(0, token_len - (input_lens - 1), size=num_requests)
+    
     input_requests = []
+    token_diff = 0
     for i in range(num_requests):
         '''
         prompt = tokenizer.decode(prefix_token_ids +
@@ -406,8 +407,29 @@ def sample_random_requests(
         '''
         # DO NOT set the length of tmp_tokens as input_len
         # unless, it will cause the length of tokens after decoding and encoding change.
-        tmp_tokens = all_tokens.input_ids[offsets[i]:offsets[i] + input_lens[i] - 1]
-        prompt = tokenizer.decode(tmp_tokens, skip_special_tokens=True)
+        need_gen_req = True
+        while need_gen_req:
+            # for the tokenizer processes different samples in a similar way,
+            # retaining token_diff can reduce the amount of calculation
+            offsets = np.random.randint(0, token_len - (input_lens - token_diff))
+            tmp_tokens = all_tokens.input_ids[offsets[i]:offsets[i] + input_lens[i] - token_diff]
+            prompt = tokenizer.decode(tmp_tokens)
+
+            # verify effectiveness
+            ver_tokens = tokenizer(prompt).input_ids
+            token_diff = len(ver_tokens) - len(tmp_tokens)
+            
+            if token_diff > 0:
+                prompt = tokenizer.decode(tmp_tokens[: -(token_diff)])
+                need_gen_req = False
+            elif token_diff == 0:
+                need_gen_req = False
+            else:
+                # if the length of re-encoding token list is less than intercapted length,
+                # we must re-intercapte the tmp_tokens with new parameter
+                print(f"re-tokenized length is less than the first. ver_tokens: {len(ver_tokens)}, tmp_tokens: {len(tmp_tokens)}")
+                continue
+
         input_requests.append((prompt, int(prefix_len + input_lens[i]),
                                int(output_lens[i]), None))
 
