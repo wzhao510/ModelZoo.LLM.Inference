@@ -266,7 +266,7 @@ def run_vllm(
     global MX_PROFILE_CSV_NAME
     model_name_list = args.model.split("/")
     model_name = model_name_list[-2] if len(model_name_list[-1]) == 0 else model_name_list[-1]
-    MX_PROFILE_CSV_NAME = f"{model_name}_{args.num_prompts}_{args.input_len}_{args.output_len}_tp{args.tensor_parallel_size}.csv"
+    MX_PROFILE_CSV_NAME = f"{model_name}_{len(requests)}_{requests[0][1]}_{requests[0][2]}_tp{args.tensor_parallel_size}.csv"
     
     prompts = []
     sampling_params = []
