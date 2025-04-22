@@ -200,7 +200,7 @@ def get_launch_server_args(command):
 
 def run_benchmark(args):
     model_config = get_params(args.model_path)
-    benchmark_cmd = f'python3 -m sglang.bench_offline_throughput'
+    benchmark_cmd = f'python3 -m code.sglang.bench_offline_throughput'
     ceval_param = model_config["c-eval_param"]
   
     benchmark_cmd += f' --model-path {model_config["model_path"]}'
