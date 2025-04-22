@@ -3,7 +3,7 @@
     "model_path": "/pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-32B/",
     "c-eval_param": {
         "dtype":"bfloat16",
-        "mem-fraction-static":0.9,
+        "mem-fraction-static":0.86,
         "disable_cuda_graph":"False",
         "trust_remote_code":"True",
         "tp": 2,

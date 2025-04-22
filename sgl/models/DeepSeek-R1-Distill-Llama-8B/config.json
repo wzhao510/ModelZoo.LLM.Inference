@@ -4,7 +4,7 @@
     "c-eval_param": {
         "dtype":"bfloat16",
         "tp": 1,
-        "mem-fraction-static":0.9,
+        "mem-fraction-static":0.86,
         "disable_cuda_graph":"False",
         "trust_remote_code":"True",
         "dataset-name":"random",
