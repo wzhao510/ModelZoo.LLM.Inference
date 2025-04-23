@@ -309,7 +309,11 @@ def run_vllm(
             start = time.perf_counter()
             output = llm.generate(prompts, sampling_params, use_tqdm=True)
             end = time.perf_counter()
-        
+    
+    E2E_TIME.append(end-start)
+    if output[0].metrics is None:
+        return np.mean(E2E_TIME), None, None
+
     for out in output:
         ## 打印输出toknen 长度
         # print("output token length: ", len((out.outputs[0].token_ids)))
@@ -325,7 +329,6 @@ def run_vllm(
         ## 每个并发推理完成耗时
         ITL = out.metrics.finished_time - out.metrics.arrival_time
         INFER_LATENCY.append(ITL)
-    E2E_TIME.append(end-start)
     return np.mean(E2E_TIME), np.mean(FIRST_LATENCY), np.mean(DECODER_LATENCY)*1000
 
 def prepare_request(input_len, output_len, num_prompts, tokenizer):

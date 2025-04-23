@@ -25,10 +25,11 @@ def run_benchmark_mutlimoda(args, model_config):
         "--input-len={}".format(args.input_len),
         "--output-len={}".format(args.output_len),
         "--tensor-parallel-size={}".format(model_config["model_param"]["tensor_parallel_size"]),
-        "--enforce-eager={}".format(args.enforce_eager),
         "--num-scheduler-steps={}".format(args.num_scheduler_steps),
     ]
 
+    if args.enforce_eager:
+        script_args.append("--enforce-eager")
     if args.batched_test:
         script_args.append("--benchmark-all")
     if args.distributed_executor_backend is not None:

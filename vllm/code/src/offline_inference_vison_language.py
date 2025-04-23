@@ -30,6 +30,7 @@ def inital_LLM(args):
         max_model_len=args.max_model_len,
         trust_remote_code=args.trust_remote_code,
         distributed_executor_backend=args.distributed_executor_backend,
+        hf_overrides=args.hf_overrides,
     )
 
 
@@ -124,6 +125,13 @@ def generate_prompt_minicpmv(question, model_path):
                                            add_generation_prompt=True)
     return (prompt, stop_token_ids)
 
+# GLM-4v
+def generate_prompt_glm4v(question, model_path):
+    prompt = f"<|user|>\n<|begin_of_image|><|endoftext|><|end_of_image|>\
+        {question}<|assistant|>"
+
+    stop_token_ids = [151329, 151336, 151338]
+    return (prompt, stop_token_ids)
 
 # InternVL
 def generate_prompt_internvl(question, model_path):
@@ -172,6 +180,7 @@ model_prompt_map = {
     "internvl_chat": generate_prompt_internvl,
     "intern_vl": generate_prompt_internvl,
     "qwen_vl": generate_prompt_qwen_vl,
+    "glm4v": generate_prompt_glm4v,
 }
 
 
@@ -186,6 +195,10 @@ def main(args):
     model_path = args.model_path
 
     prompt = get_prompt(model_type=model_type, question=question, model_path=model_path)
+    if model_type == "glm4v":
+        args.hf_overrides = {"architectures": ["GLM4VForCausalLM"]}
+    else:
+        args.hf_overrides = None
     llm = inital_LLM(args)
 
     image = Image.open(args.image_path).convert("RGB")

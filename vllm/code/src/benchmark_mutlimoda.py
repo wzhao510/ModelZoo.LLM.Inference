@@ -50,6 +50,8 @@ class VllmBenchmark:
             num_scheduler_steps=args.num_scheduler_steps,
             use_v2_block_manager=args.use_v2_block_manager,
             disable_async_output_proc=args.disable_async_output_proc,
+            hf_overrides=args.hf_overrides,
+            show_hidden_metrics_for_version=True,
         )
 
     def make_input(self, in_len, batch, hint=None):
@@ -102,21 +104,22 @@ class VllmBenchmark:
             out = self.llm.generate(prompts, params, use_tqdm=True)
             end = time.perf_counter()
 
-        res = self.prase_benchmark_output(out)
-        res.time = end - start
-        res.input_length = in_len
-        res.output_length = out_len
-        res.batch_size = batch_size
+        if out[0].metrics is not None:
+            res = self.prase_benchmark_output(out)
+            res.time = end - start
+            res.input_length = in_len
+            res.output_length = out_len
+            res.batch_size = batch_size
 
-        qps = batch_size / res.time
-        tps = res.tokens_number / res.time
-        print(
-            f"bs_{batch_size}_input_{in_len}_output_{out_len} "
-            f"Throughput: {qps:.2f} requests/s, {tps:.2f} tokens/s, "
-            f"TTFT is {res.ttft:.3f}ms, Decoder Latency is {res.decoder_latency:.3f}ms"
-        )
-        print(f"benchmark result: {res}")
-        return res
+            qps = batch_size / res.time
+            tps = res.tokens_number / res.time
+            print(
+                f"bs_{batch_size}_input_{in_len}_output_{out_len} "
+                f"Throughput: {qps:.2f} requests/s, {tps:.2f} tokens/s, "
+                f"TTFT is {res.ttft:.3f}ms, Decoder Latency is {res.decoder_latency:.3f}ms"
+            )
+            # print(f"benchmark result: {res}")
+            return res
 
     def test(self, out_len) -> str:
         prompt = "What is the content of this iamge?"
@@ -139,7 +142,9 @@ class VllmBenchmark:
             # texts.append(list(map(lambda x: x.text, i.outputs)))
             input_tokens_number += len(i.prompt_token_ids)
             output_tokens_number += sum(map(lambda x: len(x.token_ids), i.outputs))
-            arrival_time = min(arrival_time, i.metrics.arrival_time)
+            if i.metrics is not None:
+                arrival_time = min(arrival_time, i.metrics.arrival_time)
+
             first_scheduled_time = min(
                 first_scheduled_time, i.metrics.first_scheduled_time
             )
@@ -201,10 +206,11 @@ class PromptTemplate:
 
 
 def main(args: argparse.Namespace):
-    os.environ["MACA_SMALL_PAGESIZE_ENABLE"] = "1"
-    if not args.enforce_eager:
-        os.environ["MACA_GRAPH_LAUNCH_MODE"] = "1"
 
+    if args.model_type == "glm4v":
+        args.hf_overrides = {"architectures": ["GLM4VForCausalLM"]}
+    else:
+        args.hf_overrides = None
     llm = VllmBenchmark(args)
     print('Answer: "{}"'.format(llm.test(1024)))
 
@@ -242,18 +248,6 @@ def find_yaml_files(directory):
     directory = Path(directory)
     yield from directory.glob("*.yaml")
     yield from directory.glob("*.yml")
-
-
-def str2bool(v):
-    if isinstance(v, bool):
-        return v
-    if v.lower() in ("yes", "true", "t", "y", "1"):
-        return True
-    elif v.lower() in ("no", "false", "f", "n", "0"):
-        return False
-    else:
-        raise argparse.ArgumentTypeError("Boolean value expected.")
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Benchmark the throughput.")
@@ -334,9 +328,9 @@ if __name__ == "__main__":
         "the model executor, which can range from 0 to 1."
         "If unspecified, will use the default value of 0.9.",
     )
-    parser.add_argument(
-        "--enforce-eager", type=str2bool, default=True, help="enforce eager execution"
-    )
+    parser.add_argument("--enforce-eager",
+                        action="store_true",
+                        help="enforce eager execution")
     parser.add_argument(
         "--kv-cache-dtype",
         type=str,
