@@ -25,6 +25,7 @@ python ./code/bench_test.py \
 --model ./models/DeepSeek-R1-L4-BF16/ \
 --dataset-path /pde_ai/datasets/ShareGPT_V3/ShareGPT_V3_unfiltered_cleaned_split.json \
 --result-filename throughput_result.txt \
+--tp 4 \
 --enable-dp-attention \
 --dp-size 2 \
 --random-input-len 3072 \
@@ -35,6 +36,7 @@ python ./code/bench_test.py \
 --model ./models/DeepSeek-R1-L4-BF16/ \
 --dataset-path /pde_ai/datasets/ShareGPT_V3/ShareGPT_V3_unfiltered_cleaned_split.json \
 --result-filename throughput_result.txt \
+--tp 4 \
 --enable-dp-attention \
 --dp-size 2 \
 --enable-ep-moe \
@@ -55,6 +57,7 @@ python ./code/bench_test.py \
 --model ./models/DeepSeek-R1-L4-BF16-W8A8/ \
 --dataset-path /pde_ai/datasets/ShareGPT_V3/ShareGPT_V3_unfiltered_cleaned_split.json \
 --result-filename throughput_result.txt \
+--tp 4 \
 --enable-dp-attention \
 --dp-size 2 \
 --enable-ep-moe \
