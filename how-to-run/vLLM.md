@@ -55,7 +55,7 @@
 │  ├── 📄 input_data.txt
 └── 📂 models/
 
-# TODO:
+
 code下存放的是测试代码和脚本，dataset是启动openai_api服务端用到的，models下存放的是支持的模型的配置文件，multimodal_test是多模态模型测试。
 ```
 
@@ -137,7 +137,7 @@ CUDA_VISIBLE_DEVICES=${0~7} MX_VLLM_ENABLE_PROFILE=1 python ./code/bench_test.py
 
     > 生成的对应文件夹路径下的csv 可以通过 以下脚本完成 kernel 汇总（注：需要 安装openxl包： `pip install openxl`）  
     > **请在 `vllm` 目录下执行脚本**
-    > <!-- TODO: 统计汇总脚本待更新，预计2025.4.30前完成 -->
+    > 
     > ```shell
     > python ./code/tools/statistics_csv.py ./mx_profiler/
     > ```
@@ -160,7 +160,7 @@ python code/src/offline_inference_multi_lora.py --model /pde_ai/models/llm/Llama
 
 
 ### LoRA 跑性能数据 --当前性能较差，后续会对其进行优化
-<!-- TODO: 随时修改 -->
+
 ```shell
 python code/bench_test.py --model ./models/Llama2_7b_sql_lora/ --num-prompts 64 --input-len 1024 --output-len 1024
 ```
@@ -244,7 +244,7 @@ python code/src/offline_inference.py --model /pde_ai/models/llm/quantize_model/l
         ```shell
         python code/src/benchmark_serving_new.py --model /pde_ai/models/llm/DeepSeek/DeepSeek-V2-Lite/ --dataset_name random --random_input_len 1024 --random_output_len 1024 --num-samples 500 --trust-remote-code --ignore-eos --max-concurrency 50 --request-rate 0.6
         ```
-
+    
     2.  旧的测试脚本为 `./code/run_benchmark_serving.sh`，该脚本的内容如下：
     
         ```shell
@@ -252,11 +252,6 @@ python code/src/offline_inference.py --model /pde_ai/models/llm/quantize_model/l
         ```
 
         > 服务启动后可在脚本内修改参数，详细参数信息见code/src/benchmark_serving.py
-
-        启动简易的测试时，可以执行该脚本：
-        ```shell
-        bash run_benchmark_serving.sh
-        ```
 
 
 
@@ -305,6 +300,7 @@ python code/test_prefix_caching.py --model /pde_ai/models/llm/Llama/Meta-Llama-3
 
 
 ## Speculative Decoding
+
 > **参数说明**
 > 1. --speculative-model
 >    speculative 模型的路径，MLP Speculators ，EAGLE based draft models 等。
@@ -317,17 +313,18 @@ python code/test_prefix_caching.py --model /pde_ai/models/llm/Llama/Meta-Llama-3
 **注意事项：**
 1.  HF 上下载的EAGLE 模型文件不能直接被vllm 使用，可以使用 `convert_EAGLE_ckpt_to_vllm_compatible.py` 转换为vllm 可用的模型文件和配置文件。
     命令如：
-
+    
     ```shell
     python code/convert_EAGLE_ckpt_to_vllm_compatible.py /pde_ai/models/llm/Qwen/EAGLE-Qwen2-7B-Instruct/pytorch_model.bin /pde_ai/models//llm/Qwen/Qwen2-7B-Instruct/model-00004-of-00004.safetensors
     ```
 
     > **参数及结果说明：**
     > `/pde_ai/models/llm/Qwen/EAGLE-Qwen2-7B-Instruct/pytorch_model.bin` 为原始模型权重
-    > `/pde_ai/models//llm/Qwen/Qwen2-7B-Instruct/model-00004-of-00004.safetensors` 主模型的权重最后一个分片
+    > `/pde_ai/models/llm/Qwen/Qwen2-7B-Instruct/model-00004-of-00004.safetensors` 主模型的权重最后一个分片
     > **转换后的文件保存在：** `/pde_ai/models/llm/Qwen/EAGLE-Qwen2-7B-Instruct_vllm/` 规则  `EAGLE-xxx_vllm`
 
 **示例：**
+
 ```shell
 python ./code/bench_test.py --model models/LLama3.1_8b  --enable-chunked-prefill --speculative-model /pde_ai/models/llm/Llama/llama3-8b-accelerator  --num-speculative-tokens 4
 ```
