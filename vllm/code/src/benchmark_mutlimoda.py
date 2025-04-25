@@ -104,22 +104,29 @@ class VllmBenchmark:
             out = self.llm.generate(prompts, params, use_tqdm=True)
             end = time.perf_counter()
 
-        if out[0].metrics is not None:
-            res = self.prase_benchmark_output(out)
-            res.time = end - start
-            res.input_length = in_len
-            res.output_length = out_len
-            res.batch_size = batch_size
+        
+        res = self.prase_benchmark_output(out)
+        res.time = end - start
+        res.input_length = in_len
+        res.output_length = out_len
+        res.batch_size = batch_size
 
-            qps = batch_size / res.time
-            tps = res.tokens_number / res.time
+        qps = batch_size / res.time
+        tps = res.tokens_number / res.time
+        if out[0].metrics is not None:
             print(
                 f"bs_{batch_size}_input_{in_len}_output_{out_len} "
                 f"Throughput: {qps:.2f} requests/s, {tps:.2f} tokens/s, "
                 f"TTFT is {res.ttft:.3f}ms, Decoder Latency is {res.decoder_latency:.3f}ms"
             )
-            # print(f"benchmark result: {res}")
-            return res
+        else:
+            print(
+                f"bs_{batch_size}_input_{in_len}_output_{out_len} "
+                f"Throughput: {qps:.2f} requests/s, {tps:.2f} tokens/s, "
+            )
+
+        # print(f"benchmark result: {res}")
+        return res
 
     def test(self, out_len) -> str:
         prompt = "What is the content of this iamge?"
@@ -138,12 +145,16 @@ class VllmBenchmark:
         finished_time = 0
         # texts = []
         decoder_latency = []
+        metrics_is_none = False
         for i in data:
             # texts.append(list(map(lambda x: x.text, i.outputs)))
             input_tokens_number += len(i.prompt_token_ids)
             output_tokens_number += sum(map(lambda x: len(x.token_ids), i.outputs))
-            if i.metrics is not None:
-                arrival_time = min(arrival_time, i.metrics.arrival_time)
+            if i.metrics is None:
+                metrics_is_none = True
+                continue
+                
+            arrival_time = min(arrival_time, i.metrics.arrival_time)
 
             first_scheduled_time = min(
                 first_scheduled_time, i.metrics.first_scheduled_time
@@ -160,21 +171,23 @@ class VllmBenchmark:
         res.input_tokens_number = input_tokens_number
         res.output_tokens_number = output_tokens_number
         res.tokens_number = input_tokens_number + output_tokens_number
-        res.arrival_time = arrival_time
-        res.first_scheduled_time = first_scheduled_time
-        res.first_token_time = first_token_time
-        res.finished_time = finished_time
-        res.elapsed_time = finished_time - first_scheduled_time
 
-        res.ttft = (first_token_time - arrival_time) * 1000
-        res.tpot = (
-            (finished_time - first_token_time)
-            * 1000
-            / (output_tokens_number - len(data))
-        )
-        res.decoder_latency = np.mean(decoder_latency) * 1000
-        res.tps = res.tokens_number / res.elapsed_time
-        res.output_pts = output_tokens_number / res.elapsed_time
+        if not metrics_is_none:
+            res.arrival_time = arrival_time
+            res.first_scheduled_time = first_scheduled_time
+            res.first_token_time = first_token_time
+            res.finished_time = finished_time
+            res.elapsed_time = finished_time - first_scheduled_time
+
+            res.ttft = (first_token_time - arrival_time) * 1000
+            res.tpot = (
+                (finished_time - first_token_time)
+                * 1000
+                / (output_tokens_number - len(data))
+            )
+            res.decoder_latency = np.mean(decoder_latency) * 1000
+            res.tps = res.tokens_number / res.elapsed_time
+            res.output_pts = output_tokens_number / res.elapsed_time
         return res
 
     def apply_temlate(self, prompt: str) -> str:
