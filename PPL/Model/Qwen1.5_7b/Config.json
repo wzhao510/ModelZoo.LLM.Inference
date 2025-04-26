@@ -1,7 +1,7 @@
 {
-    "model_type": "qwen",
+    "model_type": "qwen2",
     "convert_to_pmx": {
-        "origin_model_dir": "/external/models/Qwen/Qwen1.5_7b",
+        "origin_model_dir": "/external/models/Qwen/Qwen1.5-7B/",
         "enable_using_safetensors": true,
         "pmx_model_output_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Qwen1.5_7b/pmx-model"
     },
@@ -18,7 +18,7 @@
     "pmx_model_test": {
         "num_gpu": 1,
         "pmx_model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Qwen1.5_7b/pmx-model/",
-        "origin_model_dir": "/external/models/Qwen/Qwen1.5_7b/qwen.tiktoken",
+        "origin_model_dir": "/external/models/Qwen/Qwen1.5-7B/tokenizer.json",
         "seqlen_scale_up": 1,
         "max_gen_len": 256,
         "dump_steps": "0,1,255",
@@ -29,7 +29,7 @@
     "convert_to_onnx": {
         "num_gpu": 1,
         "pmx_model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Qwen1.5_7b/pmx-model",
-        "origin_model_dir": "/external/models/Qwen/Qwen1.5_7b/qwen.tiktoken",
+        "origin_model_dir": "/external/models/Qwen/Qwen1.5-7B/tokenizer.json",
         "onnx_model_output_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Qwen1.5_7b/onnx-model",
         "cache_layout": 3
     },
@@ -42,7 +42,7 @@
         "out_put_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Qwen1.5_7b/onnx-accuracy-test-result/"
     },
     "onnx_performance_test": {
-        "model_name": "qwen",
+        "model_name": "qwen2",
         "ppl_serving_dir": "/opt/maca-ai/ppl.llm.serving/bin/",
         "onnx_model_dir": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Qwen1.5_7b/onnx-model/",
         "onnx_model_param_path": "/workspace/ModelZoo.LLM.Inference/PPL/Model/Qwen1.5_7b/onnx-model/params.json",

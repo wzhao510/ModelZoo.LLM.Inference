@@ -69,7 +69,7 @@ def ConvertPmxToOnnx(config_str):
     convert_cmd = 'OMP_NUM_THREADS=1 torchrun --nproc_per_node {} {}/src/{}/Export.py --ckpt_dir {} --fused_qkv 1\
                      --fused_kvcache 1 --quantized_cache 1 --dynamic_batching 1 --auto_causal 1 --export_path {} --cache_layout {}'.format(config['num_gpu'],\
                      _dir, model_type, config['pmx_model_dir'], config['onnx_model_output_dir'], config['cache_layout'])
-    if not model_type.startswith('chatglm') and model_type != 'qwen' and model_type != 'mixtral':
+    if not model_type.startswith('chatglm') and model_type != 'qwen' and model_type != 'mixtral' and model_type != 'qwen2':
         convert_cmd += ' --tokenizer_path {}/tokenizer.model'.format(config['origin_model_tokenizer_path'])                     
     ret = subprocess.Popen(convert_cmd, shell=True, stdout=None, stderr=None, encoding='utf-8')
     ret.wait()
