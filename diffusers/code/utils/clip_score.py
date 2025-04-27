@@ -38,7 +38,8 @@ class ClipScore:
 
         for i, info in enumerate(image_info):
             image_files = [info['image']]
-            category = info['category']
+            if 'category' in info:
+                category = info['category']
             prompt = info['prompt']
 
             # print(f"[{i + 1}/{len(image_info)}] {prompt}")
@@ -58,20 +59,22 @@ class ClipScore:
             # print(f"best score: {best_score}")
 
             all_scores.append(best_score)
-            if category not in cat_scores:
-                cat_scores[category] = []
-            cat_scores[category].append(best_score)
+            if 'category' in info:
+                if category not in cat_scores:
+                    cat_scores[category] = []
+                cat_scores[category].append(best_score)
         print(f">done. elapsed time: {(time.time() - t_b):.3f} s")
 
         average_score = np.average(all_scores)
         print("====================================")
         print(f"average score: {average_score:.3f}")
-        print("category average scores:")
-        cat_average_scores = {}
-        for category, scores in cat_scores.items():
-            cat_average_scores[category] = np.average(scores)
-            print(f"[{category}], average score: {cat_average_scores[category]:.3f}")
-        print("====================================")
+        if cat_scores :
+            print("category average scores:")
+            cat_average_scores = {}
+            for category, scores in cat_scores.items():
+                cat_average_scores[category] = np.average(scores)
+                print(f"[{category}], average score: {cat_average_scores[category]:.3f}")
+            print("====================================")
         return average_score
 
     @staticmethod
