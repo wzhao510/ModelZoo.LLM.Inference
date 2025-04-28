@@ -1,11 +1,14 @@
-import shutil
 import os
 import sys
 import numpy as np
 from utils.utils import get_params, convertModel, get_input_shape_info
+from utils.clip_score import ClipScore
 from sd_model.text2img import Text2ImgModelSess
 import time
 import onnxruntime as ort
+from tqdm import trange
+
+EVAL_MODEL_PATH="/pde_ai/models/llm/CLIP/CLIP-ViT-H-14-laion2B-s32B-b79K/open_clip_pytorch_model.bin"
 
 def check_fp32_models(params):
     if not os.path.exists(os.path.join(params["ori_path"], "tokenizer")):
@@ -100,8 +103,32 @@ def get_gpu_memory_usage(device_id=0):
     used_memory = int(memory_str[start_pos+1:end_pos])
     return used_memory
 
+def infer_check_accuracy(sd_text2img_models, batch_size, test_set, output_size):
+    results = []
+    for start_idx in trange(0, len(test_set), batch_size):
+        end_idx = min(start_idx + batch_size, len(test_set))
+        start_idx -= (start_idx + batch_size - end_idx )
+        prompts = []
+        prompt_str = []
+        for i in range(start_idx, end_idx):
+            data = test_set[i]
+            prompt_str.append(data["prompt"])
+            results.append(data)
+        prompts = sd_text2img_models.truncated_prompt_embeds(prompt_str)
+        prompt_np = np.array(prompts)
+        ## infer
+        sd_pipe_output = sd_text2img_models(None, height=output_size, width=output_size, prompt_embeds=prompt_np)
+        images = sd_pipe_output.images
+        if len(images) != end_idx - start_idx:
+            print("WARN: DO not match")
+        for idx, image in enumerate(images):
+            results[start_idx + idx]["image"] = image
+    return results
 
-def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca", output_size=None, device_id=0, skip_fp16_convert=False):
+def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca", output_size=None, device_id=0, skip_fp16_convert=False, test_round=10):
+    if not os.path.isfile(EVAL_MODEL_PATH):
+        raise ValueError(f"{EVAL_MODEL_PATH} dose not exist. Please check on file.")
+    
     if EP.lower() == "maca":
         providers = [("MACAExecutionProvider",{
             'device_id':device_id,
@@ -127,7 +154,7 @@ def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca",
         text_encoder_path = os.path.join(params["ori_path"], params["text_encoder"])
         unet_path = os.path.join(params["ori_path"], params["unet"])
         vae_decoder_path = os.path.join(params["ori_path"], params["vae_decoder"])
-    
+    print(text_encoder_path)
     text_encoder_sess = ort.InferenceSession(text_encoder_path, providers=providers)
     unet_sess = ort.InferenceSession(unet_path, providers=providers)
     vae_decoder_sess = ort.InferenceSession(vae_decoder_path, providers=providers)
@@ -161,39 +188,58 @@ def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca",
     
     print("warmup")
     sd_pipe_output = sd_text2img_models[0](prompt[:batchsize])
-        
-    total_cost = 0.0
+
+    dataset = []
+    for i in range(batchsize):
+        row = {}
+        row["image_name"] = [f"{i:04d}.png"]
+        row["prompt"] = prompt[i]
+        row["image"] = None
+        dataset.append(row)
+   
     max_memory = 0.0
+    results = []
     print("Start Infer")
-    
-    sd_pipe_output_list = []
-    for i in range(10):
-        start_time = time.time()
-        sd_pipe_output = sd_text2img_models[0](prompt[:batchsize])#(name)
-        end_time = time.time()
-        total_cost += end_time - start_time
+    start = time.time()
+    for i in range(test_round):
+        results = infer_check_accuracy(sd_text2img_models[0], int(batchsize), dataset[:], output_size)
         if EP.lower() == "maca":
             used_memory = get_gpu_memory_usage(0) - init_memory
             if used_memory > max_memory:
                 max_memory = used_memory
-        sd_pipe_output_list.append(sd_pipe_output)
+    end = time.time()
+    print(f"Cost time: {end-start}")
+    fps = len(dataset[:]) * test_round / (end-start)
+    #print(results)
+    print("Infer Finished...")
 
-    avg_cost = total_cost/len(sd_pipe_output_list)
-    fps = (1/avg_cost) * batchsize
-    if EP.lower() == "maca":
-        print(f"Inference cost {avg_cost:.3f} seconds, fps is {fps:.3f}, memory usage: {max_memory / 1024 / 1024:.3f} GB")
-    else:
-        print(f"Inference cost {avg_cost:.3f} seconds, fps is {fps:.3f}")
-
+    print("Start Save images....")
     # save generated images
     save_image=True
     if save_image:
-        cnt = 0 
-        for sd_pipe_output in sd_pipe_output_list:
-            images = sd_pipe_output.images
-            for i in range(len(images)):
-                sd_pipe_output.images[i].save(f"generated_image_{cnt}.png")
-                cnt += 1
+        cnt = 0
+        for sd_pipe_output in results:
+            sd_pipe_output["image"].save(f"generated_image_{cnt}.png")
+            cnt += 1
+
+    print("Start Eval...")
+
+    clip_score = ClipScore(model_name="ViT-H-14",
+                        model_weights_path=EVAL_MODEL_PATH,
+                        device="cpu")
+    average_score = clip_score.process(results)
+
+    path_list = modelname.split("/")
+    if len(path_list[-1]) != 0:
+        model_type = path_list[-1]
+    else:
+        model_type = path_list[-2]
+
+    if EP.lower() == "maca":
+        print("StableDiffusion_{}_bs{}_prec{} FPS : {:.3f}, latency : {:.3f}ms, memory usage: {:.3f} GB".format(model_type, batchsize, precision, fps, 1.0/fps*1000, max_memory / 1024 / 1024))
+    else:
+        print("StableDiffusion_{}_bs{}_prec{} FPS : {:.3f}, latency : {:.3f}ms".format(model_type, batchsize, precision, fps, 1.0/fps*1000))
+    print("StableDiffusion_{}_bs{}_prec{} Avg Score : {:.3f}".format(model_type, batchsize, precision, average_score))
 
 
 if __name__ == '__main__':
@@ -206,11 +252,12 @@ if __name__ == '__main__':
     EP = sys.argv[6] if len(sys.argv) > 6 else "maca"
     output_size = int(sys.argv[7]) if len(sys.argv) > 7 else None
     skip_fp16_convert = int(sys.argv[8]) if len(sys.argv) > 8 else 0
-    device_id = int(sys.argv[9]) if len(sys.argv) > 9 else 0
+    test_round = int(sys.argv[9]) if len(sys.argv) > 9 else 10
+    device_id = int(sys.argv[10]) if len(sys.argv) > 10 else 0
     if skip_fp16_convert == 0:
         skip_fp16_convert = False
     else:
         skip_fp16_convert = True
     print(f'modelname: {modelname}\nbatchsize: {batchsize}\nprecision: {precision}\ntask: {task}\n'
-          f'model_path: {model_path}\nEP: {EP}\noutput_size: {output_size}\ndevice_id: {device_id}\nskip_fp16_convert: {skip_fp16_convert}')
-    main(modelname,batchsize,precision,task,model_path, EP, output_size, device_id, skip_fp16_convert) 
+          f'model_path: {model_path}\nEP: {EP}\noutput_size: {output_size}\ndevice_id: {device_id}\nskip_fp16_convert: {skip_fp16_convert}\ntest_round: {test_round}\n')
+    main(modelname,batchsize,precision,task,model_path, EP, output_size, device_id, skip_fp16_convert, test_round) 

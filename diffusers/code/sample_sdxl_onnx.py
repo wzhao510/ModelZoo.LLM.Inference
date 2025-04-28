@@ -7,6 +7,9 @@ from pathlib import Path
 from sd_model.pipeline_sdxl import ORTStableDiffusionXLPipeline
 from utils.utils import get_params
 import time
+from utils.clip_score import ClipScore
+
+EVAL_MODEL_PATH="/pde_ai/models/llm/CLIP/CLIP-ViT-H-14-laion2B-s32B-b79K/open_clip_pytorch_model.bin"
 
 def check_models(params):
     if not os.path.exists(os.path.join(params["ori_path"], "tokenizer")):
@@ -48,14 +51,30 @@ def get_gpu_memory_usage(device_id=0):
     used_memory = int(memory_str[start_pos+1:end_pos])
     return used_memory
 
+def infer_check_accuracy(sd_text2img_models, step, images_per_prompt, prompts, output_size):
+    results = []
+    ## infer
+    images = sd_text2img_models(prompts, num_inference_steps=step, output_type="pil", height=output_size, width=output_size, num_images_per_prompt=images_per_prompt).images
+    
+    for idx, image in enumerate(images):
+        row = {}
+        row["image_name"] = [f"{idx//images_per_prompt:04d}.png"]
+        row["prompt"] = prompts[idx//images_per_prompt]
+        row["image"] = image
+        results.append(row)
+    return results
+
 def main(modelname, step=50, images_per_prompt=1, EP="maca", output_size=None, device_id=0):
     if EP.lower() == "maca":
         providers = [("MACAExecutionProvider",{
             'device_id':device_id,
         }),]
-        # init_memory = get_gpu_memory_usage(device_id)
+        init_memory = get_gpu_memory_usage(device_id)
     else:
         providers = ["CPUExecutionProvider",]
+
+    if not os.path.isfile(EVAL_MODEL_PATH):
+        raise ValueError(f"{EVAL_MODEL_PATH} dose not exist. Please check on file.")
 
     params = get_params(modelname)
 
@@ -116,21 +135,50 @@ def main(modelname, step=50, images_per_prompt=1, EP="maca", output_size=None, d
     print("warmup")
     _ = sd_text2img_models[0](prompt, num_inference_steps=step, output_type="pil", height=output_size, width=output_size, num_images_per_prompt=images_per_prompt)
 
-    total_cost = 0.0
     max_memory = 0.0
+    results = []
     print("Start Infer")
+    start = time.time()
+   
+    results = infer_check_accuracy(sd_text2img_models[0], step, images_per_prompt, prompt, output_size)
+    if EP.lower() == "maca":
+        used_memory = get_gpu_memory_usage(0) - init_memory
+        if used_memory > max_memory:
+            max_memory = used_memory
+    end = time.time()
+    print(f"Cost time: {end-start}")
+    fps = len(prompt[:])*images_per_prompt / (end-start)
+    print(results)
+    print("Infer Finished...")
 
-    start_time = time.time()
-    images = sd_text2img_models[0](prompt, num_inference_steps=step, output_type="pil", height=output_size, width=output_size, num_images_per_prompt=images_per_prompt).images
-    total_cost = time.time() - start_time
-
-    print(f"Output {len(images)} images, inference cost {total_cost:.3f} seconds")
-
+    print("Start Save images....")
     # save generated images
     save_image=True
     if save_image:
-        for i in range(len(images)):
-            images[i].save(f"generated_image_{i}.png")
+        cnt = 0
+        for sd_pipe_output in results:
+            sd_pipe_output["image"].save(f"generated_image_{cnt}.png")
+            cnt += 1
+
+    print("Start Eval...")
+
+    clip_score = ClipScore(model_name="ViT-H-14",
+                        model_weights_path=EVAL_MODEL_PATH,
+                        device="cpu")
+    average_score = clip_score.process(results)
+
+    path_list = modelname.split("/")
+    if len(path_list[-1]) != 0:
+        model_type = path_list[-1]
+    else:
+        model_type = path_list[-2]
+
+    print(f"Output {len(prompt)*images_per_prompt} images, inference cost {end-start:.3f} seconds")
+    if EP.lower() == "maca":
+        print("StableDiffusion_{}_step{}_images_per_prompt{} FPS : {:.3f}, latency : {:.3f}ms, memory usage: {:.3f} GB".format(model_type, step, images_per_prompt, fps, 1.0/fps*1000, max_memory / 1024 / 1024))
+    else:
+        print("StableDiffusion_{}_step{}_images_per_prompt{} FPS : {:.3f}, latency : {:.3f}ms".format(model_type, step, images_per_prompt, fps, 1.0/fps*1000))
+    print("StableDiffusion_{}_step{}_images_per_prompt{} Avg Score : {:.3f}".format(model_type, step, images_per_prompt, average_score))
 
 if __name__ == '__main__':
     modelname = sys.argv[1]

@@ -1,6 +1,9 @@
 运行描述文件
 ## requirement
 * 需要 onnxsim=0.4.36 
+* sample_onnx、sample_sd3_onnx、sample_sdxl增加精度测试功能
+* 使用ViT-H-14计算精度，需要挂载数据集，默认路径 /pde_ai/models/llm/CLIP/CLIP-ViT-H-14-laion2B-s32B-b79K/open_clip_pytorch_model.bin
+* 数据集获取路径https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K/tree/main
 ## 目录结构及说明
 
 ```
@@ -56,6 +59,20 @@ python code/sample_onnx_multithreads.py ./models/ox_sd_15_static/  2  fp16 norm 
 # EP:          设置onnxruntime运行的EP, 默认为maca, 可选EP有cpu,gpu,trt, 需根据环境中存在的EP进行设置
 # num_thr:     测算性能时，开启的线程数量 默认8
 
+
+## sd1.5/2.1 demo 示例：
+```python
+python code/sample_onnx.py ./models/ox_sd_15_bs/ 1 fp16 norm test maca 512 1 10 # 执行fp16 C500推理. Demo 测试跑10组数据 (动态shape和动态batch支持，默认出图照片为 512x512)
+```
+参数
+# modelpath：  需测试的模型路径, 内部包含config.json模型参数文件已配置好
+# batchsize:   推理的batchsize, 可设置1, 暂时只支持bs1
+# precision:   推理精度包含, fp32：使用ort-fp32精度, fp16：使用ort-fp16精度(暂未支持), int8：暂未支持, qdq：暂未支持
+# task:        测试任务，当前暂未用上
+# EP:          设置onnxruntime运行的EP, 默认为maca, 可选EP有cpu,maca
+# size:        生成图片尺寸 (size*size)
+# skip_convert 是否跳过转化fp16模型，转化后的模型保存在./temp_model中
+# test_round   测试轮次，测试test_round次，结果取平均
 
 ## sdxl demo 示例：
 (需要配置环境变量MACART_OP_KEEP_ONNX_PRECISION=ON，测试环境ort版本为mxc500-onnxruntime-20240930)
