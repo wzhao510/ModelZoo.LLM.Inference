@@ -159,9 +159,9 @@ def main(args):
                 choice = first_option_postprocess(result, options="ABCD")
                 if choice == tasks[idx]["gold"]:
                     total_correct += 1
-                    print(f'test idx: {idx:<4} result: Correct')
+                    print(f"Task {idx}/{len(tasks)}: Correct! Predicted: {choice}, Gold: {tasks[idx]['gold']}")
                 else:
-                    print(f'test idx: {idx:<4} result: Wrong')
+                    print(f"Task {idx}/{len(tasks)}: Incorrect. Predicted: {choice}, Gold: {tasks[idx]['gold']}")
             except Exception as e:
                 print(f"Error in task {idx}: {str(e)}")
                 results[idx] = ''
@@ -181,12 +181,12 @@ def main(args):
     # 保存结果
     model_name = args.model.split('/')[-2]
     os.makedirs(args.save_dir, exist_ok=True)
-    result_file = os.path.join(args.save_dir, f"{model_name}_bs{args.batch_size}.json")
+    result_file = os.path.join(args.save_dir, f"{model_name}_bs{args.batch_size}_seed{args.random_seed}_num{args.random_num}.json")
     with open(result_file, 'w', encoding='utf-8') as f:
         json.dump(output_json, f, ensure_ascii=False, indent=4)
 
     # 输出统计信息
-    accuracy_file = os.path.join(args.save_dir, f"{model_name}_bs{args.batch_size}.txt")
+    accuracy_file = os.path.join(args.save_dir, f"{model_name}_bs{args.batch_size}_seed{args.random_seed}_num{args.random_num}.txt")
     total = len(tasks)
     print(f"Total: {total}, Correct: {total_correct}, Accuracy: {total_correct/total:.4f}")
     with open(accuracy_file,'w') as f:
