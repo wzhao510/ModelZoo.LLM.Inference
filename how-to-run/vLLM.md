@@ -208,8 +208,17 @@ python code/src/offline_inference.py --model /pde_ai/models/llm/quantize_model/l
 1. 脚本为 `./code/src/benchmark_throughput.py`，该脚本可被 `./code/bench_test.py` 调用，也可以自行调用来测试单个case，当然，该脚本提供了 ```--batched-test``` 命令参数，可以用来测试35个case。**需要注意的是，提供 ```--batched-test``` 参数时不可以省略 ```--input-len``` 和 ```--output-len``` 参数**
 
     ```shell
-    python src/benchmark_throughput.py --backend hf --model /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --tokenizer /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --input-len 512 --output-len 128 --hf-max-batch-size 8
+    python src/benchmark_throughput.py --backend hf --model /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --tokenizer /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --input-len 512 --output-len 128 --num-prompts 8
     ```
+
+    > 这里仅说明常用的命令参数，具体的参数意义或者有哪些命令参数可以使用，请执行 `--help/-h` 查看
+    > `--input-len` 输入参数的长度
+    > `--output-len` 输出参数的长度
+    > `--num-prompts` 即batch-size (由于进行的测试只有一个batch，在该脚本中可以简单理解成样本量)
+    > `--max-model-len` 允许的 (input + output) 的最大值
+    > `--batched-test` 可以用来测试35个case，**目前还需要提供--input-len和--output-len *未来会进行改进***
+    > `--num-scheduler-steps` 通常设置为8，默认值为1，可以提升模型推理的性能
+    > `--enable-profile` 开启torch profile，抓取kernel信息
 
 
 
