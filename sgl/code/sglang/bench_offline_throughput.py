@@ -363,11 +363,15 @@ def throughput_test(
                         extra_request_body=extra_request_body,
                         profile=bench_args.profile,
                     )
-                
+                    result_output = show_result_v2(result,bench_args)
                     if bench_args.result_filename:
                         with open(bench_args.result_filename, "a") as fout:
-                            fout.write(json.dumps(result) + "\n")
-                    show_result(result)
+                            # fout.write(json.dumps(result) + "\n")
+                            for re in result_output:
+                                fout.write(re)
+
+                    # show_result_v1(result)
+
         backend.shutdown()
     else:
         result = throughput_test_once(
@@ -380,13 +384,15 @@ def throughput_test(
         )
         backend.shutdown()
 
+        result_output = show_result_v2(result,bench_args)
         if bench_args.result_filename:
             with open(bench_args.result_filename, "a") as fout:
-                fout.write(json.dumps(result) + "\n")
+                # fout.write(json.dumps(result) + "\n")
+                for re in result_output:
+                    fout.write(re)
 
-        show_result(result)
-
-
+        # show_result_v1(result)
+        
     return result
 
 def create_file(filename):
@@ -398,7 +404,19 @@ def create_file(filename):
             pass
     print(f"File {filename} has been created or already exists.")
 
-def show_result(result):
+def show_result_v2(result,bench_args):
+    """ show throughput simplified results """
+    result_output = [f"bs_{bench_args.num_prompts}_input_{bench_args.random_input_len}_output_{bench_args.random_output_len} Throughput: {result['request_throughput']:.2f} requests/s, ",f"{result['total_throughput']:.2f} tokens/s \n"]
+    print(
+        "\n{s:{c}^{n}}".format(s=" Offline Throughput Benchmark Result ", n=50, c="=")
+    )
+    for re in result_output:
+        print(re)
+    print("=" * 50)
+    
+    return result_output
+
+def show_result_v1(result):
     """ show throughput result """
     print(
         "\n{s:{c}^{n}}".format(s=" Offline Throughput Benchmark Result ", n=50, c="=")

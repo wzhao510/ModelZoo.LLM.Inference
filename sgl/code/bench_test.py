@@ -260,6 +260,8 @@ def run_benchmark(args):
     if args.result_filename:
         file_server_args = get_launch_server_args(benchmark_cmd)
         file_bench_args = get_bench_serving_args(benchmark_cmd)
+        if args.batched_test:
+            file_bench_args = "batched-test"
         model_name = args.model_path.split('/')[-2] if args.model_path[-1]=='/' else args.model_path.split('/')[-2]
         benchmark_cmd += f' --result-filename ./result/{model_name}{file_server_args}/{file_bench_args}_{args.result_filename}'
 
