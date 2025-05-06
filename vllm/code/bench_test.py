@@ -139,7 +139,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--max-model-len',
         type=int,
-        default=2048,
+        default=4096,
         help='Maximum length of a sequence (including prompt and output). '
         'If None, will be derived from the model.')
     parser.add_argument('--quantization',
