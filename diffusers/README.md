@@ -62,7 +62,7 @@ python code/sample_onnx_multithreads.py ./models/ox_sd_15_static/  2  fp16 norm 
 
 ## sd1.5/2.1 demo 示例：
 ```python
-python code/sample_onnx.py ./models/ox_sd_15_bs/ 1 fp16 norm test maca 512 1 10 # 执行fp16 C500推理. Demo 测试跑10组数据 (动态shape和动态batch支持，默认出图照片为 512x512)
+python code/sample_onnx.py ./models/ox_sd_15_bs/ 1 fp16 norm test maca 512 0 10 # 执行fp16 C500推理. Demo 测试跑10组数据，不跳过模型转换 (动态shape和动态batch支持，默认出图照片为 512x512)
 ```
 参数
 # modelpath：  需测试的模型路径, 内部包含config.json模型参数文件已配置好
@@ -71,8 +71,13 @@ python code/sample_onnx.py ./models/ox_sd_15_bs/ 1 fp16 norm test maca 512 1 10 
 # task:        测试任务，当前暂未用上
 # EP:          设置onnxruntime运行的EP, 默认为maca, 可选EP有cpu,maca
 # size:        生成图片尺寸 (size*size)
-# skip_convert 是否跳过转化fp16模型，转化后的模型保存在./temp_model中
-# test_round   测试轮次，测试test_round次，结果取平均
+# skip_convert 是否跳过转化fp16模型，转化后的模型保存在./temp_model中，默认0，不跳过转化
+# test_round   测试轮次，测试test_round次，结果取平均，默认10，测试十次取平均
+
+输出示例
+average score: 0.380
+StableDiffusion_ox_sd_15_bs_bs1_precfp16 FPS : 0.283, latency : 3532.173ms, memory usage: 7.686 GB
+StableDiffusion_ox_sd_15_bs_bs1_precfp16 Avg Score : 0.380
 
 ## sdxl demo 示例：
 (需要配置环境变量MACART_OP_KEEP_ONNX_PRECISION=ON，测试环境ort版本为mxc500-onnxruntime-20240930)
@@ -87,6 +92,11 @@ python code/sample_sdxl_onnx.py ./models/ox_sd_xl/ 50 1 maca 512 0 # 执行C500�
 # size:                     生成图片尺寸 (size*size)
 # device_id:                使用gpu编号
 
+输出示例
+average score: 0.186
+Output 2 images, inference cost 10.416 seconds
+StableDiffusion_ox_sd_xl_step50_images_per_prompt1 FPS : 0.192, latency : 5208.091ms, memory usage: 33.961 GB
+StableDiffusion_ox_sd_xl_step50_images_per_prompt1 Avg Score : 0.186
 
 ## sd3 demo 示例：
 (需要配置环境变量MACART_OP_KEEP_ONNX_PRECISION=ON，测试环境python3.8, diffusers==0.29.2)
@@ -100,3 +110,9 @@ python code/sample_sd3_onnx.py ./models/ox_sd_3/ 50 1 maca 512 0 # 执行C500推
 # EP:                       设置onnxruntime运行的EP, 默认为maca, 可选EP有cpu,maca
 # size:                     生成图片尺寸 (size*size)
 # device_id:                使用gpu编号
+
+输出示例
+average score: 0.186
+Output 2 images, inference cost 16.251 seconds
+StableDiffusion_ox_sd_3_step50_images_per_prompt1 FPS : 0.123, latency : 8125.549ms, memory usage: 38.526 GB
+StableDiffusion_ox_sd_3_step50_images_per_prompt1 Avg Score : 0.186
