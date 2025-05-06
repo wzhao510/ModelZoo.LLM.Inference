@@ -180,7 +180,7 @@ def get_launch_server_args(command):
     if re.search(r"--attention-backend\s+(\S+)", command):
         output_string += "-" + re.search(r"--attention-backend\s+(\S+)", command).group(1)
     if re.search(r"--enable-flashinfer-mla", command):
-        output_string += "-flashmla"
+        output_string += "-flinfmla"
     
     output_string += "-epmoe" if re.search(r"--enable-ep-moe", command) else ""
     output_string += "-dpatt" if re.search(r"--enable-dp-attention", command) else ""
@@ -218,6 +218,12 @@ def run_benchmark(args):
 
     if "tp" in ceval_param:
         benchmark_cmd += f' --tp {ceval_param["tp"]}'
+    
+    if args.attention_backend:
+        benchmark_cmd += f" --attention-backend {args.attention_backend}"
+    
+    if args.enable_flashinfer_mla:
+        benchmark_cmd += f" --enable-flashinfer-mla "
 
     if args.enable_ep_moe:
         benchmark_cmd += " --enable-ep-moe"
