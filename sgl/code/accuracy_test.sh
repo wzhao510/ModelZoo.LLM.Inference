@@ -16,7 +16,7 @@ fi
 
 echo "server params are ${server_param}"
 echo "client params are ${client_param}"
-server_log_file=$CURDIR/../acc_logs/${model##*/}_sglang_server.log
+server_log_file=$CURDIR/../acc_logs/${model##*/}_sglang_server_${2}.log
 echo "server log file is ${server_log_file}"
 
 
@@ -34,15 +34,15 @@ trap cleanup EXIT
 
 echo "waiting for server process ready..."
 
-timeout 600 tail -F $server_log_file | grep -qi "The server is fired up and ready to roll!"
+timeout 900 tail -F $server_log_file | grep -qi "The server is fired up and ready to roll!"
 if [ $? -ne 0 ]; then
     echo $?
     echo "process exceeds the time-out threshold!"
-    exit $?
+    exit 1
 fi
 
 echo "server is ready, start client test..."
-client_log_file=$CURDIR/../acc_logs/${model##*/}_sglang_client.log
+client_log_file=$CURDIR/../acc_logs/${model##*/}_sglang_client_${2}.log
 
 python ./code/run_ceval_client.py $client_param 2>&1 | tee  $client_log_file
 client_exit_status=$?
