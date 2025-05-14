@@ -199,6 +199,6 @@ if __name__ == "__main__":
     parser.add_argument("--save_dir", "-s", type=str, default="acc_results")
     parser.add_argument("--model", "-m", type=str, required=True)
     parser.add_argument("--random_seed", "-r", type=int, default=0)
-    parser.add_argument("--random_num", "-n", type=int, default=50)
+    parser.add_argument("--random_num", "-n", type=int, default=1346)
     args = parser.parse_args()
     main(args)

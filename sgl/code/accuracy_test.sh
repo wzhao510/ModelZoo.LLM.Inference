@@ -8,10 +8,10 @@ echo "all vars are $@"
 
 if [ $2 == "triton"  ]; then
   server_param="--model ${1} --trust-remote-code --tp 1 --attention-backend triton"
-  client_param="--model ${1} --test_jsonl /pde_ai/datasets/ceval_vllm_client/ceval_val_cmcc.jsonl --batch_size 32 --random_seed 0 --random_num 200 --save_dir acc_results/triton"
+  client_param="--model ${1} --test_jsonl /pde_ai/datasets/ceval_vllm_client/ceval_val_cmcc.jsonl --batch_size 64 --random_seed 0 --random_num 100 --save_dir acc_results/triton"
 elif [ $2 == "flashinfer" ]; then
   server_param="--model ${1} --trust-remote-code --tp 1 --attention-backend flashinfer --enable-flashinfer-mla"
-  client_param="--model ${1} --test_jsonl /pde_ai/datasets/ceval_vllm_client/ceval_val_cmcc.jsonl --batch_size 32 --random_seed 0 --random_num 200 --save_dir acc_results/flashinfer"
+  client_param="--model ${1} --test_jsonl /pde_ai/datasets/ceval_vllm_client/ceval_val_cmcc.jsonl --batch_size 64 --random_seed 0 --random_num 100 --save_dir acc_results/flashinfer"
 fi
 
 echo "server params are ${server_param}"

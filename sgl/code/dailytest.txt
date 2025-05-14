@@ -278,21 +278,21 @@ python ./code/bench_test.py \
 ****** attention-backend triton *******
 
 *server: python -m sglang.launch_server --model /pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B/  --trust-remote-code --tp 1 --attention-backend triton
-*client: python ./code/run_ceval_client.py --model /pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B/ --test_jsonl /pde_ai/datasets/ceval_vllm_client/ceval_val_cmcc.jsonl --batch_size 32 --random_seed 0 --random_num 200 --save_dir acc_results/triton
+*client: python ./code/run_ceval_client.py --model /pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B/ --test_jsonl /pde_ai/datasets/ceval_vllm_client/ceval_val_cmcc.jsonl --batch_size 64 --random_seed 0 --random_num 100 --save_dir acc_results/triton
 
 ****** attention-backend flashinfer *******
 
 *server: python -m sglang.launch_server --model /pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B/  --trust-remote-code --tp 1 --attention-backend flashinfer --enable-flashinfer-mla
-*client: python ./code/run_ceval_client.py --model /pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B/ --test_jsonl /pde_ai/datasets/ceval_vllm_client/ceval_val_cmcc.jsonl --batch_size 32 --random_seed 0 --random_num 200 --save_dir acc_results/flashinfer
+*client: python ./code/run_ceval_client.py --model /pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B/ --test_jsonl /pde_ai/datasets/ceval_vllm_client/ceval_val_cmcc.jsonl --batch_size 64 --random_seed 0 --random_num 100 --save_dir acc_results/flashinfer
 
-----------------------------------------------DeepSeek-R1-Distill-Qwen-7B-BF16-W8A8---------------------------------------------------
+----------------------------------------------DeepSeek-R1-Distill-Qwen-32B-BF16-W8A8---------------------------------------------------
 
 ****** attention-backend triton *******
 *server: python -m sglang.launch_server --model /pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-32B-quantized.w8a8/  --trust-remote-code --tp 1 --attention-backend triton
-*client: python ./code/run_ceval_client.py --model /pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-32B-quantized.w8a8/ --test_jsonl /pde_ai/datasets/ceval_vllm_client/ceval_val_cmcc.jsonl --batch_size 32 --random_seed 0 --random_num 200 --save_dir acc_results/triton
+*client: python ./code/run_ceval_client.py --model /pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-32B-quantized.w8a8/ --test_jsonl /pde_ai/datasets/ceval_vllm_client/ceval_val_cmcc.jsonl --batch_size 64 --random_seed 0 --random_num 100 --save_dir acc_results/triton
 
 ****** attention-backend flashinfer *******
 *server: python -m sglang.launch_server --model /pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-32B-quantized.w8a8/  --trust-remote-code --tp 1 --attention-backend flashinfer --enable-flashinfer-mla
-*client: python ./code/run_ceval_client.py --model /pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-32B-quantized.w8a8/ --test_jsonl /pde_ai/datasets/ceval_vllm_client/ceval_val_cmcc.jsonl --batch_size 32 --random_seed 0 --random_num 200 --save_dir acc_results/flashinfer
+*client: python ./code/run_ceval_client.py --model /pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-32B-quantized.w8a8/ --test_jsonl /pde_ai/datasets/ceval_vllm_client/ceval_val_cmcc.jsonl --batch_size 64 --random_seed 0 --random_num 100 --save_dir acc_results/flashinfer
 
 
