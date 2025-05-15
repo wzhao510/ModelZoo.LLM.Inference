@@ -63,16 +63,17 @@ def run_benchmark(args):
     async_engine = model_config.get("async_engine")
     dtype = model_config["c-eval_param"]["dtype"]
     gpu_memory_utilization = args.gpu_memory_utilization if args.gpu_memory_utilization is not None else model_config["c-eval_param"]["gpu_memory_utilization"]
-    
+    max_model_len = model_config["c-eval_param"].get("max_model_len", args.max_model_len)
+    max_model_len = args.max_model_len if args.max_model_len <= max_model_len else max_model_len
     enable_profile = os.getenv("MX_VLLM_ENABLE_PROFILE", None)
     enable_profile= False if enable_profile is None else True
     if args.speculative_model is  None:
         benchmark_cmd = f'python ./code/src/benchmark_throughput.py  --model={model_path}  \
-                        --backend=vllm --max-model-len {args.max_model_len} --num-prompts {args.num_prompts} --trust-remote-code --dtype {dtype} \
+                        --backend=vllm --max-model-len {max_model_len} --num-prompts {args.num_prompts} --trust-remote-code --dtype {dtype} \
                         --input-len {args.input_len} --output-len {args.output_len} --tensor-parallel-size {tensor_parallel_size} --gpu-memory-utilization {gpu_memory_utilization}'
     else:
         benchmark_cmd = f'python ./code/src/benchmark_throughput.py  --model={model_path}  \
-                        --backend=vllm --max-model-len {args.max_model_len} --num-prompts {args.num_prompts} --trust-remote-code --dtype {dtype} \
+                        --backend=vllm --max-model-len {max_model_len} --num-prompts {args.num_prompts} --trust-remote-code --dtype {dtype} \
                         --input-len {args.input_len} --output-len {args.output_len} --tensor-parallel-size {tensor_parallel_size} --gpu-memory-utilization {gpu_memory_utilization} \
                         --speculative-model {args.speculative_model} \
                         --num-speculative-tokens {args.num_speculative_tokens} \

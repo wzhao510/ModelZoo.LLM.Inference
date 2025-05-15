@@ -5,6 +5,7 @@
         "dtype": "float16",
         "tensor_parallel_size": 1,
         "gpu_memory_utilization": 0.9,
+        "max_model_len" : 2048,
         "batch_size": 1,
         "task_name": "ceval-valid"
     }
