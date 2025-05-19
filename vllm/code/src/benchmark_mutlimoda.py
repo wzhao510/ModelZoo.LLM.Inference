@@ -80,25 +80,13 @@ class VllmBenchmark:
         prompts = self.make_input(in_len, batch_size)
         params = self.make_params(out_len)
         if self.args.enable_profile:
-            with torch.profiler.profile(
-                activities=[
-                    torch.profiler.ProfilerActivity.CPU,
-                    torch.profiler.ProfilerActivity.CUDA,
-                ]
-            ) as prof:
-                start = time.perf_counter()
-                out = self.llm.generate(prompts, params, use_tqdm=True)
-                end = time.perf_counter()
-            name_prefix = f"./{Path(args.model).name.lower()}-in-{in_len}-out-{out_len}-bs-{batch_size}"
-            prof.export_chrome_trace(f"{name_prefix}-trace.json")
-            kernel_cpu = prof.key_averages().table(
-                sort_by="self_cpu_time_total", max_name_column_width=9999, row_limit=-1
-            )
-            kernel_gpu = prof.key_averages().table(
-                sort_by="self_cuda_time_total", max_name_column_width=9999, row_limit=-1
-            )
-            Path(f"{name_prefix}-kernel-cpu.txt").write_text(kernel_cpu)
-            Path(f"{name_prefix}-kernel-gpu.txt").write_text(kernel_gpu)
+            
+            start = time.perf_counter()
+            self.llm.start_profile()
+            out = self.llm.generate(prompts, params, use_tqdm=True)
+            self.llm.stop_profile()
+            end = time.perf_counter()
+            
         else:
             start = time.perf_counter()
             out = self.llm.generate(prompts, params, use_tqdm=True)
@@ -224,6 +212,12 @@ def main(args: argparse.Namespace):
         args.hf_overrides = {"architectures": ["GLM4VForCausalLM"]}
     else:
         args.hf_overrides = None
+
+    if args.enable_profile:
+        MX_PROFILE_DIR = f"./mx_vllm_profile/{args.model}_tp{args.tensor_parallel_size}_pp{args.pipeline_parallel_size}"
+        os.environ["VLLM_TORCH_PROFILER_DIR"] = MX_PROFILE_DIR
+        if not os.path.exists(MX_PROFILE_DIR):
+            os.makedirs(MX_PROFILE_DIR)
     llm = VllmBenchmark(args)
     print('Answer: "{}"'.format(llm.test(1024)))
 

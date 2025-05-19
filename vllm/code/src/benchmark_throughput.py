@@ -26,7 +26,7 @@ except ImportError:
 import asyncio
 import uuid
 
-MX_PROFILE_CSV_NAME = "default_1_1_1.csv"
+MX_PROFILE_DIR = "./mx_vllm_profile"
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -128,12 +128,11 @@ async def run_vllm_async(
                 vllm_async_generate(engine, x[0], params, uuid.uuid4())), requests))
             res = [await task for task in tasks]
         else:
-            with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:
-                tasks = list(map(lambda x: asyncio.create_task(
-                    vllm_async_generate(engine, x[0], params, uuid.uuid4())), requests))
-                res = [await task for task in tasks]
-
-            profile_to_csv(prof, MX_PROFILE_CSV_NAME)
+            engine.start_profile()
+            tasks = list(map(lambda x: asyncio.create_task(
+                vllm_async_generate(engine, x[0], params, uuid.uuid4())), requests))
+            res = [await task for task in tasks]
+            engine.stop_profile()
 
         post_process(requests, res)
 
@@ -263,11 +262,7 @@ def run_vllm(
             raise ValueError(f"lora path: {lora_path} does not exit")
         
     # Add the requests to the engine.
-    global MX_PROFILE_CSV_NAME
-    model_name_list = args.model.split("/")
-    model_name = model_name_list[-2] if len(model_name_list[-1]) == 0 else model_name_list[-1]
-    MX_PROFILE_CSV_NAME = f"{model_name}_{len(requests)}_{requests[0][1]}_{requests[0][2]}_tp{args.tensor_parallel_size}.csv"
-    
+        
     prompts = []
     sampling_params = []
     for prompt, _, output_len in requests:
@@ -288,23 +283,22 @@ def run_vllm(
 
     if enable_lora:
         if enable_profile:
-            with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:
-                start = time.perf_counter()
-                output = llm.generate(prompts, sampling_params, lora_request=LoRARequest("sql_adapter", 1, lora_path), use_tqdm=True)
-                end = time.perf_counter()
-            profile_to_csv(prof, MX_PROFILE_CSV_NAME)
+            start = time.perf_counter()
+            llm.start_profile()
+            output = llm.generate(prompts, sampling_params, lora_request=LoRARequest("sql_adapter", 1, lora_path), use_tqdm=True)
+            llm.stop_profile()
+            end = time.perf_counter()
         else:
             start = time.perf_counter()
             output = llm.generate(prompts, sampling_params, lora_request=LoRARequest("sql_adapter", 1, lora_path), use_tqdm=True)
             end = time.perf_counter()
     else:
-        if enable_profile:
-            with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA,]) as prof:
-                start = time.perf_counter()
-                output = llm.generate(prompts, sampling_params, use_tqdm=True)
-                end = time.perf_counter()
-
-            profile_to_csv(prof, MX_PROFILE_CSV_NAME)
+        if enable_profile:            
+            start = time.perf_counter()
+            llm.start_profile()
+            output = llm.generate(prompts, sampling_params, use_tqdm=True)
+            llm.stop_profile()
+            end = time.perf_counter()
         else:
             start = time.perf_counter()
             output = llm.generate(prompts, sampling_params, use_tqdm=True)
@@ -391,7 +385,14 @@ def main(args: argparse.Namespace):
                     trust_remote_code=args.trust_remote_code)
 
     if args.enable_profile:
-        print("[INFO] Seems that you turn on PROFILE. It will slower than normal.")    
+        print("[INFO] Seems that you turn on PROFILE. It will slower than normal.")   
+
+        model_name_list = args.model.split("/")
+        model_name = model_name_list[-2] if len(model_name_list[-1]) == 0 else model_name_list[-1]
+        MX_PROFILE_DIR = f"./mx_vllm_profile/{model_name}_tp{args.tensor_parallel_size}"
+        os.environ["VLLM_TORCH_PROFILER_DIR"] = MX_PROFILE_DIR
+        if not os.path.exists(MX_PROFILE_DIR):
+            os.makedirs(MX_PROFILE_DIR)
 
     random.seed(args.seed)
     if not args.async_engine:        
@@ -404,7 +405,7 @@ def main(args: argparse.Namespace):
             requests = prepare_request(args.input_len, args.output_len, args.num_prompts, tokenizer)
             
             elapsed_time, ttft, decoder_latency = run_vllm(llm, requests, args.n,
-                                        args.lora_path, args.enable_profile)
+                                        args.lora_path)
             infer_costs = (elapsed_time, ttft, decoder_latency)
             show_result(requests, infer_costs)
 
