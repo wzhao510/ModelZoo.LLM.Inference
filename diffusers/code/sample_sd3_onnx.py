@@ -70,13 +70,11 @@ def infer_check_accuracy(sd_text2img_models, step, images_per_prompt, prompts, o
 
 def main(modelname, step=50, images_per_prompt=1, EP="maca", output_size=None, device_id=0):
     if EP.lower() == "maca":
-        providers = [("MACAExecutionProvider",{
-            'device_id':device_id,
-        }),]
+        providers = ["MACAExecutionProvider"]
         init_memory = get_gpu_memory_usage(device_id)
     else:
-        providers = ["CPUExecutionProvider",]
-    
+        providers = ["CPUExecutionProvider"]
+
     if not os.path.isfile(EVAL_MODEL_PATH):
         raise ValueError(f"{EVAL_MODEL_PATH} dose not exist. Please check on file.")
 
@@ -92,15 +90,16 @@ def main(modelname, step=50, images_per_prompt=1, EP="maca", output_size=None, d
 
     config = DiffusionPipeline.load_config(os.path.join(params["ori_path"], "model_index.json"))
 
-    text_encoder_session = ort.InferenceSession(text_encoder_path, providers=providers, sess_options=None, provider_options=None)
+    sess_options = ort.SessionOptions()
+    text_encoder_session = ort.InferenceSession(text_encoder_path, providers=providers, sess_options=sess_options, provider_options=[{"keep_model_precision": "1", "device_id": device_id}])
     text_encoder = OnnxRuntimeModel(model=text_encoder_session)
-    text_encoder_2_session = ort.InferenceSession(text_encoder_2_path, providers=providers, sess_options=None, provider_options=None)
+    text_encoder_2_session = ort.InferenceSession(text_encoder_2_path, providers=providers, sess_options=sess_options, provider_options=[{"keep_model_precision": "1", "device_id": device_id}])
     text_encoder_2 = OnnxRuntimeModel(model=text_encoder_2_session)
-    text_encoder_3_session = ort.InferenceSession(text_encoder_3_path, providers=providers, sess_options=None, provider_options=None)
+    text_encoder_3_session = ort.InferenceSession(text_encoder_3_path, providers=providers, sess_options=sess_options, provider_options=[{"keep_model_precision": "1", "device_id": device_id}])
     text_encoder_3 = OnnxRuntimeModel(model=text_encoder_3_session)
-    transformer_session = ort.InferenceSession(transformer_path, providers=providers, sess_options=None, provider_options=None)
+    transformer_session = ort.InferenceSession(transformer_path, providers=providers, sess_options=sess_options, provider_options=[{"keep_model_precision": "1", "device_id": device_id}])
     transformer = OnnxRuntimeModel(model=transformer_session)
-    vae_decoder_session = ort.InferenceSession(vae_decoder_path, providers=providers, sess_options=None, provider_options=None)
+    vae_decoder_session = ort.InferenceSession(vae_decoder_path, providers=providers, sess_options=sess_options, provider_options=[{"keep_model_precision": "1", "device_id": device_id}])
     vae_decoder = OnnxRuntimeModel(model=vae_decoder_session)
 
     scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(params["ori_path"], subfolder="scheduler")
