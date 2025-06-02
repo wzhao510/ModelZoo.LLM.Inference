@@ -1,11 +1,10 @@
 {
     "model_type": "Mixtral",
     "model_path": "/pde_ai/models/llm/W8A8/Mixtral-8x22B-Instruct-v0.1-INT8-Dynamic",
-    "c-eval_param": {
+    "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 4,
         "gpu_memory_utilization": 0.9,
-        "batch_size": 1,
-        "task_name": "ceval-valid"
+        "batch_size": 1
     }
 }

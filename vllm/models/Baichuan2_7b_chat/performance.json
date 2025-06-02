@@ -1,6 +1,0 @@
-{
-    "name" : "Baichuan2-7B-Chat",
-    "fp16":{
-        "acc": 0.5572
-    }
-}

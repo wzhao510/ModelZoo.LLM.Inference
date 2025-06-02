@@ -2,7 +2,7 @@
     "model_type": "DeepSeek",
     "model_path": "/pde_ai/ssd_models/llm/DeepSeek/DeepSeek-V3-BF16_W8A8",
     "async_engine": true,
-    "c-eval_param": {
+    "model_param": {
         "dtype": "bfloat16",
         "tensor_parallel_size": 8,
         "pipeline_parallel_size": 2,

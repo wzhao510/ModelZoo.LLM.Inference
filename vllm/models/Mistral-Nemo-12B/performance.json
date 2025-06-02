@@ -1,6 +1,0 @@
-{
-    "name" : "Mistral-Nemo-12B",
-    "fp16":{
-        "acc": 0.00
-    }
-}

@@ -1,11 +1,10 @@
 {
     "model_type": "Falcon",
     "model_path": "/pde_ai/models/llm/Falcon/falcon-40b/",
-    "c-eval_param": {
+    "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 4,
         "gpu_memory_utilization": 0.8,
-        "batch_size": 1,
-        "task_name": "ceval-valid"
+        "batch_size": 1
     }
 }

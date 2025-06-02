@@ -1,11 +1,10 @@
 {
     "model_type": "Qwen",
     "model_path": "/pde_ai/models/llm/Qwen/qwen1.5-110b-chat/",
-    "c-eval_param": {
+    "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 8,
         "gpu_memory_utilization": 0.9,
-        "batch_size": 1,
-        "task_name": "ceval-valid"
+        "batch_size": 1
     }
 }

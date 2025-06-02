@@ -25,7 +25,6 @@ def run_benchmark_mutlimoda(args, model_config):
         "--input-len={}".format(args.input_len),
         "--output-len={}".format(args.output_len),
         "--tensor-parallel-size={}".format(model_config["model_param"]["tensor_parallel_size"]),
-        "--num-scheduler-steps={}".format(args.num_scheduler_steps),
     ]
 
     if args.enforce_eager:
@@ -58,12 +57,12 @@ def run_benchmark(args):
 
     model_path = model_config["model_path"]
     lora_path = model_config.get("lora_path", None)
-    tensor_parallel_size = model_config["c-eval_param"]["tensor_parallel_size"]
-    pipeline_parallel_size = model_config["c-eval_param"].get("pipeline_parallel_size")
+    tensor_parallel_size = model_config["model_param"]["tensor_parallel_size"]
+    pipeline_parallel_size = model_config["model_param"].get("pipeline_parallel_size")
     async_engine = model_config.get("async_engine")
-    dtype = model_config["c-eval_param"]["dtype"]
-    gpu_memory_utilization = args.gpu_memory_utilization if args.gpu_memory_utilization is not None else model_config["c-eval_param"]["gpu_memory_utilization"]
-    max_model_len = model_config["c-eval_param"].get("max_model_len", args.max_model_len)
+    dtype = model_config["model_param"]["dtype"]
+    gpu_memory_utilization = args.gpu_memory_utilization if args.gpu_memory_utilization is not None else model_config["model_param"]["gpu_memory_utilization"]
+    max_model_len = model_config["model_param"].get("max_model_len", args.max_model_len)
     max_model_len = args.max_model_len if args.max_model_len <= max_model_len else max_model_len
     enable_profile = os.getenv("MX_VLLM_ENABLE_PROFILE", None)
     enable_profile= False if enable_profile is None else True
@@ -106,9 +105,6 @@ def run_benchmark(args):
     
     if args.disable_sliding_window:
         benchmark_cmd += f" --disable-sliding-window"
-
-    if args.num_scheduler_steps is not None:
-        benchmark_cmd += f" --num-scheduler-steps={args.num_scheduler_steps}"
 
     print(benchmark_cmd)
     
@@ -156,7 +152,7 @@ if __name__ == '__main__':
         "--num-scheduler-steps",
         type=int,
         default=1,
-        help="Maximum number of forward steps per scheduler call.")
+        help="Deprecated config for engine v1, from this version this parameter is not recommended.")
     parser.add_argument("--enable-chunked-prefill",
                         action="store_true",
                         help="enforce chunked prefill")

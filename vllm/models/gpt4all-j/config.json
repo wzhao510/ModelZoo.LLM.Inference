@@ -1,12 +1,11 @@
 {
     "model_type": "GPT",
     "model_path": "/pde_ai/models/llm/GPT/gpt4all-j/",
-    "c-eval_param": {
+    "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 1,
         "gpu_memory_utilization": 0.8,
         "max_model_len" : 2048,
-        "batch_size": 1,
-        "task_name": "ceval-valid"
+        "batch_size": 1
     }
 }
