@@ -1,6 +1,0 @@
-{
-    "name" : "llama2-7b_int4_gptq",
-    "fp16":{
-        "acc": 0.2660
-    }
-}

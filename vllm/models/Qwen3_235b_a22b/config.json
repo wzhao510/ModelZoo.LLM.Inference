@@ -1,0 +1,12 @@
+{
+    "model_type": "Qwen",
+    "model_path": "/pde_ai/models/llm/Qwen/Qwen3-235B-A22B/",
+    "async_engine": true,
+    "model_param": {
+        "dtype": "bfloat16",
+        "tensor_parallel_size": 8,
+        "pipeline_parallel_size": 2,
+        "gpu_memory_utilization": 0.9,
+        "batch_size": 1
+    }
+}

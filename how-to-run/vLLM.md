@@ -59,54 +59,8 @@
 code下存放的是测试代码和脚本，dataset是启动openai_api服务端用到的，models下存放的是支持的模型的配置文件，multimodal_test是多模态模型测试。
 ```
 
-
-
-## C-Eval 精度测试
-1.  安装依赖（默认已预装）
-    ```shell
-    pip install lm-eval==0.4.2
-    ```
-
-    安装原生的 0.4.2 之后，需要修改 安装lm-eval路径，比如  
-    ```/opt/conda/lib/python3.8/site-packages/lm_eval/api/model.py```  **_encode_pair** 方法为下面的： 
-
-    ```python
-        def _encode_pair(self, context, continuation):
-            n_spaces = len(context) - len(context.rstrip())
-            if n_spaces > 0:
-                continuation = context[-n_spaces:] + continuation
-                context = context[:-n_spaces]
-
-            model_class = getattr(self, "AUTO_MODEL_CLASS", None)
-
-            if model_class == transformers.AutoModelForSeq2SeqLM:
-                context_enc = self.tok_encode(context)
-                continuation_enc = self.tok_encode(continuation, add_special_tokens=False)
-            else:
-                whole_enc = self.tok_encode(context + continuation)
-                context_enc = self.tok_encode(context)
-
-                context_enc_len = len(context_enc)
-                continuation_enc = whole_enc[context_enc_len:]
-
-            return context_enc, continuation_enc
-    ```
-
-2.  建立软连接：
-    ```shell
-    cd /workspace/ModelZoo.LLM.Inference/vllm
-    ln -s /pde_ai/datasets/dataset-7/ModelZoo_LLM_data/ceval ceval
-    ln -s /pde_ai/datasets/dataset-7/ModelZoo_LLM_data/lm_eval_code/exact_match exact_match
-    ```
-3. 执行
-    ```shell
-    # 其中${Model_name}为models中目录名。
-    python code/c-eval.py --model ./models/${Model_name}
-    ```
-
-
-
 ## benchmark throughput 性能测试
+
 
 ### 使用方式
 
@@ -238,29 +192,18 @@ python code/src/offline_inference.py --model /pde_ai/models/llm/quantize_model/l
     > 3. `--max-num-batched-tokens` 在 GPU 内存足够时，推荐将其设置成与 `--max-model-len` 相同的值，否则测试时的 `--input-len` 为 `min(max_num_batched_tokens, max_model_len)`
 
 3.  接着启动客户端的测试脚本，默认客户端与服务端处于同一网卡的设备中
-    1.  新的测试脚本为 `./code/src/benchmark_serving_new.py`
+    测试脚本为 `./code/src/benchmark_serving.py`
    
-        > 1. 新的测试脚本主要改变了一个命令参数以避免歧义
-        >    原 `--num-prompts` >> 变为 `--num-samples`
-        >    该参数的目的为**设置测试时的样本数量**
-        > <br>
-        > 2. 如果需要规定测试时的**并发数量**，请设置`--max-concurrency`
-        > <br>
-        > 3. 需要了解脚本使用详情，请使用 `--help/-h`
+        > 1. 如果需要规定测试时的**并发数量**，请设置`--max-concurrency`
+        
+        > 2. 需要了解脚本使用详情，请使用 `--help/-h`
 
         如果需要模拟不同的随机状况下，测试服务器的负载及其他详情，这里推荐一个命令，**其中命令参数值，请根据需要进行更改**
 
         ```shell
-        python code/src/benchmark_serving_new.py --model /pde_ai/models/llm/DeepSeek/DeepSeek-V2-Lite/ --dataset_name random --random_input_len 1024 --random_output_len 1024 --num-samples 500 --trust-remote-code --ignore-eos --max-concurrency 50 --request-rate 0.6
+        python code/src/benchmark_serving_new.py --model /pde_ai/models/llm/DeepSeek/DeepSeek-V2-Lite/ --dataset_name random --random_input_len 1024 --random_output_len 1024 --num-prompts 500 --trust-remote-code --ignore-eos --max-concurrency 50 --request-rate 0.6
         ```
     
-    2.  旧的测试脚本为 `./code/run_benchmark_serving.sh`，该脚本的内容如下：
-    
-        ```shell
-        python src/benchmark_serving.py --dataset ../dataset/ShareGPT_V3_unfiltered_cleaned_split.json --tokenizer /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --num-prompts 10
-        ```
-
-        > 服务启动后可在脚本内修改参数，详细参数信息见code/src/benchmark_serving.py
 
 
 

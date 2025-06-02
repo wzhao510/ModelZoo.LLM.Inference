@@ -1,11 +1,10 @@
 {
     "model_type": "Qwen",
     "model_path": "/pde_ai/models/llm/Qwen/QwQ-32B-Preview/",
-    "c-eval_param": {
+    "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 4,
         "gpu_memory_utilization": 0.95,
-        "batch_size": 1,
-        "task_name": "ceval-valid"
+        "batch_size": 1
     }
 }

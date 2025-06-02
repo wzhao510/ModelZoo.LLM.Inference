@@ -1,6 +1,0 @@
-{
-    "name" : "qwen2-72b-instruct-gptq-int4",
-    "fp16":{
-        "acc": 0.234 
-    }
-}

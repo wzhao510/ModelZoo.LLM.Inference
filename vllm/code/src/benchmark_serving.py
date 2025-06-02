@@ -368,13 +368,13 @@ def sample_random_requests(
     prefix_len: int,
     input_len: int,
     output_len: int,
-    num_prompts: int,
+    num_requests: int,
     range_ratio: float,
     tokenizer: PreTrainedTokenizerBase,
 ) -> List[Tuple[str, int, int, None]]:
-    prefix_token_ids = np.random.randint(0,
-                                         tokenizer.vocab_size,
-                                         size=prefix_len).tolist()
+    # prefix_token_ids = np.random.randint(0,
+    #                                      tokenizer.vocab_size,
+    #                                      size=prefix_len).tolist()
     
     from pathlib import Path
     with open("{}/../../data/input_data.txt".format(Path(__file__).absolute().parent)) as file:
@@ -384,27 +384,52 @@ def sample_random_requests(
     input_lens = np.random.randint(
         int(input_len * range_ratio),
         input_len + 1,
-        size=num_prompts,
+        size=num_requests,
     )
     output_lens = np.random.randint(
         int(output_len * range_ratio),
         output_len + 1,
-        size=num_prompts,
+        size=num_requests,
     )
-    # offsets = np.random.randint(0, tokenizer.vocab_size, size=num_prompts)
+    # offsets = np.random.randint(0, tokenizer.vocab_size, size=num_requests)
     all_tokens = tokenizer(txt_data)
     # all_tokens.input_ids = all_tokens.input_ids[:8192]
     token_len = len(all_tokens.input_ids)
-    offsets = np.random.randint(0, token_len - input_lens - 1, size=num_prompts)
+    print(f"Total tokens is {token_len}")
+    
     input_requests = []
-    for i in range(num_prompts):
+    token_diff = 0
+    for i in range(num_requests):
         '''
         prompt = tokenizer.decode(prefix_token_ids +
                                   [(offsets[i] + i + j) % tokenizer.vocab_size
                                    for j in range(input_lens[i])])
         '''
-        tmp_tokens = all_tokens.input_ids[offsets[i]:offsets[i] + input_lens[i] - 1]
-        prompt = tokenizer.decode(tmp_tokens)
+        # DO NOT set the length of tmp_tokens as input_len
+        # unless, it will cause the length of tokens after decoding and encoding change.
+        need_gen_req = True
+        while need_gen_req:
+            # for the tokenizer processes different samples in a similar way,
+            # retaining token_diff can reduce the amount of calculation
+            offsets = np.random.randint(0, token_len - (input_lens - token_diff))
+            tmp_tokens = all_tokens.input_ids[offsets[i]:offsets[i] + input_lens[i] - token_diff]
+            prompt = tokenizer.decode(tmp_tokens)
+
+            # verify effectiveness
+            ver_tokens = tokenizer(prompt).input_ids
+            token_diff = len(ver_tokens) - len(tmp_tokens)
+            
+            if token_diff > 0:
+                prompt = tokenizer.decode(tmp_tokens[: -(token_diff)])
+                need_gen_req = False
+            elif token_diff == 0:
+                need_gen_req = False
+            else:
+                # if the length of re-encoding token list is less than intercapted length,
+                # we must re-intercapte the tmp_tokens with new parameter
+                print(f"re-tokenized length is less than the first. ver_tokens: {len(ver_tokens)}, tmp_tokens: {len(tmp_tokens)}")
+                continue
+
         input_requests.append((prompt, int(prefix_len + input_lens[i]),
                                int(output_lens[i]), None))
 
@@ -415,6 +440,8 @@ async def get_request(
     input_requests: List[Tuple[str, int, int]],
     request_rate: float,
     burstiness: float = 1.0,
+    semp_empty_slot: asyncio.Semaphore = None,
+    semp_request: asyncio.Semaphore = None
 ) -> AsyncGenerator[Tuple[str, int, int], None]:
     """
     Asynchronously generates requests at a specified rate
@@ -443,11 +470,14 @@ async def get_request(
 
     is_First = True
     for request in input_requests:
+        # producer        
+        if semp_empty_slot is not None and semp_empty_slot._value == 0:
+            is_First = True
+        if semp_empty_slot:
+            await semp_empty_slot.acquire()
         if not is_First:
-            if request_rate == float("inf"):
-                # If the request rate is infinity, then we don't need to wait.
-                # continue
-
+            # If the request rate is infinity, then we don't need to wait.
+            if request_rate != float("inf"):
                 # Sample the request interval from the gamma distribution.
                 # If burstiness is 1, it follows exponential distribution.
                 interval = np.random.gamma(shape=burstiness, scale=theta)
@@ -455,7 +485,8 @@ async def get_request(
                 await asyncio.sleep(interval)
         else:
             is_First = False
-
+        if semp_request:
+            semp_request.release()
         yield request
 
 
@@ -596,6 +627,10 @@ async def benchmark(
     print("Starting initial single prompt test run...")
     test_prompt, test_prompt_len, test_output_len, test_mm_content = (
         input_requests[0])
+    print("***********************************")
+    print(f"input len: {test_prompt_len}")
+    print(f"output len: {test_output_len}")
+    print("***********************************")
     if backend != "openai-chat" and test_mm_content is not None:
         # multi-modal benchmark is only available on OpenAI Chat backend.
         raise ValueError(
@@ -657,20 +692,26 @@ async def benchmark(
     # and it will simplify the code in limited_request_func.
     #    semaphore = (asyncio.Semaphore(max_concurrency)
     #                 if max_concurrency else contextlib.nullcontext())
-    semaphore = (asyncio.Semaphore(max_concurrency)
+    semp_empty_slot = (asyncio.Semaphore(max_concurrency)
                  if max_concurrency else None)
+    semp_request = (asyncio.Semaphore(0)
+                      if semp_empty_slot else None)
 
     async def limited_request_func(request_func_input, pbar):
-        if semaphore is None:
+        if semp_request is None:
             return await request_func(request_func_input=request_func_input,
                                       pbar=pbar)
-        async with semaphore:
-            return await request_func(request_func_input=request_func_input,
-                                      pbar=pbar)
+        # consumer
+        await semp_request.acquire()
+        request_out = await request_func(request_func_input=request_func_input,
+                                         pbar=pbar)
+        semp_empty_slot.release()
+        return request_out
+    
 
     benchmark_start_time = time.perf_counter()
     tasks: List[asyncio.Task] = []
-    async for request in get_request(input_requests, request_rate, burstiness):
+    async for request in get_request(input_requests, request_rate, burstiness, semp_empty_slot, semp_request):
         prompt, prompt_len, output_len, mm_content = request
         req_model_id, req_model_name = model_id, model_name
         if lora_modules:
@@ -687,7 +728,7 @@ async def benchmark(
                                               best_of=best_of,
                                               multi_modal_content=mm_content,
                                               ignore_eos=ignore_eos)
-        # TODO: whenever the requests are generated, the logic shows, it will pack them all together and send them concurrently
+        
         tasks.append(
             asyncio.create_task(
                 limited_request_func(request_func_input=request_func_input,
@@ -960,7 +1001,7 @@ def main(args: argparse.Namespace):
             prefix_len=args.random_prefix_len,
             input_len=args.random_input_len,
             output_len=args.random_output_len,
-            num_prompts=args.num_prompts,
+            num_requests=args.num_prompts,
             range_ratio=args.random_range_ratio,
             tokenizer=tokenizer,
         )
@@ -1126,7 +1167,7 @@ if __name__ == "__main__":
         "--num-prompts",
         type=int,
         default=1000,
-        help="Number of prompts to process.",
+        help="Number of request (samples) to process.",
     )
     parser.add_argument(
         "--logprobs",
