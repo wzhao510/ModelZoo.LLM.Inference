@@ -288,6 +288,126 @@ python ./code/bench_test.py --model models/LLama3.1_8b  --enable-chunked-prefill
 
 
 
+## opencompass精度评测
+测试相关代码和数据集路径：/pde_ai/datasets/dataset-7/ModelZoo_LLM_data/opencompass/
+
+1. opencompass环境准备
+pip install opencompass==0.4.2
+pip install math_verify latex2sympy2_extended
+
+2. serve启动(以Deepseek R1为例，推荐max-model-len为20K)
+vllm serve /mnt/deepseek/DeepSeek-R1-BF16/ -tp 8  -pp 4 --trust-remote-code --distributed-executor-backend ray --dtype bfloat16 --max-model-len 20480 --swap-space 16 --gpu-memory-utilization 0.95 --max-num-batched-tokens 20480
+
+3. ceval精度测试(只能离线使用)
+    a. 替换./ceval_gen_5f30c7.py至/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/ceval/ceval_gen_5f30c7.py, 注意95行需要{opencompass完整路径}
+    b. 修改/opt/conda/lib/python3.10/site-packages/opencompass/datasets/ceval.py        #line 25
+        for split in ['val']:
+    c. 修改./eval_ceval.py中模型路径和serve端口号
+    d. run
+        opencompass ./eval_ceval.py
+
+4. mmlu精度测试
+    a. 修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/mmlu/mmlu_gen_4d595a.py        #line 2
+        from opencompass.openicl.icl_retriever import FixKRetriever, ZeroRetriever
+    b. 修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/mmlu/mmlu_gen_4d595a.py        #line 104
+        retriever=dict(type=ZeroRetriever),
+    c. 修改./eval_ceval.py中模型路径和serve端口号
+    d1. 在线run
+        opencompass ./eval_mmlu.py
+ 
+    d2. 修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/mmlu/mmlu_gen_4d595a.py        #line 116
+        path='{opencompass完整路径}/data/mmlu_csv/'
+    e. 替换./mmlu.py至/opt/conda/lib/python3.10/site-packages/opencompass/datasets/mmlu.py
+    f. 离线run
+        opencompass ./eval_mmlu.py
+
+    ps: qwen3系列mmlu精度测试需要额外修改prompt提示词
+
+        修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/mmlu/mmlu_gen_4d595a.py        #line 78
+
+            _hint = f'There is a single choice question about {_name.replace("_", " ")}. Answer the question by replying Answer: A, Answer: B, Answer: C or Answer: D.'
+
+        修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/mmlu/mmlu_gen_4d595a.py        #line 86
+
+            f'{_hint}\nQuestion: {{input}}\nA. {{A}}\nB. {{B}}\nC. {{C}}\nD. {{D}}\n'
+
+        修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/mmlu/mmlu_gen_4d595a.py        #line 98
+
+            prompt=f'{_hint}\nQuestion: {{input}}\nA. {{A}}\nB. {{B}}\nC. {{C}}\nD. {{D}}\n'
+
+
+
+5. gsm8k精度测试
+    a. 修改./eval_gsm8k.py中模型路径和serve端口号
+    b1. 在线run
+        opencompass ./eval_gsm8k.py
+
+    b2. 修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/gsm8k/gsm8k_gen_1dce88.py        #line 81
+        path='{opencompass完整路径}/data/gsm8k_jsonl/main/',
+    c. 修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/gsm8k/gsm8k_gen_1dce88.py        #line 70
+        inferencer=dict(type=GenInferencer))
+    d. 修改/opt/conda/lib/python3.10/site-packages/opencompass/datasets/gsm8k.py            #line 27
+        split_path = os.path.join(path, split + '-00000-of-00001.jsonl')
+    e. 离线run
+        opencompass ./eval_gsm8k.py
+ 
+6. math500精度测试
+    a. 修改./eval_math.py中模型路径和serve端口号
+    b1. 在线run
+        opencompass ./eval_math.py
+ 
+    b2. 修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/math/math_500_gen.py        #line 34
+
+          path='{opencompass完整路径}/data/',
+
+    c. 离线run
+
+        opencompass ./eval_math.py
+
+7. aime2024精度测试
+    a. 修改./eval_aime2024.py中模型路径和serve端口号
+    b1. 在线run
+        opencompass ./eval_aime2024.py
+ 
+    b2. 修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/aime2024/aime2024_gen_6e39a4.py         #line 23
+
+          inferencer=dict(type=GenInferencer)
+
+    c.  修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/aime2024/aime2024_gen_6e39a4.py         #line 34
+
+        path='/mnt/dataset/share/dbshi/opencompass/data/aime.jsonl',
+
+    d. 修改/opt/conda/lib/python3.10/site-packages/opencompass/datasets/aime2024.py        #line 21
+
+        origin_prompt = line['Problem']
+
+    e. 修改/opt/conda/lib/python3.10/site-packages/opencompass/datasets/aime2024.py        #line 23
+
+        line['answer'] = line['Answer']
+
+    f. 离线run
+
+       opencompass ./eval_aime2024.py
+
+
+
+8. gpqa精度测试
+
+    a. 修改./eval_gpqa.py中模型路径和serve端口号
+
+    b1. 在线run
+        opencompass ./eval_gpqa.py
+
+
+
+    b2. 修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/gpqa/gpqa_openai_simple_evals_gen_5aeece.py        #line 47
+
+        path='{opencompass完整路径}/data/gpqa/',
+
+    c. 离线run
+
+        opencompass ./eval_gpqa.py
+
 
 
 
