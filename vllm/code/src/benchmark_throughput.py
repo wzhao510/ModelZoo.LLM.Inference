@@ -46,12 +46,26 @@ async def run_vllm_async(
     def post_process(requests, results):
         begin_time = time.time()
         end_time = 0
-        for i in results:
-            begin_time = min(begin_time, i.metrics.first_scheduled_time)
-            end_time = max(end_time, i.metrics.finished_time)
-
-        elasped_time = end_time - begin_time
-        show_result(requests, (elasped_time, None, None))
+        
+        # if len(requests[0].outputs[0].token_ids) == 128:
+        #     import pdb; pdb.set_trace()
+        FIRST_LATENCY = [] # 每个并发首token延时 TTFT
+        # INFER_LATENCY = [] # 每个并发推理时间延时 ITL
+        DECODER_LATENCY = []
+        if results[0].metrics is not None:
+            for i in results:
+                begin_time = min(begin_time, i.metrics.arrival_time)
+                end_time = max(end_time, i.metrics.finished_time)
+                FIRST_LATENCY.append(i.metrics.first_token_time - i.metrics.arrival_time)
+                DTL = (i.metrics.finished_time - i.metrics.first_token_time) / (len(i.outputs[0].token_ids) - 1)            
+                DECODER_LATENCY.append(DTL)
+                # ITL = i.metrics.finished_time - i.metrics.arrival_time
+                # INFER_LATENCY.append(ITL)
+                
+            elasped_time = end_time - begin_time
+            show_result(requests,(elasped_time, np.mean(FIRST_LATENCY), np.mean(DECODER_LATENCY)*1000))
+        else:
+            show_result(requests, (elasped_time, None, None))
 
     from vllm.engine.arg_utils import AsyncEngineArgs
     engine = AsyncLLMEngine.from_engine_args(

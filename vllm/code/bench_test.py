@@ -59,7 +59,7 @@ def run_benchmark(args):
     lora_path = model_config.get("lora_path", None)
     tensor_parallel_size = model_config["model_param"]["tensor_parallel_size"]
     pipeline_parallel_size = model_config["model_param"].get("pipeline_parallel_size")
-    async_engine = model_config.get("async_engine")
+    async_engine = args.async_engine if args.async_engine else model_config.get("async_engine")
     dtype = model_config["model_param"]["dtype"]
     gpu_memory_utilization = args.gpu_memory_utilization if args.gpu_memory_utilization is not None else model_config["model_param"]["gpu_memory_utilization"]
     max_model_len = model_config["model_param"].get("max_model_len", args.max_model_len)
@@ -182,5 +182,9 @@ if __name__ == '__main__':
                         type=int,
                         default=4,
                         help="ngram_prompt_lookup_max")
+    parser.add_argument("--async-engine",
+                        action='store_true',
+                        default=False,
+                        help="Use vLLM async engine rather than LLM class.")
     args = parser.parse_args()
     run_benchmark(args)
