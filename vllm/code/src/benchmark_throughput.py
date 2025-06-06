@@ -18,6 +18,9 @@ from vllm.model_executor.layers.quantization import QUANTIZATION_METHODS
 from vllm import LLM, SamplingParams, AsyncLLMEngine
 from vllm.distributed import cleanup_dist_env_and_memory
 
+from vllm.utils import FlexibleArgumentParser, merge_async_iterators
+from vllm.entrypoints.openai.api_server import (
+    build_async_engine_client_from_engine_args)
 try:
     from vllm.transformers_utils.tokenizer import get_tokenizer
 except ImportError:
@@ -41,9 +44,11 @@ def str2bool(v):
 async def run_vllm_async(
     # requests: List[Tuple[str, int, int]],
     args: argparse.Namespace,
-    tokenizer
+    tokenizer,
+    disable_frontend_multiprocessing: bool = False,
+    disable_detokenize: bool = False,
 ) -> float:
-    def post_process(requests, results):
+    def post_process(requests, results, elasped_time):
         begin_time = time.time()
         end_time = 0
         
@@ -68,8 +73,8 @@ async def run_vllm_async(
             show_result(requests, (elasped_time, None, None))
 
     from vllm.engine.arg_utils import AsyncEngineArgs
-    engine = AsyncLLMEngine.from_engine_args(
-        AsyncEngineArgs(
+    
+    engine_args = AsyncEngineArgs(
             model=args.model,
             tokenizer=args.tokenizer,
             quantization=args.quantization,
@@ -93,67 +98,109 @@ async def run_vllm_async(
             use_v2_block_manager=args.use_v2_block_manager,
             disable_async_output_proc=args.disable_async_output_proc,
         )
-    )
+    
+    async with build_async_engine_client_from_engine_args(
+            engine_args, disable_frontend_multiprocessing) as llm:
 
-    params = SamplingParams(
-        n=args.n,
-        temperature=1.0,
-        top_p=1.0,
-        ignore_eos=True,
-        max_tokens=args.output_len,
-    )
+        params = SamplingParams(
+            n=args.n,
+            temperature=1.0,
+            top_p=1.0,
+            ignore_eos=True,
+            max_tokens=args.output_len,
+        )
 
-    print("Start warm up....")
-    for idx in range(args.warmup_loops):
-        print(f"warm up {idx}...")
-        requests = prepare_request(args.input_len, args.output_len, args.num_prompts, tokenizer)
-        
-        tasks = list(map(lambda x: asyncio.create_task(
-            vllm_async_generate(engine, x[0], params, uuid.uuid4())), requests))
-        res = [await task for task in tasks]
-        post_process(requests, res)
-        
-    if args.batched_test:
-        print("Start batched test....")
-        for batch in [1,8,16,32,64]:
-            for input_len in [256, 512, 1024]:
-                for output_len in [128, 512, 1024]:
-                    if input_len == 1024 and output_len != 1024:
-                        continue
+        print("Start warm up....")
+        for idx in range(args.warmup_loops):
+            print(f"warm up {idx}...")
+            requests = prepare_request(args.input_len, args.output_len, args.num_prompts, tokenizer)
+            
+            # tasks = list(map(lambda x: asyncio.create_task(
+            #     vllm_async_generate(engine, x[0], params, uuid.uuid4())), requests))
+            # res = [await task for task in tasks]
+            assert all(
+                llm.model_config.max_model_len >= (request[1] +
+                                                request[2])
+                for request in requests), (
+                    "Please ensure that max_model_len is greater than the sum of"
+                    " prompt_len and expected_output_len for all requests.")
+            generators = []
+            start = time.perf_counter()
+            for i, request in enumerate(requests):
+                generator = llm.generate(request[0],
+                                        params,
+                                        request_id=f"test{i}")
+                generators.append(generator)
+            all_gens = merge_async_iterators(*generators)
 
-                    # Synthesize a prompt with the given input length.
-                    requests = prepare_request(input_len, output_len, batch, tokenizer) 
-                    params = SamplingParams(
-                        n=args.n,
-                        temperature=1.0,
-                        top_p=1.0,
-                        ignore_eos=True,
-                        max_tokens=args.output_len,
-                    )
-                    
-                    tasks = list(map(lambda x: asyncio.create_task(
-                    vllm_async_generate(engine, x[0], params, uuid.uuid4())), requests))
-                    res = [await task for task in tasks]
-                    post_process(requests, res)
-    else:
-        print("Start performance test....")
-        if not args.enable_profile:
-            tasks = list(map(lambda x: asyncio.create_task(
-                vllm_async_generate(engine, x[0], params, uuid.uuid4())), requests))
-            res = [await task for task in tasks]
+            results = []
+            async for i, res in all_gens:
+                results.append(res)
+            end = time.perf_counter()
+            post_process(requests, results, end-start)
+            
+        if args.batched_test:
+            print("Start batched test....")
+            for batch in [1,8,16,32,64]:
+                for input_len in [256, 512, 1024]:
+                    for output_len in [128, 512, 1024]:
+                        if input_len == 1024 and output_len != 1024:
+                            continue
+
+                        # Synthesize a prompt with the given input length.
+                        requests = prepare_request(input_len, output_len, batch, tokenizer) 
+                        params = SamplingParams(
+                            n=args.n,
+                            temperature=1.0,
+                            top_p=1.0,
+                            ignore_eos=True,
+                            max_tokens=args.output_len,
+                        )
+                        
+                        # tasks = list(map(lambda x: asyncio.create_task(
+                        # vllm_async_generate(engine, x[0], params, uuid.uuid4())), requests))
+                        # res = [await task for task in tasks]
+
+                        generators = []
+                        start = time.perf_counter()
+                        for i, request in enumerate(requests):
+                            generator = llm.generate(request[0],
+                                                    params,
+                                                    request_id=f"test{i}")
+                            generators.append(generator)
+                        all_gens = merge_async_iterators(*generators)
+                        results = []
+                        async for i, res in all_gens:
+                            results.append(res)
+                        end = time.perf_counter()
+                        post_process(requests, results, end-start)
         else:
-            engine.start_profile()
-            tasks = list(map(lambda x: asyncio.create_task(
-                vllm_async_generate(engine, x[0], params, uuid.uuid4())), requests))
-            res = [await task for task in tasks]
-            engine.stop_profile()
-
-        post_process(requests, res)
-
-    engine.shutdown_background_loop()
-    del engine
-    await asyncio.sleep(0.1)
-    cleanup_dist_env_and_memory()
+            print("Start performance test....")
+            if not args.enable_profile:
+                start = time.perf_counter()
+                generators = []
+                for i, request in enumerate(requests):
+                    generator = llm.generate(request[0],
+                                            params,
+                                            request_id=f"test{i}")
+                    generators.append(generator)
+                all_gens = merge_async_iterators(*generators)
+            else:
+                engine.start_profile()
+                generators = []
+                start = time.perf_counter()
+                for i, request in enumerate(requests):
+                    generator = llm.generate(request[0],
+                                            params,
+                                            request_id=f"test{i}")
+                    generators.append(generator)
+                all_gens = merge_async_iterators(*generators)
+            
+            results = []
+            async for i, res in all_gens:
+                results.append(res)
+            end = time.perf_counter()
+            post_process(requests, results, end-start)
 
 async def vllm_async_generate(engine, prompt, params, id):
     results_generator = engine.generate(prompt, params, id)
