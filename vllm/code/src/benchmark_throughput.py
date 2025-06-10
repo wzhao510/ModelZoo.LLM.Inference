@@ -108,6 +108,7 @@ async def run_vllm_async(
             top_p=1.0,
             ignore_eos=True,
             max_tokens=args.output_len,
+            detokenize=not disable_detokenize,
         )
 
         print("Start warm up....")
@@ -115,9 +116,6 @@ async def run_vllm_async(
             print(f"warm up {idx}...")
             requests = prepare_request(args.input_len, args.output_len, args.num_prompts, tokenizer)
             
-            # tasks = list(map(lambda x: asyncio.create_task(
-            #     vllm_async_generate(engine, x[0], params, uuid.uuid4())), requests))
-            # res = [await task for task in tasks]
             assert all(
                 llm.model_config.max_model_len >= (request[1] +
                                                 request[2])
@@ -154,13 +152,10 @@ async def run_vllm_async(
                             temperature=1.0,
                             top_p=1.0,
                             ignore_eos=True,
-                            max_tokens=args.output_len,
+                            max_tokens=output_len,
+                            detokenize=not disable_detokenize,
                         )
                         
-                        # tasks = list(map(lambda x: asyncio.create_task(
-                        # vllm_async_generate(engine, x[0], params, uuid.uuid4())), requests))
-                        # res = [await task for task in tasks]
-
                         generators = []
                         start = time.perf_counter()
                         for i, request in enumerate(requests):
@@ -186,7 +181,7 @@ async def run_vllm_async(
                     generators.append(generator)
                 all_gens = merge_async_iterators(*generators)
             else:
-                engine.start_profile()
+                llm.start_profile()
                 generators = []
                 start = time.perf_counter()
                 for i, request in enumerate(requests):
@@ -195,22 +190,13 @@ async def run_vllm_async(
                                             request_id=f"test{i}")
                     generators.append(generator)
                 all_gens = merge_async_iterators(*generators)
+                llm.stop_profile()
             
             results = []
             async for i, res in all_gens:
                 results.append(res)
             end = time.perf_counter()
             post_process(requests, results, end-start)
-
-async def vllm_async_generate(engine, prompt, params, id):
-    results_generator = engine.generate(prompt, params, id)
-
-    final_output = None
-
-    async for request_output in results_generator:
-        final_output = request_output
-
-    return final_output
 
 def get_vllm(args):
     enable_lora = False
