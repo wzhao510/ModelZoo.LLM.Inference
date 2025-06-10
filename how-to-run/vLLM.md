@@ -55,7 +55,6 @@
 │  ├── 📄 input_data.txt
 └── 📂 models/
 
-
 code下存放的是测试代码和脚本，dataset是启动openai_api服务端用到的，models下存放的是支持的模型的配置文件，multimodal_test是多模态模型测试。
 ```
 
@@ -91,7 +90,6 @@ CUDA_VISIBLE_DEVICES=${0~7} MX_VLLM_ENABLE_PROFILE=1 python ./code/bench_test.py
 
     > 生成的对应文件夹路径下的csv 可以通过 以下脚本完成 kernel 汇总（注：需要 安装openxl包： `pip install openxl`）  
     > **请在 `vllm` 目录下执行脚本**
-    > 
     > ```shell
     > python ./code/tools/statistics_csv.py ./mx_profiler/
     > ```
@@ -114,7 +112,6 @@ python code/src/offline_inference_multi_lora.py --model /pde_ai/models/llm/Llama
 
 
 ### LoRA 跑性能数据 --当前性能较差，后续会对其进行优化
-
 ```shell
 python code/bench_test.py --model ./models/Llama2_7b_sql_lora/ --num-prompts 64 --input-len 1024 --output-len 1024
 ```
@@ -161,9 +158,18 @@ python code/src/offline_inference.py --model /pde_ai/models/llm/quantize_model/l
 
 1. 脚本为 `./code/src/benchmark_throughput.py`，该脚本可被 `./code/bench_test.py` 调用，也可以自行调用来测试单个case，当然，该脚本提供了 ```--batched-test``` 命令参数，可以用来测试35个case。**需要注意的是，提供 ```--batched-test``` 参数时不可以省略 ```--input-len``` 和 ```--output-len``` 参数**
 
-    ```shell
-    python src/benchmark_throughput.py --backend hf --model /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --tokenizer /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --input-len 512 --output-len 128 --num-prompts 8
-    ```
+    * 如若执行的是普通推理模型，可以使用如下参数设置
+
+        ```shell
+        python src/benchmark_throughput.py --backend hf --model /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --tokenizer /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --input-len 512 --output-len 128 --num-prompts 8
+        ```
+    * 如若执行的是embed模型，可以使用如下设置
+        > **注意**，执行该类模型时，num-scheduler-steps必须设置为1，否则会导致报错。
+        > 同时为该类模型设置的output-len需要满足模型的规定，如果提醒dimension有问题，请按照log要求进行修改
+
+        ```shell
+        python ./code/src/benchmark_throughput.py --model /pde_ai/models/llm/jinaai/jina-embeddings-v3/ --batched-test --backend=vllm --max-model-len 2048 --num-prompts 8 --trust-remote-code --dtype float16 --input-len 1024 --output-len 1024 --tensor-parallel-size 1 --num-scheduler-steps 1 --task embed
+        ```
 
     > 这里仅说明常用的命令参数，具体的参数意义或者有哪些命令参数可以使用，请执行 `--help/-h` 查看
     > `--input-len` 输入参数的长度
@@ -173,6 +179,7 @@ python code/src/offline_inference.py --model /pde_ai/models/llm/quantize_model/l
     > `--batched-test` 可以用来测试35个case，**目前还需要提供--input-len和--output-len *未来会进行改进***
     > `--num-scheduler-steps` 通常设置为8，默认值为1，可以提升模型推理的性能
     > `--enable-profile` 开启torch profile，抓取kernel信息
+    > `--task` 选择任务类型，目前支持`generate`, `auto`, `embed`和`embedding`，默认值为`auto`
 
 
 
@@ -208,7 +215,6 @@ python code/src/offline_inference.py --model /pde_ai/models/llm/quantize_model/l
 
 
 ## 启动openai_api服务端 
-
 1.  确保安装了 eval-type-backport 包
     ```shell
     pip install eval-type-backport
