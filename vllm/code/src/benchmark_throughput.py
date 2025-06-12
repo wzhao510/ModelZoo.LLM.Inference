@@ -40,7 +40,14 @@ def str2bool(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
-        
+
+def is_deepseek_qwen3(model_path):
+    if model_path.find('Qwen3') > 0:
+        return True
+    if model_path.find('DeepSeek') > 0:
+        return True
+    return False
+  
 async def run_vllm_async(
     # requests: List[Tuple[str, int, int]],
     args: argparse.Namespace,
@@ -139,11 +146,26 @@ async def run_vllm_async(
             
         if args.batched_test:
             print("Start batched test....")
-            for batch in [1,8,16,32,64]:
-                for input_len in [256, 512, 1024]:
-                    for output_len in [128, 512, 1024]:
-                        if input_len == 1024 and output_len != 1024:
-                            continue
+            batch_list_normal = [1,8,16,32,64]
+            input_len_list = [256, 512, 1024]
+            output_len_list = [[128, 512, 1024]]
+            if is_deepseek_qwen3(args.model):
+                batch_list_normal = [1,8,16,32,64,128,256,512,1024]
+                input_len_list = [128, 2048, 3072]
+                output_len_list = [128, 2048, 1024]
+            for batch in batch_list_normal:
+                for input_len in input_len_list:
+                    for output_len in output_len_list:
+                        if is_deepseek_qwen3(args.model):
+                            if input_len == 128 and output_len != 128:
+                                continue
+                            if input_len == 2048 and output_len != 2048:
+                                continue
+                            if input_len == 3072 and output_len != 1024:
+                                continue
+                        else:
+                            if input_len == 1024 and output_len != 1024:
+                                continue
 
                         # Synthesize a prompt with the given input length.
                         requests = prepare_request(input_len, output_len, batch, tokenizer) 
