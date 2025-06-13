@@ -363,8 +363,53 @@ def sample_hf_requests(
 
     return sampled_requests
 
-
 def sample_random_requests(
+    prefix_len: int,
+    input_len: int,
+    output_len: int,
+    num_requests: int,
+    range_ratio: float,
+    tokenizer: PreTrainedTokenizerBase,
+) -> List[Tuple[str, int, int, None]]:
+    # Enforce range_ratio < 1
+    assert range_ratio < 1.0, (
+        "random_range_ratio must be < 1.0 to ensure a valid sampling range"
+    )
+
+    vocab_size = tokenizer.vocab_size
+
+    prefix_token_ids = (np.random.randint(
+        0, vocab_size, size=prefix_len).tolist() if prefix_len > 0 else [])
+
+    # New sampling logic: [X * (1 - b), X * (1 + b)]
+    input_low = int(input_len * (1 - range_ratio))
+    input_high = int(input_len * (1 + range_ratio))
+    output_low = int(output_len * (1 - range_ratio))
+    output_high = int(output_len * (1 + range_ratio))
+
+    # Add logging for debugging
+    print(f"Sampling input_len from [{input_low}, {input_high}]",flush=True)
+    print(f"Sampling output_len from [{output_low}, {output_high}]", flush=True)
+
+    input_lens = np.random.randint(input_low,
+                                    input_high + 1,
+                                    size=num_requests)
+    output_lens = np.random.randint(output_low,
+                                    output_high + 1,
+                                    size=num_requests)
+    offsets = np.random.randint(0, vocab_size, size=num_requests)
+
+    requests = []
+    for i in range(num_requests):
+        inner_seq = ((offsets[i] + i + np.arange(input_lens[i])) %
+                        vocab_size).tolist()
+        token_sequence = prefix_token_ids + inner_seq
+        prompt = tokenizer.decode(token_sequence)
+        total_input_len = prefix_len + int(input_lens[i])
+        requests.append((prompt, total_input_len, int(output_lens[i])))
+    return requests
+
+def sample_random_requests_txt(
     prefix_len: int,
     input_len: int,
     output_len: int,

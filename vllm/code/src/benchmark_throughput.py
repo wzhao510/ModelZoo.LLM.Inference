@@ -148,7 +148,7 @@ async def run_vllm_async(
             print("Start batched test....")
             batch_list_normal = [1,8,16,32,64]
             input_len_list = [256, 512, 1024]
-            output_len_list = [[128, 512, 1024]]
+            output_len_list = [128, 512, 1024]
             if is_deepseek_qwen3(args.model):
                 batch_list_normal = [1,8,16,32,64,128,256,512,1024]
                 input_len_list = [128, 2048, 3072]
@@ -395,39 +395,15 @@ def run_vllm(
     return np.mean(E2E_TIME), np.mean(FIRST_LATENCY), np.mean(DECODER_LATENCY)*1000
 
 def prepare_request(input_len, output_len, num_prompts, tokenizer):
-    from pathlib import Path
-    with open("{}/../../data/input_data.txt".format(Path(__file__).absolute().parent)) as file:
-        lines = [line.strip() for line in file if line.strip()]
-        txt_data = " ".join(lines)
-    all_tokens = tokenizer(txt_data)
-    all_tokens.input_ids = all_tokens.input_ids[:8192]
-    token_len = len(all_tokens.input_ids)
-
-    need_gen_req = True
-    token_diff = 0
-    while need_gen_req:
-        offsets = np.random.randint(0, token_len - (input_len - token_diff))
-        tmp_tokens = all_tokens.input_ids[offsets : offsets + (input_len - token_diff)]
-
-        prompt = tokenizer.decode(tmp_tokens)
-        
-        # verify effectiveness
-        ver_tokens = tokenizer(prompt).input_ids
-        token_diff = len(ver_tokens) - len(tmp_tokens)
-        
-        if token_diff > 0:
-            prompt = tokenizer.decode(tmp_tokens[: -(token_diff)])
-            need_gen_req = False
-        elif token_diff == 0:
-            need_gen_req = False
-        else:
-            # if the length of re-encoding token list is less than intercapted length,
-            # we must re-intercapte the tmp_tokens with new parameter
-            print(f"re-tokenized length is less than the first. ver_tokens: {len(ver_tokens)}, tmp_tokens: {len(tmp_tokens)}")
-            continue
-
-    requests = [(prompt, input_len, output_len)
-                    for _ in range(num_prompts)]
+    from benchmark_serving import sample_random_requests, sample_random_requests_txt
+    
+    requests = sample_random_requests(
+            prefix_len=0,
+            input_len=input_len,
+            output_len=output_len,
+            num_requests=num_prompts,
+            range_ratio=0.0,
+            tokenizer=tokenizer,)
     return requests
 
 def show_result(requests: List, 
