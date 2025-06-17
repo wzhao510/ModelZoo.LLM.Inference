@@ -5,7 +5,7 @@ import argparse
 import json
 import random
 import time
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, get_args
 from torch_profile_utils  import profile_to_csv
 
 import torch
@@ -15,7 +15,7 @@ from transformers import (AutoModelForCausalLM, AutoTokenizer,
                           PreTrainedTokenizerBase)
 
 from vllm.model_executor.layers.quantization import QUANTIZATION_METHODS
-from vllm import LLM, SamplingParams, AsyncLLMEngine
+from vllm import LLM, PoolingParams, SamplingParams, AsyncLLMEngine
 from vllm.distributed import cleanup_dist_env_and_memory
 
 from vllm.utils import FlexibleArgumentParser, merge_async_iterators
@@ -227,9 +227,13 @@ def get_vllm(args):
             enable_lora = True
         else:
             raise ValueError(f"lora path: {args.lora_path} does not exit")
+        
+    print(f"You are using task mode: {args.task}")
+
     if   args.speculative_model is None:
         llm = LLM(
             model=args.model,
+            task = args.task,
             tokenizer=args.tokenizer,
             quantization=args.quantization,
             tensor_parallel_size=args.tensor_parallel_size,
@@ -256,6 +260,7 @@ def get_vllm(args):
     elif  "[ngram]" in  args.speculative_model :
         llm = LLM(
             model=args.model,
+            task = args.task,
             tokenizer=args.tokenizer,
             quantization=args.quantization,
             tensor_parallel_size=args.tensor_parallel_size,
@@ -285,6 +290,7 @@ def get_vllm(args):
     else :
         llm = LLM(
             model=args.model,
+            task = args.task,
             tokenizer=args.tokenizer,
             quantization=args.quantization,
             tensor_parallel_size=args.tensor_parallel_size,
@@ -315,7 +321,8 @@ def get_vllm(args):
     return llm
 
 def run_vllm(
-    llm,
+    llm: LLM,
+    task_type: str,
     requests: List[Tuple[str, int, int]],
     n: int,
     lora_path: Optional[str] = None,
@@ -331,50 +338,64 @@ def run_vllm(
             raise ValueError(f"lora path: {lora_path} does not exit")
         
     # Add the requests to the engine.
-        
-    prompts = []
-    sampling_params = []
-    for prompt, _, output_len in requests:
-        prompts.append(prompt)
-        sampling_params.append(
-            SamplingParams(
-                n=n,
-                temperature=1.0,
-                top_p=1.0,
-                ignore_eos=True,
-                max_tokens=output_len,
-            ))
+    global MX_PROFILE_CSV_NAME
+    model_name_list = args.model.split("/")
+    model_name = model_name_list[-2] if len(model_name_list[-1]) == 0 else model_name_list[-1]
+    MX_PROFILE_CSV_NAME = f"{model_name}_{len(requests)}_{requests[0][1]}_{requests[0][2]}_tp{args.tensor_parallel_size}.csv"
+    
+    
     
     E2E_TIME = [] # 端到端推理延时
     FIRST_LATENCY = [] # 每个并发首token延时 TTFT
     INFER_LATENCY = [] # 每个并发推理时间延时 ITL
     DECODER_LATENCY = []
 
-    if enable_lora:
+
+    def _llm_exe(enable_profile: bool, /, *, task_type: str, **kwargs):
+        prompts = []
+        model_exe_params = []
+        for prompt, _, output_len in requests:
+            prompts.append(prompt)
+            model_exe_params.append(
+                SamplingParams(
+                    n=n,
+                    temperature=1.0,
+                    top_p=1.0,
+                    ignore_eos=True,
+                    max_tokens=output_len,
+                ) if not task_type.startswith("embed")
+                else PoolingParams(
+                    dimensions=output_len
+                ))
+            
         if enable_profile:
             start = time.perf_counter()
             llm.start_profile()
-            output = llm.generate(prompts, sampling_params, lora_request=LoRARequest("sql_adapter", 1, lora_path), use_tqdm=True)
+            if task_type == "embed":
+                output = llm.embed(prompts, pooling_params = model_exe_params, **kwargs)
+            else:
+                output = llm.generate(prompts, sampling_params = model_exe_params, **kwargs)
             llm.stop_profile()
             end = time.perf_counter()
         else:
             start = time.perf_counter()
-            output = llm.generate(prompts, sampling_params, lora_request=LoRARequest("sql_adapter", 1, lora_path), use_tqdm=True)
+            if task_type == "embed":
+                output = llm.embed(prompts, pooling_params = model_exe_params, **kwargs)
+            else:
+                output = llm.generate(prompts, sampling_params = model_exe_params, **kwargs)
             end = time.perf_counter()
+        
+        return (start, output, end)
+
+
+    if enable_lora:
+        start, output, end = _llm_exe(enable_profile, task_type = task_type, lora_request=LoRARequest("sql_adapter", 1, lora_path), use_tqdm=True)
     else:
-        if enable_profile:            
-            start = time.perf_counter()
-            llm.start_profile()
-            output = llm.generate(prompts, sampling_params, use_tqdm=True)
-            llm.stop_profile()
-            end = time.perf_counter()
-        else:
-            start = time.perf_counter()
-            output = llm.generate(prompts, sampling_params, use_tqdm=True)
-            end = time.perf_counter()
-    
+        start, output, end = _llm_exe(enable_profile, task_type = task_type, use_tqdm=True)
+
+
     E2E_TIME.append(end-start)
-    if output[0].metrics is None:
+    if not hasattr(output[0], "metrics") is None:
         return np.mean(E2E_TIME), None, None
 
     for out in output:
@@ -410,19 +431,25 @@ def show_result(requests: List,
                 infer_costs: Tuple):
     total_num_tokens = sum(prompt_len + output_len
                             for _, prompt_len, output_len in requests)
+    total_out_tokens = sum(output_len for _, _, output_len in requests)
     _, prompt_len, output_len = requests[0]
     elapsed_time, ttft, decoder_latency = infer_costs
 
     if ttft is None and decoder_latency is None:
         print(f"bs_{len(requests)}_input_{prompt_len}_output_{output_len} Throughput: {len(requests) / elapsed_time:.2f} requests/s, "
-            f"{total_num_tokens / elapsed_time:.2f} tokens/s")        
+            f"{total_num_tokens / elapsed_time:.2f} tokens/s, "
+            f"out TPS: {total_out_tokens / elapsed_time:.2f} tokens/s") 
     else:
         print(f"bs_{len(requests)}_input_{prompt_len}_output_{output_len} Throughput: {len(requests) / elapsed_time:.2f} requests/s, "
                 f"{total_num_tokens / elapsed_time:.2f} tokens/s, "
+                f"out TPS: {total_out_tokens / elapsed_time:.2f} tokens/s, "
                 f"TTFT is {round(ttft*1000, 2)} ms, Decoder Latency is {round(decoder_latency, 2)} ms")
 
 def main(args: argparse.Namespace):
     print(args)
+
+    if args.task.startswith("embed") and args.num_scheduler_steps > 1:
+        raise RuntimeError("Error: You MUST set num-scheduler-steps as 1 when you set the task as embed/embedding!")
     
     tokenizer_id = args.tokenizer if args.tokenizer is not None else args.model
     tokenizer = get_tokenizer(tokenizer_id,
@@ -449,8 +476,8 @@ def main(args: argparse.Namespace):
             print(f"warm up {idx}...")
             requests = prepare_request(args.input_len, args.output_len, args.num_prompts, tokenizer)
             
-            elapsed_time, ttft, decoder_latency = run_vllm(llm, requests, args.n,
-                                        args.lora_path)
+            elapsed_time, ttft, decoder_latency = run_vllm(llm, args.task, requests, args.n,
+                                        args.lora_path, args.enable_profile)
             infer_costs = (elapsed_time, ttft, decoder_latency)
             show_result(requests, infer_costs)
 
@@ -465,7 +492,7 @@ def main(args: argparse.Namespace):
                         # Synthesize a prompt with the given input length.
                         requests = prepare_request(input_len, output_len, batch, tokenizer) 
                         
-                        elapsed_time, ttft, decoder_latency = run_vllm(llm, requests, args.n,
+                        elapsed_time, ttft, decoder_latency = run_vllm(llm, args.task, requests, args.n,
                                                     args.lora_path, args.enable_profile)
                         infer_costs = (elapsed_time, ttft, decoder_latency)
                         show_result(requests, infer_costs)
@@ -474,7 +501,7 @@ def main(args: argparse.Namespace):
             print("Start performance test....")
             requests = prepare_request(args.input_len, args.output_len, args.num_prompts, tokenizer)   
             
-            elapsed_time, ttft, decoder_latency = run_vllm(llm, requests, args.n,
+            elapsed_time, ttft, decoder_latency = run_vllm(llm, args.task, requests, args.n,
                                         args.lora_path, args.enable_profile)
             infer_costs = (elapsed_time, ttft, decoder_latency)
             show_result(requests, infer_costs)
@@ -528,6 +555,17 @@ if __name__ == "__main__":
     parser.add_argument('--trust-remote-code',
                         action='store_true',
                         help='trust remote code from huggingface')
+    parser.add_argument(
+            '--task',
+            default="auto",
+            type = str,
+            choices=["auto", "generate", "embedding", "embed", "classify",
+                     "score", "reward", "transcription"],
+            help='The task to use the model for. Each vLLM instance only '
+            'supports one task, even if the same model can be used for '
+            'multiple tasks. When the model only supports one task, ``"auto"`` '
+            'can be used to select it; otherwise, you must specify explicitly '
+            'which task to use.')
     parser.add_argument(
         '--max-model-len',
         type=int,
