@@ -427,12 +427,12 @@ def sample_random_requests_txt(
         txt_data = " ".join(lines)
 
     input_lens = np.random.randint(
-        int(input_len * range_ratio),
+        int(input_len * (1 - range_ratio)),
         input_len + 1,
         size=num_requests,
     )
     output_lens = np.random.randint(
-        int(output_len * range_ratio),
+        int(output_len * (1 - range_ratio)),
         output_len + 1,
         size=num_requests,
     )
@@ -476,7 +476,7 @@ def sample_random_requests_txt(
                 continue
 
         input_requests.append((prompt, int(prefix_len + input_lens[i]),
-                               int(output_lens[i]), None))
+                               int(output_lens[i])))
 
     return input_requests
 

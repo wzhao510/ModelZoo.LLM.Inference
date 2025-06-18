@@ -161,7 +161,9 @@ async def run_vllm_async(
                                 continue
                             if input_len == 2048 and output_len != 2048:
                                 continue
-                            if input_len == 3072 and output_len != 1024 and batch > 64:
+                            if input_len == 3072 and output_len != 1024:
+                                continue
+                            if input_len == 3072 and batch > 64:
                                 continue
                         else:
                             if input_len == 1024 and output_len != 1024:
