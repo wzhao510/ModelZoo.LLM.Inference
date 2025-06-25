@@ -80,9 +80,9 @@ StableDiffusion_ox_sd_15_bs_bs1_precfp16 FPS : 0.283, latency : 3532.173ms, memo
 StableDiffusion_ox_sd_15_bs_bs1_precfp16 Avg Score : 0.380
 
 ## sdxl demo 示例：
-(需要配置环境变量MACART_OP_KEEP_ONNX_PRECISION=ON，测试环境ort版本为mxc500-onnxruntime-20240930)
+(需要配置环境变量MACART_OP_KEEP_ONNX_PRECISION=ON 与CUDA_VISIBLE_DEVICES=0,1 现需要两张卡，单独吧unet放到一张卡上，测试环境ort版本为mxc500-onnxruntime-20240930)
 ```python 
-MACART_OP_KEEP_ONNX_PRECISION=ON python code/sample_sdxl_onnx.py ./models/ox_sd_xl/ 50 1 maca 512 0 # 执行C500推理，step=50，出图尺寸为512*512，每个prompt生成1张图，使用0卡
+MACART_OP_KEEP_ONNX_PRECISION=ON CUDA_VISIBLE_DEVICES=0,1 python code/sample_sdxl_onnx.py ./models/ox_sd_xl/ 50 1 maca 512 # 执行C500推理，step=50，出图尺寸为512*512，每个prompt生成1张图，使用0卡与1卡
 ```
 参数
 # modelpath：               需测试的模型路径, 内部包含config.json模型参数文件已配置好
@@ -90,7 +90,7 @@ MACART_OP_KEEP_ONNX_PRECISION=ON python code/sample_sdxl_onnx.py ./models/ox_sd_
 # num_images_per_prompt:    每个prompt生成图片数量
 # EP:                       设置onnxruntime运行的EP, 默认为maca, 可选EP有cpu,maca
 # size:                     生成图片尺寸 (size*size)
-# device_id:                使用gpu编号
+# device_id:                使用gpu编号(改用CUDA_VISIBLE_DEVICES指定  此参数无效)
 
 输出示例(2.32.0.7)
 average score: 0.356

@@ -9,6 +9,7 @@ from utils.utils import get_params
 import time
 from utils.clip_score import ClipScore
 
+
 EVAL_MODEL_PATH="/pde_ai/models/llm/CLIP/CLIP-ViT-H-14-laion2B-s32B-b79K/open_clip_pytorch_model.bin"
 
 def check_models(params):
@@ -67,9 +68,12 @@ def infer_check_accuracy(sd_text2img_models, step, images_per_prompt, prompts, o
 def main(modelname, step=50, images_per_prompt=1, EP="maca", output_size=None, device_id=0):
     if EP.lower() == "maca":
         providers = [("MACAExecutionProvider",{
-            'device_id':device_id,
+            'device_id':0,
         }),]
-        init_memory = get_gpu_memory_usage(device_id)
+        providers_unet = [("MACAExecutionProvider",{
+            'device_id':1,
+        }),]
+        #init_memory = get_gpu_memory_usage(device_id)
     else:
         providers = ["CPUExecutionProvider",]
 
@@ -89,7 +93,7 @@ def main(modelname, step=50, images_per_prompt=1, EP="maca", output_size=None, d
     config = DiffusionPipeline.load_config(os.path.join(params["ori_path"], "model_index.json"))
 
     text_encoder = ort.InferenceSession(text_encoder_path, providers=providers, sess_options=None, provider_options=None)
-    unet = ort.InferenceSession(unet_path, providers=providers, sess_options=None, provider_options=None)
+    unet = ort.InferenceSession(unet_path, providers=providers_unet, sess_options=None, provider_options=None)
     vae_decoder = ort.InferenceSession(vae_decoder_path, providers=providers, sess_options=None, provider_options=None)
     vae_encoder = ort.InferenceSession(vae_encoder_path, providers=providers, sess_options=None, provider_options=None)
     text_encoder_2 = ort.InferenceSession(text_encoder_2_path, providers=providers, sess_options=None, provider_options=None)
@@ -141,10 +145,10 @@ def main(modelname, step=50, images_per_prompt=1, EP="maca", output_size=None, d
     start = time.time()
    
     results = infer_check_accuracy(sd_text2img_models[0], step, images_per_prompt, prompt, output_size)
-    if EP.lower() == "maca":
-        used_memory = get_gpu_memory_usage(0) - init_memory
-        if used_memory > max_memory:
-            max_memory = used_memory
+    # if EP.lower() == "maca":
+    #     used_memory = get_gpu_memory_usage(device_id) - init_memory
+    #     if used_memory > max_memory:
+    #         max_memory = used_memory
     end = time.time()
     print(f"Cost time: {end-start}")
     fps = len(prompt[:])*images_per_prompt / (end-start)
@@ -175,7 +179,10 @@ def main(modelname, step=50, images_per_prompt=1, EP="maca", output_size=None, d
 
     print(f"Output {len(prompt)*images_per_prompt} images, inference cost {end-start:.3f} seconds")
     if EP.lower() == "maca":
-        print("StableDiffusion_{}_step{}_images_per_prompt{} FPS : {:.3f}, latency : {:.3f}ms, memory usage: {:.3f} GB".format(model_type, step, images_per_prompt, fps, 1.0/fps*1000, max_memory / 1024 / 1024))
+        print("StableDiffusion_{}_step{}_images_per_prompt{} FPS : {:.3f}, latency : {:.3f}ms".format(
+            model_type, step, images_per_prompt, fps, 1.0/fps*1000, 
+            #max_memory / 1024 / 1024
+            ))
     else:
         print("StableDiffusion_{}_step{}_images_per_prompt{} FPS : {:.3f}, latency : {:.3f}ms".format(model_type, step, images_per_prompt, fps, 1.0/fps*1000))
     print("StableDiffusion_{}_step{}_images_per_prompt{} Avg Score : {:.3f}".format(model_type, step, images_per_prompt, average_score))
@@ -187,5 +194,5 @@ if __name__ == '__main__':
     EP = sys.argv[4] if len(sys.argv) > 4 else "maca"
     output_size = int(sys.argv[5]) if len(sys.argv) > 5 else None
     device_id = int(sys.argv[6]) if len(sys.argv) > 6 else 0
-    print(f'modelname: {modelname}\nstep: {step}\nimages_per_prompt: {images_per_prompt}\nEP: {EP}\noutput_size: {output_size}\ndevice_id: {device_id}')
+    print(f'modelname: {modelname}\nstep: {step}\nimages_per_prompt: {images_per_prompt}\nEP: {EP}\noutput_size: {output_size}\n')#device_id: {device_id}')
     main(modelname, step, images_per_prompt, EP, output_size, device_id)
