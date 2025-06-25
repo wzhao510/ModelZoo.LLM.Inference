@@ -406,7 +406,7 @@ def sample_random_requests(
         token_sequence = prefix_token_ids + inner_seq
         prompt = tokenizer.decode(token_sequence)
         total_input_len = prefix_len + int(input_lens[i])
-        requests.append((prompt, total_input_len, int(output_lens[i])))
+        requests.append((prompt, total_input_len, int(output_lens[i]), None))
     return requests
 
 def sample_random_requests_txt(
@@ -476,7 +476,7 @@ def sample_random_requests_txt(
                 continue
 
         input_requests.append((prompt, int(prefix_len + input_lens[i]),
-                               int(output_lens[i])))
+                               int(output_lens[i]), None))
 
     return input_requests
 
@@ -1375,9 +1375,11 @@ if __name__ == "__main__":
     random_group.add_argument(
         "--random-range-ratio",
         type=float,
-        default=1.0,
-        help="Range of sampled ratio of input/output length, "
-        "used only for random sampling.",
+        default=0.0,
+        help="Range ratio for sampling input/output length, "
+        "used only for random sampling. Must be in the range [0, 1) to define "
+        "a symmetric sampling range"
+        "[length * (1 - range_ratio), length * (1 + range_ratio)].",
     )
     random_group.add_argument(
         "--random-prefix-len",

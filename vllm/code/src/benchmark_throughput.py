@@ -427,7 +427,11 @@ def prepare_request(input_len, output_len, num_prompts, tokenizer):
             num_requests=num_prompts,
             range_ratio=0.0,
             tokenizer=tokenizer,)
-    return requests
+    
+    final_requests = []
+    for request in requests:
+        final_requests.append((request[0], request[1], request[2]))
+    return final_requests
 
 def show_result(requests: List, 
                 infer_costs: Tuple):
