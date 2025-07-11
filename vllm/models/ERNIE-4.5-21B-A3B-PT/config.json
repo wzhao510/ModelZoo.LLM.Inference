@@ -1,0 +1,10 @@
+{
+    "model_type": "ERINE",
+    "model_path": "/pde_ai/models/llm/ERINE/ERNIE-4.5-21B-A3B-PT/",
+    "model_param": {
+        "dtype": "float16",
+        "tensor_parallel_size": 2,
+        "gpu_memory_utilization": 0.95,
+        "batch_size": 1
+    }
+}
