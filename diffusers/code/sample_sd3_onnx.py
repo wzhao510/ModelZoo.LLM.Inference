@@ -154,11 +154,12 @@ def main(modelname, step=50, images_per_prompt=1, EP="maca", output_size=None, d
     start = time.time()
    
     results = infer_check_accuracy(sd_text2img_models[0], step, images_per_prompt, prompt, output_size)
+    end = time.time()
     if EP.lower() == "maca":
         used_memory = get_gpu_memory_usage(0) - init_memory
         if used_memory > max_memory:
             max_memory = used_memory
-    end = time.time()
+    
     print(f"Cost time: {end-start}")
     fps = len(prompt[:])*images_per_prompt / (end-start)
     print(results)

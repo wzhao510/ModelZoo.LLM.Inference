@@ -200,16 +200,18 @@ def main(modelname,batchsize,precision, task="normal", modelfile="./",EP="maca",
     max_memory = 0.0
     results = []
     print("Start Infer")
-    start = time.time()
+    cost_time=0.0
     for i in range(test_round):
+        start = time.time()
         results = infer_check_accuracy(sd_text2img_models[0], int(batchsize), dataset[:], output_size)
+        cost_time += time.time() - start
         if EP.lower() == "maca":
             used_memory = get_gpu_memory_usage(0) - init_memory
             if used_memory > max_memory:
                 max_memory = used_memory
-    end = time.time()
-    print(f"Cost time: {end-start}")
-    fps = len(dataset[:]) * test_round / (end-start)
+    
+    print(f"Cost time: {cost_time}")
+    fps = len(dataset[:]) * test_round / (cost_time)
     #print(results)
     print("Infer Finished...")
 
