@@ -18,7 +18,7 @@ class Connection:
         self.machine_socket = []
         self.machine_info = machine_info
         self.zmq_port = port
-        self.master_proc = ProcStatus()
+        self.master_opcontent = OperationContent()
         self.master_cmd_map = {}
         self.slave_cmd_map = {}
 
@@ -31,17 +31,21 @@ class Connection:
             self.machine_socket.append(socket)
 
     def clean(self) -> None:
+        self.exit_slave()
+        for sock in self.machine_socket:
+            sock.close()
+        # ...
         pass
 
     
     def run_local_cmd(self, command:str,cmd_type:LocalCommandType) -> None:
         if cmd_type == LocalCommandType.master_server:
-            self.master_proc = ProcStatus(store_output=True, print_output=True, ready_flag=["The server is fired up and ready to roll!"],
-                                        is_master=True)
-            thread = threading.Thread(target=run_sys_cmd, args=(command, self.master_proc,))
+            self.master_opcontent = OperationContent(store_output=True, print_output=True, ready_flag=["The server is fired up and ready to roll!"],
+                                                is_master=True)
+            thread = threading.Thread(target=run_sys_cmd, args=(command, self.master_opcontent,))
             thread.start()
             time.sleep(2)
-            self.master_cmd_map[command] = self.master_proc.handle
+            self.master_cmd_map[command] = self.master_opcontent.handle
 
     def stop_local_cmd(self, command:str,cmd_type:LocalCommandType) -> None:
         if cmd_type == LocalCommandType.master_server:
@@ -68,6 +72,8 @@ class Connection:
         message = sock.recv_string()
         print(f'## Recv {message}')
 
+    def exit_slave(self):
+        pass
 
 
 

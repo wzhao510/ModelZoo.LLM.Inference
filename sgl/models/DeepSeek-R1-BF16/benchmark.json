@@ -1,0 +1,37 @@
+{
+    "machine_info": [
+      {
+        "ip": "10.240.35.15",
+        "other_info": "xxx"
+      }
+    ],
+    "tasks": [
+                {
+                  "task_name": "sglang_bench",
+                  "task_type": "bench_normal",
+                  "launch_mode":"online",
+                  "TOTAL_NODES_NUM": "1",
+                  "environment_variables": {
+
+                  },
+                  "launch_server": {
+                      "command_base": " ",
+                      "variations": {
+  
+                      }
+                  },
+                  "bench_serving": {
+                      "command_base": "ls",
+                      "bench_mode": "normal",
+                      "variations": {
+                         
+                      }
+                  }
+              }
+          ]
+   
+}
+  
+  
+  
+  
