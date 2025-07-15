@@ -1,0 +1,11 @@
+{
+    "model_type": "intern_vl",
+    "model_path": "/pde_ai/models/llm/InternVL2_5-26B",
+    "mutlimoda": true,
+    "model_param": {
+        "dtype": "float16",
+        "tensor_parallel_size": 2,
+        "gpu_memory_utilization": 0.8,
+        "batch_size": 1
+    }
+}
