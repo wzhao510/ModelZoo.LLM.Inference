@@ -1,6 +1,6 @@
 {
     "model_type": "DeepSeek",
-    "model_path": "/external/ai_ssd/models/llm/DeepSeek/DeepSeek-V3-L12-W8A8/",
+    "model_path": "/external/ai/models/llm/DeepSeek/DeepSeek-V3-L12-W8A8/",
     "model_param": {
         "dtype": "bfloat16",
         "tensor_parallel_size": 8,

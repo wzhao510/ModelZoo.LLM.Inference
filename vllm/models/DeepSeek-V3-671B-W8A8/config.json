@@ -1,6 +1,6 @@
 {
     "model_type": "DeepSeek",
-    "model_path": "/external/ai_ssd/models/llm/DeepSeek/DeepSeek-V3-BF16_W8A8",
+    "model_path": "/external/ai/models/llm/DeepSeek/DeepSeek-V3-BF16_W8A8",
     "async_engine": true,
     "model_param": {
         "dtype": "bfloat16",
