@@ -1,7 +1,7 @@
 {
     "//": "",
     "model_config":{
-        "ori_path":"/pde_ai/models/llm/StableDiffusion/stable-diffusion-onnx/sdxl_onnx/",
+        "ori_path":"/external/ai/models/llm/StableDiffusion/stable-diffusion-onnx/sdxl_onnx/",
         "dataset":"",
         "seed": 0,
         "num_inference_steps": 50,

@@ -6,8 +6,8 @@ from safetensors.torch import load_file, save_file
 import sys
 import os
 
-ckptpath= sys.argv[1] #/pde_ai/models/llm/Llama//EAGLE-LLaMA3-Instruct-8B/pytorch_model.bin
-ref_ckptpath=sys.argv[2] #/pde_ai/models/llm/Llama/Meta-Llama-3-8B-Instruct/model-00004-of-00004.safetensors
+ckptpath= sys.argv[1] #/external/ai/models/llm/Llama//EAGLE-LLaMA3-Instruct-8B/pytorch_model.bin
+ref_ckptpath=sys.argv[2] #/external/ai/models/llm/Llama/Meta-Llama-3-8B-Instruct/model-00004-of-00004.safetensors
 
 ckpt = torch.load(ckptpath)
 ref_ckpt = load_file(ref_ckptpath)

@@ -101,13 +101,13 @@ CUDA_VISIBLE_DEVICES=${0~7} MX_VLLM_ENABLE_PROFILE=1 python ./code/bench_test.py
 ### 离线推理脚本（配置 lora_path 为微调的LoRA模型路径）：
 
 ```shell
-python code/src/offline_inference_lora.py --model /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --lora_path /pde_ai/models/models-7/LoRA/lora_test/lora_llama-2-7b/llama-2-7b-sql-lora-test/
+python code/src/offline_inference_lora.py --model /external/ai/models/llm/Llama/Llama-2-7b-hf/ --lora_path /external/ai/models/models-7/LoRA/lora_test/lora_llama-2-7b/llama-2-7b-sql-lora-test/
 ```
 
 ### multi-LoRA 推理脚本：
 
 ```shell
-python code/src/offline_inference_multi_lora.py --model /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --lora_path /pde_ai/models/models-7/LoRA/lora_test/lora_llama-2-7b/llama-2-7b-sql-lora-test/
+python code/src/offline_inference_multi_lora.py --model /external/ai/models/llm/Llama/Llama-2-7b-hf/ --lora_path /external/ai/models/models-7/LoRA/lora_test/lora_llama-2-7b/llama-2-7b-sql-lora-test/
 ```
 
 
@@ -122,7 +122,7 @@ python code/bench_test.py --model ./models/Llama2_7b_sql_lora/ --num-prompts 64 
 
 用法同普通一致，模型路径要为 gptq/awq 模型路径，
 ```shell
-python code/src/offline_inference.py --model /pde_ai/models/llm/quantize_model/llama-2-7b-int4-gptq/
+python code/src/offline_inference.py --model /external/ai/models/llm/quantize_model/llama-2-7b-int4-gptq/
 ```
 
 
@@ -140,7 +140,7 @@ python code/src/offline_inference.py --model /pde_ai/models/llm/quantize_model/l
 
 1.  脚本为 code/run_offline_inference_demo.sh：
     ```shell
-    python src/offline_inference.py --model /pde_ai/models/llm/Llama/Llama-2-7b-hf
+    python src/offline_inference.py --model /external/ai/models/llm/Llama/Llama-2-7b-hf
     ```
 
 2.  运行该脚本：
@@ -148,7 +148,7 @@ python code/src/offline_inference.py --model /pde_ai/models/llm/quantize_model/l
     bash run_offline_inference_demo.sh
     ```
 
-    > 脚本内需要根据使用模型情况修改模型所在目录，如 --model /pde_ai/models/llm/Llama/Llama-2-7b-hf;  
+    > 脚本内需要根据使用模型情况修改模型所在目录，如 --model /external/ai/models/llm/Llama/Llama-2-7b-hf;  
     > 可根据需要修改code/src/offline_inference.py内的prompts;  
     > 详细参数信息见code/src/offline_inference.py
 
@@ -161,14 +161,14 @@ python code/src/offline_inference.py --model /pde_ai/models/llm/quantize_model/l
     * 如若执行的是普通推理模型，可以使用如下参数设置
 
         ```shell
-        python src/benchmark_throughput.py --backend hf --model /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --tokenizer /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --input-len 512 --output-len 128 --num-prompts 8
+        python src/benchmark_throughput.py --backend hf --model /external/ai/models/llm/Llama/Llama-2-7b-hf/ --tokenizer /external/ai/models/llm/Llama/Llama-2-7b-hf/ --input-len 512 --output-len 128 --num-prompts 8
         ```
     * 如若执行的是embed模型，可以使用如下设置
         > **注意**，执行该类模型时，num-scheduler-steps必须设置为1，否则会导致报错。
         > 同时为该类模型设置的output-len需要满足模型的规定，如果提醒dimension有问题，请按照log要求进行修改
 
         ```shell
-        python ./code/src/benchmark_throughput.py --model /pde_ai/models/llm/jinaai/jina-embeddings-v3/ --batched-test --backend=vllm --max-model-len 2048 --num-prompts 8 --trust-remote-code --dtype float16 --input-len 1024 --output-len 1024 --tensor-parallel-size 1 --num-scheduler-steps 1 --task embed
+        python ./code/src/benchmark_throughput.py --model /external/ai/models/llm/jinaai/jina-embeddings-v3/ --batched-test --backend=vllm --max-model-len 2048 --num-prompts 8 --trust-remote-code --dtype float16 --input-len 1024 --output-len 1024 --tensor-parallel-size 1 --num-scheduler-steps 1 --task embed
         ```
 
     > 这里仅说明常用的命令参数，具体的参数意义或者有哪些命令参数可以使用，请执行 `--help/-h` 查看
@@ -191,7 +191,7 @@ python code/src/offline_inference.py --model /pde_ai/models/llm/quantize_model/l
     执行online benchmark前需要有对应服务启动，简易启动命令: 
 
     ```shell
-    CUDA_VISIBLE_DEVICES=${0~7} vllm serve /pde_ai/models/llm/DeepSeek/DeepSeek-V2-Lite/ -pp 1 -tp 1  --trust-remote-code --dtype bfloat16 --max-model-len 2048 --max-num-batched-tokens 2048 --swap-space 16 --gpu-memory-utilization 0.95 --distributed-executor-backend ray
+    CUDA_VISIBLE_DEVICES=${0~7} vllm serve /external/ai/models/llm/DeepSeek/DeepSeek-V2-Lite/ -pp 1 -tp 1  --trust-remote-code --dtype bfloat16 --max-model-len 2048 --max-num-batched-tokens 2048 --swap-space 16 --gpu-memory-utilization 0.95 --distributed-executor-backend ray
     ```
 
     > 1. 请根据需要自行设置 `-pp` 和 `-tp` 参数
@@ -208,7 +208,7 @@ python code/src/offline_inference.py --model /pde_ai/models/llm/quantize_model/l
         如果需要模拟不同的随机状况下，测试服务器的负载及其他详情，这里推荐一个命令，**其中命令参数值，请根据需要进行更改**
 
         ```shell
-        python code/src/benchmark_serving_new.py --model /pde_ai/models/llm/DeepSeek/DeepSeek-V2-Lite/ --dataset_name random --random_input_len 1024 --random_output_len 1024 --num-prompts 500 --trust-remote-code --ignore-eos --max-concurrency 50 --request-rate 0.6
+        python code/src/benchmark_serving_new.py --model /external/ai/models/llm/DeepSeek/DeepSeek-V2-Lite/ --dataset_name random --random_input_len 1024 --random_output_len 1024 --num-prompts 500 --trust-remote-code --ignore-eos --max-concurrency 50 --request-rate 0.6
         ```
     
 
@@ -223,7 +223,7 @@ python code/src/offline_inference.py --model /pde_ai/models/llm/quantize_model/l
 2.  简易启动命令:
     1.  启动在线服务
         ```shell
-        vllm serve /pde_ai/models/llm/Llama/Llama-2-7b-hf/ -pp 1 -tp 1  --trust-remote-code --distributed-executor-backend ray --max-model-len 4096 --swap-space 16 --gpu-memory-utilization 0.95
+        vllm serve /external/ai/models/llm/Llama/Llama-2-7b-hf/ -pp 1 -tp 1  --trust-remote-code --distributed-executor-backend ray --max-model-len 4096 --swap-space 16 --gpu-memory-utilization 0.95
         ```
     
     2.  执行客户端测试，`/workspace/ModelZoo.LLM.Inference/vllm/code`目录下包含completion和chatcompletion两个客户端sample
@@ -241,7 +241,7 @@ python code/src/offline_inference.py --model /pde_ai/models/llm/quantize_model/l
 
 使用pytext 启动 APC 命令
 ```shell
-python code/test_prefix_caching.py --model /pde_ai/models/llm/Llama/Meta-Llama-3-8B-Instruct/
+python code/test_prefix_caching.py --model /external/ai/models/llm/Llama/Meta-Llama-3-8B-Instruct/
 ```
 
 
@@ -273,18 +273,18 @@ python code/test_prefix_caching.py --model /pde_ai/models/llm/Llama/Meta-Llama-3
     命令如：
     
     ```shell
-    python code/convert_EAGLE_ckpt_to_vllm_compatible.py /pde_ai/models/llm/Qwen/EAGLE-Qwen2-7B-Instruct/pytorch_model.bin /pde_ai/models//llm/Qwen/Qwen2-7B-Instruct/model-00004-of-00004.safetensors
+    python code/convert_EAGLE_ckpt_to_vllm_compatible.py /external/ai/models/llm/Qwen/EAGLE-Qwen2-7B-Instruct/pytorch_model.bin /external/ai/models//llm/Qwen/Qwen2-7B-Instruct/model-00004-of-00004.safetensors
     ```
 
     > **参数及结果说明：**
-    > `/pde_ai/models/llm/Qwen/EAGLE-Qwen2-7B-Instruct/pytorch_model.bin` 为原始模型权重
-    > `/pde_ai/models/llm/Qwen/Qwen2-7B-Instruct/model-00004-of-00004.safetensors` 主模型的权重最后一个分片
-    > **转换后的文件保存在：** `/pde_ai/models/llm/Qwen/EAGLE-Qwen2-7B-Instruct_vllm/` 规则  `EAGLE-xxx_vllm`
+    > `/external/ai/models/llm/Qwen/EAGLE-Qwen2-7B-Instruct/pytorch_model.bin` 为原始模型权重
+    > `/external/ai/models/llm/Qwen/Qwen2-7B-Instruct/model-00004-of-00004.safetensors` 主模型的权重最后一个分片
+    > **转换后的文件保存在：** `/external/ai/models/llm/Qwen/EAGLE-Qwen2-7B-Instruct_vllm/` 规则  `EAGLE-xxx_vllm`
 
 **示例：**
 
 ```shell
-python ./code/bench_test.py --model models/LLama3.1_8b  --enable-chunked-prefill --speculative-model /pde_ai/models/llm/Llama/llama3-8b-accelerator  --num-speculative-tokens 4
+python ./code/bench_test.py --model models/LLama3.1_8b  --enable-chunked-prefill --speculative-model /external/ai/models/llm/Llama/llama3-8b-accelerator  --num-speculative-tokens 4
 ```
 
 ngram

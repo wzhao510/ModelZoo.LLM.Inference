@@ -1,7 +1,7 @@
 {
     "//": "以下配置的模型名字为FP32路径模型名字, FP16名字将会在转换统一命名 model_sim_fp16.onnx",
     "model_config":{
-        "ori_path":"/pde_ai/models/llm/StableDiffusion/stable-diffusion-onnx/sd-v1-5_fp32/",
+        "ori_path":"/external/ai/models/llm/StableDiffusion/stable-diffusion-onnx/sd-v1-5_fp32/",
         "fp16_path":"./temp_model/sd-v1-5_fp16/",
         "dataset":"./data/PartiPrompts.tsv",
         "seed": 42,

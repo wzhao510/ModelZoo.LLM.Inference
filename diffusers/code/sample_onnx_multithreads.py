@@ -14,7 +14,7 @@ from utils.utils import get_params, convertModel, get_input_shape_info
 from utils.clip_score import ClipScore
 from sd_model.text2img import Text2ImgModelSess
 
-EVAL_MODEL_PATH="/pde_ai/models/llm/CLIP/CLIP-ViT-H-14-laion2B-s32B-b79K/open_clip_pytorch_model.bin"
+EVAL_MODEL_PATH="/external/ai/models/llm/CLIP/CLIP-ViT-H-14-laion2B-s32B-b79K/open_clip_pytorch_model.bin"
 
 def split_dataset(image_list, thread_num):
     sub_num = len(image_list)//thread_num

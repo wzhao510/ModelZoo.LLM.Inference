@@ -1,6 +1,6 @@
 {
     "model_type": "llama",
-    "model_path": "/pde_ai/models/llm/Llama/Llama-2-7b-hf/",
+    "model_path": "/external/ai/models/llm/Llama/Llama-2-7b-hf/",
     "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 1,

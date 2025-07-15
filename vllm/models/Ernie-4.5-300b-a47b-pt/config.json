@@ -1,6 +1,6 @@
 {
     "model_type": "ERNIE",
-    "model_path": "/pde_ai/models/llm/ERINE/ERNIE-4.5-300B-A47B-PT/",
+    "model_path": "/external/ai/models/llm/ERINE/ERNIE-4.5-300B-A47B-PT/",
     "async_engine": true,
     "model_param": {
         "dtype": "bfloat16",

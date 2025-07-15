@@ -1,6 +1,6 @@
 {
     "model_type": "Qwen",
-    "model_path": "/pde_ai/models/llm/W8A8/Qwen2.5-32B-Instruct-W8A8-Dynamic-Per-Token",
+    "model_path": "/external/ai/models/llm/W8A8/Qwen2.5-32B-Instruct-W8A8-Dynamic-Per-Token",
     "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 1,

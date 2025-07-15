@@ -11,7 +11,7 @@ models = [
     dict(
         type=TurboMindModel,
         abbr='internlm2-chat-7b-pytorch',
-        path="/pde_ai/models/llm/Internlm/internlm2-chat-7b",
+        path="/external/ai/models/llm/Internlm/internlm2-chat-7b",
         backend="pytorch",
         engine_config=dict(device_type="maca", block_size=256, dtype="float16", tp=1),
         gen_config=dict(top_k=1, temperature=1e-6, top_p=0.9, max_new_tokens=1024),

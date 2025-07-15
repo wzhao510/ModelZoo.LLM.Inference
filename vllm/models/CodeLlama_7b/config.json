@@ -1,6 +1,6 @@
 {
     "model_type": "CodeLlama",
-    "model_path": "/pde_ai/models/llm/CodeLlama/CodeLlama-7B-fp16/",
+    "model_path": "/external/ai/models/llm/CodeLlama/CodeLlama-7B-fp16/",
     "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 1,

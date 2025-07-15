@@ -73,10 +73,10 @@ pip install eval-type-backport
 
 * 首先需要启动sglang server端：
 ```
-python3 -m sglang.launch_server --model /pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B --trust-remote-code --disable-cuda-graph
+python3 -m sglang.launch_server --model /external/ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B --trust-remote-code --disable-cuda-graph
 ```
 * 然后运行client端：
 ```
-python ./run_ceval_client.py --model /pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B --test_jsonl /pde_ai/datasets/ceval_vllm_client/ceval_val_cmcc.jsonl
+python ./run_ceval_client.py --model /external/ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B --test_jsonl /pde_ai/datasets/ceval_vllm_client/ceval_val_cmcc.jsonl
 ```
 * 测试集ceval_val_cmcc.jsonl需要自行准备

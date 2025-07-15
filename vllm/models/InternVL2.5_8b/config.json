@@ -1,6 +1,6 @@
 {
     "model_type": "intern_vl",
-    "model_path": "/pde_ai/models/llm/InternVL2_5-8B",
+    "model_path": "/external/ai/models/llm/InternVL2_5-8B",
     "mutlimoda": true,
     "model_param": {
         "dtype": "float16",

@@ -1,7 +1,7 @@
 {
     "model_type": "llama",
-    "model_path": "/pde_ai/models/llm/Llama/Llama-2-7b-hf/",
-    "lora_path": "/pde_ai/models/models-7/LoRA/lora_test/lora_llama-2-7b/llama-2-7b-sql-lora-test/",
+    "model_path": "/external/ai/models/llm/Llama/Llama-2-7b-hf/",
+    "lora_path": "/external/ai/models/models-7/LoRA/lora_test/lora_llama-2-7b/llama-2-7b-sql-lora-test/",
     "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 1,

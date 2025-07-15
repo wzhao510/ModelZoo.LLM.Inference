@@ -1,6 +1,6 @@
 {
     "model_type": "llama",
-    "model_path": "/pde_ai/models/llm/Llama/Llama-2-70B-Chat-fp16/",
+    "model_path": "/external/ai/models/llm/Llama/Llama-2-70B-Chat-fp16/",
     "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 4,

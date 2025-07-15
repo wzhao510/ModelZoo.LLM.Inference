@@ -1,6 +1,6 @@
 {
     "model_type": "qwen_vl",
-    "model_path": "/pde_ai/models/llm/Qwen/Qwen2-VL-7B-Instruct",
+    "model_path": "/external/ai/models/llm/Qwen/Qwen2-VL-7B-Instruct",
     "mutlimoda": true,
     "model_param": {
         "dtype": "float16",

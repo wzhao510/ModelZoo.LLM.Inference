@@ -2,7 +2,7 @@
 ## requirement
 * 需要 onnxsim=0.4.36 
 * sample_onnx、sample_sd3_onnx、sample_sdxl增加精度测试功能
-* 使用ViT-H-14计算精度，需要挂载数据集，默认路径 /pde_ai/models/llm/CLIP/CLIP-ViT-H-14-laion2B-s32B-b79K/open_clip_pytorch_model.bin
+* 使用ViT-H-14计算精度，需要挂载数据集，默认路径 /external/ai/models/llm/CLIP/CLIP-ViT-H-14-laion2B-s32B-b79K/open_clip_pytorch_model.bin
 * 数据集获取路径https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K/tree/main
 ## 目录结构及说明
 

@@ -1,6 +1,6 @@
 {
     "model_type": "minicpmv",
-    "model_path": "/pde_ai/models/llm/OpenBMB/MiniCPM-o-2_6",
+    "model_path": "/external/ai/models/llm/OpenBMB/MiniCPM-o-2_6",
     "mutlimoda": true,
     "model_param": {
         "dtype": "float16",

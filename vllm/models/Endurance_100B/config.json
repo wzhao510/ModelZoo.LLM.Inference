@@ -1,6 +1,6 @@
 {
     "model_type": "Falcon",
-    "model_path": "/pde_ai/models/llm/Endurance-100B-v1/",
+    "model_path": "/external/ai/models/llm/Endurance-100B-v1/",
     "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 8,

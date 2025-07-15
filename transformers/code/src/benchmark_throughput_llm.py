@@ -76,7 +76,7 @@ def run(args):
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-path", type=str,default="/pde_ai/models/llm/Qwen/Qwen2.5-7B-Instruct/")
+    parser.add_argument("--model-path", type=str,default="/external/ai/models/llm/Qwen/Qwen2.5-7B-Instruct/")
     parser.add_argument("--tensor-parallel-size", "-tp", type=int, default=1)
     parser.add_argument(
         '--dtype',

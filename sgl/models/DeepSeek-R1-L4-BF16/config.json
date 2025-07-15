@@ -1,6 +1,6 @@
 {
     "model_type": "llama",
-    "model_path": "/pde_ai/models/llm/DeepSeek/DeepSeek-R1-BF16-L4-EXP256/",
+    "model_path": "/external/ai/models/llm/DeepSeek/DeepSeek-R1-BF16-L4-EXP256/",
     "c-eval_param": {
         "dtype":"bfloat16",
         "mem-fraction-static":0.86,

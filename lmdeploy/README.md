@@ -82,7 +82,7 @@ pip install -e .
 通过离线pipline测试特定query的回答，我们以InternVL2-8B为例。
 ```
 cd code
-python chat_prompt_demo.py --model-path /pde_ai/models/llm/Internlm/InternVL2-8B --tp 1 --block-size 16 --cache-max-entry-count 0.8 --vl True --image-url ../resources/tiger.jpeg
+python chat_prompt_demo.py --model-path /external/ai/models/llm/Internlm/InternVL2-8B --tp 1 --block-size 16 --cache-max-entry-count 0.8 --vl True --image-url ../resources/tiger.jpeg
 ```
 输出如下：
 ```
@@ -116,7 +116,7 @@ The image does not show a woman. It depicts a tiger lying on a grassy area. The 
 我们以[internlm/internlm-7b](https://www.modelscope.cn/models/Shanghai_AI_Laboratory/internlm-7b)为例，介绍测试 LMDeploy pytorch 推理引擎的静态推理性能测试方法。
 
 ```
-python profile_generation.py /pde_ai/models/llm/Internlm/internlm2-chat-7b --backend pytorch -c 1 -pt 256 -ct 128 --tp 1 --cache-block-seq-len 16 --dtype float16
+python profile_generation.py /external/ai/models/llm/Internlm/internlm2-chat-7b --backend pytorch -c 1 -pt 256 -ct 128 --tp 1 --cache-block-seq-len 16 --dtype float16
 ```
 输出如下：
 ```
@@ -144,7 +144,7 @@ token 吞吐量 （包括首个token）= tokens/s = throughput(total)
 
 ```
 # 启动模型服务
-lmdeploy serve api_server --server-port 23333 --tp 1 --backend pytorch --max-batch-size 256 /pde_ai/models/llm/Internlm/internlm2-chat-7b --dtype float16 --device maca --cache-block-seq-len 16
+lmdeploy serve api_server --server-port 23333 --tp 1 --backend pytorch --max-batch-size 256 /external/ai/models/llm/Internlm/internlm2-chat-7b --dtype float16 --device maca --cache-block-seq-len 16
 ```
 
 输出如下：

@@ -1,6 +1,6 @@
 {
     "model_type": "Bloom",
-    "model_path": "/pde_ai/models/llm/Bloom/bloom-7b1/",
+    "model_path": "/external/ai/models/llm/Bloom/bloom-7b1/",
     "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 1,

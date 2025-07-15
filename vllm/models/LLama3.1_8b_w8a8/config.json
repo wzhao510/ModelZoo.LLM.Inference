@@ -1,6 +1,6 @@
 {
     "model_type": "llama",
-    "model_path": "/pde_ai/models/llm/W8A8/Meta-Llama-3___1-8B-Instruct-quantized___w8a8",
+    "model_path": "/external/ai/models/llm/W8A8/Meta-Llama-3___1-8B-Instruct-quantized___w8a8",
     "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 1,

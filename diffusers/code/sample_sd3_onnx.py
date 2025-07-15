@@ -9,7 +9,7 @@ from utils.utils import get_params
 import time
 from utils.clip_score import ClipScore
 
-EVAL_MODEL_PATH="/pde_ai/models/llm/CLIP/CLIP-ViT-H-14-laion2B-s32B-b79K/open_clip_pytorch_model.bin"
+EVAL_MODEL_PATH="/external/ai/models/llm/CLIP/CLIP-ViT-H-14-laion2B-s32B-b79K/open_clip_pytorch_model.bin"
 
 def check_models(params):
     if not os.path.exists(os.path.join(params["ori_path"], "tokenizer")):

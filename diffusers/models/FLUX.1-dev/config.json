@@ -1,7 +1,7 @@
 {
     "//": "",
     "model_config":{
-        "ori_path":"/pde_ai/models/llm/Flux/FLUX.1-dev/",
+        "ori_path":"/external/ai/models/llm/Flux/FLUX.1-dev/",
         "dataset":"./data/PartiPrompts.tsv",
         "seed": 0,
         "num_inference_steps": 20,

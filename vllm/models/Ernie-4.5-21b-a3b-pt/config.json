@@ -1,6 +1,6 @@
 {
     "model_type": "ERINE",
-    "model_path": "/pde_ai/models/llm/ERINE/ERNIE-4.5-21B-A3B-PT/",
+    "model_path": "/external/ai/models/llm/ERINE/ERNIE-4.5-21B-A3B-PT/",
     "model_param": {
         "dtype": "bfloat16",
         "tensor_parallel_size": 2,

@@ -1,6 +1,6 @@
 {
     "model_type": "MPT",
-    "model_path": "/pde_ai/models/llm/MPT/mpt-30b/",
+    "model_path": "/external/ai/models/llm/MPT/mpt-30b/",
     "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 4,

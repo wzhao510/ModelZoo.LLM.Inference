@@ -1,6 +1,6 @@
 {
     "model_type": "Mistral",
-    "model_path": "/pde_ai/models/llm/Mistral/Mistral-Nemo-Instruct-2407/",
+    "model_path": "/external/ai/models/llm/Mistral/Mistral-Nemo-Instruct-2407/",
     "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 1,

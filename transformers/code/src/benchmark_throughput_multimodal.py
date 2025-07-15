@@ -116,7 +116,7 @@ def run(args):
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-path", type=str,default="/pde_ai/models/llm/LLaVa/llava-v1___6-vicuna-13b-hf")
+    parser.add_argument("--model-path", type=str,default="/external/ai/models/llm/LLaVa/llava-v1___6-vicuna-13b-hf")
     parser.add_argument("--tensor-parallel-size", "-tp", type=int, default=4)
     parser.add_argument('--trust_remote_code',
                         action='store_true',

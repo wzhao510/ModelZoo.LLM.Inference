@@ -1,6 +1,6 @@
 {
     "model_type": "llama",
-    "model_path": "/pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B/",
+    "model_path": "/external/ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B/",
     "c-eval_param": {
         "dtype":"bfloat16",
         "mem-fraction-static":0.86,

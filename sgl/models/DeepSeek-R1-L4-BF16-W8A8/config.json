@@ -1,6 +1,6 @@
 {
     "model_type": "llama",
-    "model_path": "/pde_ai/models/llm/DeepSeek/DeepSeek-R1-BF16-L4-W8A8/",
+    "model_path": "/external/ai/models/llm/DeepSeek/DeepSeek-R1-BF16-L4-W8A8/",
     "c-eval_param": {
         "mem-fraction-static":0.86,
         "disable_cuda_graph":"False",

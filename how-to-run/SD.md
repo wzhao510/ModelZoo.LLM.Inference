@@ -1,4 +1,4 @@
-这一页说明如何推理SD模型，包括sd1.5和sd2.1。建议使用onnxruntime Docker环境，添加模型目录映射：-v /pde_ai/models/llm/StableDiffusion/stable-diffusion-onnx:/pde_ai/models/llm/StableDiffusion/stable-diffusion-onnx
+这一页说明如何推理SD模型，包括sd1.5和sd2.1。建议使用onnxruntime Docker环境，添加模型目录映射：-v /external/ai/models/llm/StableDiffusion/stable-diffusion-onnx:/external/ai/models/llm/StableDiffusion/stable-diffusion-onnx
 
 ## requirement
 需要安装运行依赖包: onnxsim=0.4.36 diffusers==0.19.3 onnx==1.12.0 Pillow==10.0.0 transformers==4.31.0
@@ -60,8 +60,8 @@ python code/sample_onnx.py ./models/ox_sd_15_bs/ 2 fp16 norm test maca  # 执行
 {
     "//": "以下配置的模型名字为FP32路径模型名字, FP16名字将会在转换统一命名 model_sim_fp16.onnx",
     "model_config":{
-        "ori_path":"/pde_ai/models/llm/StableDiffusion/stable-diffusion-onnx/sd-2-1_fp32_bs",
-        "fp16_path":"/pde_ai/models/llm/StableDiffusion/stable-diffusion-onnx/sd-2-1_fp16_bs",
+        "ori_path":"/external/ai/models/llm/StableDiffusion/stable-diffusion-onnx/sd-2-1_fp32_bs",
+        "fp16_path":"/external/ai/models/llm/StableDiffusion/stable-diffusion-onnx/sd-2-1_fp16_bs",
         "dataset":"./data/PartiPrompts.tsv",
         "seed": 21,
         "num_inference_steps": 50,
@@ -82,7 +82,7 @@ python code/sample_onnx_multithreads.py ./models/ox_sd_15_bs/ 2 fp16 norm test m
 
 ## Flux
 ```python
-python code/sample_flux.py --model /pde_ai/models/llm/Flux/FLUX.1-schnell/ --batchsize 1 --offload false --resolution 1024x1024
+python code/sample_flux.py --model /external/ai/models/llm/Flux/FLUX.1-schnell/ --batchsize 1 --offload false --resolution 1024x1024
 ```
 
 参数说明：

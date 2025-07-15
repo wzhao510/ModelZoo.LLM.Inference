@@ -1,6 +1,6 @@
 {
     "model_type": "GPT",
-    "model_path": "/pde_ai/models/llm/GPT/gpt4all-j/",
+    "model_path": "/external/ai/models/llm/GPT/gpt4all-j/",
     "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 1,

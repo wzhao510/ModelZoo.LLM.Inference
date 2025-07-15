@@ -1,6 +1,6 @@
 {
     "model_type": "Vicuna",
-    "model_path": "/pde_ai/models/llm/Vicuna/vicuna-13b-v1.5/",
+    "model_path": "/external/ai/models/llm/Vicuna/vicuna-13b-v1.5/",
     "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 1,

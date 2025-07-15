@@ -1,1 +1,1 @@
-python src/benchmark_serving.py --dataset ../dataset/ShareGPT_V3_unfiltered_cleaned_split.json --tokenizer /pde_ai/models/llm/Llama/Llama-2-7b-hf/ --num-prompts 10
+python src/benchmark_serving.py --dataset ../dataset/ShareGPT_V3_unfiltered_cleaned_split.json --tokenizer /external/ai/models/llm/Llama/Llama-2-7b-hf/ --num-prompts 10

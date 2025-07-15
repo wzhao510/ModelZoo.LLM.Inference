@@ -1,6 +1,6 @@
 {
     "model_type": "Baichuan",
-    "model_path": "/pde_ai/models/llm/Baichuan/Baichuan2-7B-Chat/",
+    "model_path": "/external/ai/models/llm/Baichuan/Baichuan2-7B-Chat/",
     "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 1,

@@ -28,7 +28,7 @@ prompts = [
 ]
 def RunPrefixCaching(model_path):
     generating_prompts = [prefix + prompt for prompt in prompts]
-    #model_path="/pde_ai/models/llm/Llama/Meta-Llama-3-8B-Instruct/"
+    #model_path="/external/ai/models/llm/Llama/Meta-Llama-3-8B-Instruct/"
     # Create a sampling params object.
     sampling_params = SamplingParams(temperature=0.0)
 

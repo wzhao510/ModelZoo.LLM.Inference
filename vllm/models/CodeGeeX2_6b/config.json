@@ -1,6 +1,6 @@
 {
     "model_type": "chatGLM",
-    "model_path": "/AI-DATA/Models/CodeGeeX/codegeex2-6b/",
+    "model_path": "/external/ai/models/llm/CodeGeeX/codegeex2-6b/",
     "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 1,
