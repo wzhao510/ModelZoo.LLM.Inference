@@ -1,0 +1,12 @@
+{
+    "model_type": "ERNIE",
+    "model_path": "/pde_ai/models/llm/ERINE/ERNIE-4.5-300B-A47B-PT/",
+    "async_engine": true,
+    "model_param": {
+        "dtype": "bfloat16",
+        "tensor_parallel_size": 8,
+        "pipeline_parallel_size": 2,
+        "gpu_memory_utilization": 0.95,
+        "batch_size": 1
+    }
+}
