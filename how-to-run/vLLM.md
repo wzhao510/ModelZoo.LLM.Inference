@@ -134,6 +134,13 @@ python code/src/offline_inference.py --model /external/ai/models/llm/quantize_mo
  python code/run_multimodal.py --model ./models/InternVL-chat-v1.5/
 ```
 
+多模态模型使用benchmark_serving进行在线性能测试：
+起模型服务vllm serve ...
+    cd ModelZoo.LLM.Inference/vllm/code/src目录下执行以下命令
+    ```shell
+    python benchmark_serving.py --model {model_name} --dataset-name custom_multiModal --dataset-path {picture_dir}  --trust-remote-code --ignore-eos --backend openai-chat --endpoint /v1/chat/completions  --request-rate 2 --max-concurrency 32 --num-prompts 128 --custom-input-len 512 --custom-output-len 256 --resize {x,y}
+    ```
+    其中picture_dir为存放图片的目录，resize为设置图片尺寸默认为1920,1080
 
 
 ## 本地推理demo
