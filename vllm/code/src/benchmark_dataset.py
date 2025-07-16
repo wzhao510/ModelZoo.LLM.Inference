@@ -14,6 +14,7 @@ generation. Supported dataset types include:
 
 import base64
 import io
+import os
 import json
 import logging
 import random
@@ -460,6 +461,114 @@ class ShareGPTDataset(BenchmarkDataset):
         self.maybe_oversample_requests(samples, num_requests)
         return samples
 
+
+class CustomMultiModalDataset(BenchmarkDataset):
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.load_data()
+
+    def load_data(self) -> None:
+        if self.dataset_path is None:
+            raise ValueError("dataset_path must be provided for loading data.")
+
+        # self.data will be a list of dictionaries
+        # e.g., [{"prompt": "What is the capital of India?"}, ...]
+        # This will be the standardized format which load_data()
+        # has to convert into depending on the filetype of dataset_path.
+        # sample() will assume this standardized format of self.data
+        self.data = []
+
+        # Load the image file
+
+        self.all_files = os.listdir(self.dataset_path)
+
+    
+    def sample(
+            self,
+            resize:str,
+            tokenizer: PreTrainedTokenizerBase,
+            num_requests: int,
+            lora_path: Optional[str] = None,
+            max_loras: Optional[int] = None,
+            input_len: Optional[int] = None,
+            output_len: Optional[int] = None,
+            enable_multimodal_chat: bool = False,
+            skip_chat_template: bool = False,
+            **kwargs,
+        ) -> list:
+        sampled_requests = []
+        a,b = (map(int, resize.split(',')))
+        while len(self.data)<num_requests:
+            for image_file in self.all_files:
+                if image_file.split('.')[-1].lower() not in ['jpg', 'png', 'jpeg']:
+                    continue
+                image_path = os.path.join(self.dataset_path, image_file)
+                image = Image.open(image_path).convert("RGB").resize((a,b))
+                self.data.append({'image': image })
+        
+        random.seed(self.random_seed)
+        random.shuffle(self.data)
+
+        vocab_size = tokenizer.vocab_size
+        num_special_tokens = tokenizer.num_special_tokens_to_add()
+        real_input_len = input_len - num_special_tokens
+        
+        range_ratio = 0
+        # New sampling logic: [X * (1 - b), X * (1 + b)]
+        input_low = int(real_input_len * (1 - range_ratio))
+        input_high = int(real_input_len * (1 + range_ratio))
+        output_low = int(output_len * (1 - range_ratio))
+        output_high = int(output_len * (1 + range_ratio))
+
+
+        input_lens = np.random.randint(input_low, input_high + 1, size=num_requests)
+        output_lens = np.random.randint(output_low, output_high + 1, size=num_requests)
+        offsets = np.random.randint(0, vocab_size, size=num_requests)
+        
+        for data,i in zip(self.data,range(num_requests)):
+            if len(sampled_requests) == num_requests:
+                break
+
+            token_sequence = (
+                (offsets[i] + i + np.arange(input_lens[i])) % vocab_size
+            ).tolist()
+
+            prompt = tokenizer.decode(token_sequence)
+            total_input_len = int(input_lens[i])
+            re_encoded_sequence = tokenizer.encode(prompt, add_special_tokens=False)[
+                :total_input_len
+            ]
+            prompt = tokenizer.decode(re_encoded_sequence)
+
+            #prompt = 'Explain the contents of the picture with more than 500 words and do not Answer the question using a single word or phrase.'
+
+            prompt_token_ids = tokenizer(prompt).input_ids
+            #if fixed_output_len is None:
+                # Default max output len is set to 128
+                #print("--hf-output-len is not provided. Using default value 128.")
+
+            # fixed_output_len = 256
+
+            prompt_len = len(prompt_token_ids)
+            # output_len = fixed_output_len
+
+            image: Image = data["image"]
+            image_data = io.BytesIO()
+            image.save(image_data, format='JPEG')
+            image_base64 = base64.b64encode(image_data.getvalue()).decode("utf-8")
+            mm_content = {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{image_base64}"
+                },
+            }
+
+            sampled_requests.append(SampleRequest(prompt=prompt,
+                          prompt_len=prompt_len,
+                          expected_output_len=output_len,
+                          multi_modal_data=mm_content))
+            
+        return sampled_requests
 
 # -----------------------------------------------------------------------------
 # Custom Dataset Implementation

@@ -73,6 +73,7 @@ from benchmark_dataset import (
     ShareGPTDataset,
     SonnetDataset,
     VisionArenaDataset,
+    CustomMultiModalDataset,
 )
 from benchmark_utils import convert_to_pytorch_benchmark_format, write_to_json
 
@@ -427,7 +428,7 @@ async def benchmark(
             )
         )
     outputs: list[RequestFuncOutput] = await asyncio.gather(*tasks)
-
+    #print(f"-------{outputs[1].generated_text}")
     if profile:
         print("Stopping profiler...")
         profile_input = RequestFuncInput(
@@ -658,6 +659,17 @@ def main(args: argparse.Namespace):
         input_requests = dataset.sample(
             num_requests=args.num_prompts,
             tokenizer=tokenizer,
+            output_len=args.custom_output_len,
+            skip_chat_template=args.custom_skip_chat_template,
+        )
+    
+    elif args.dataset_name == "custom_multiModal":
+        dataset = CustomMultiModalDataset(dataset_path=args.dataset_path)
+        input_requests = dataset.sample(
+            resize= args.resize,
+            num_requests=args.num_prompts,
+            tokenizer=tokenizer,
+            input_len=args.custom_input_len,
             output_len=args.custom_output_len,
             skip_chat_template=args.custom_skip_chat_template,
         )
@@ -928,7 +940,7 @@ if __name__ == "__main__":
         "--dataset-name",
         type=str,
         default="sharegpt",
-        choices=["sharegpt", "burstgpt", "sonnet", "random", "hf", "custom"],
+        choices=["sharegpt", "burstgpt", "sonnet", "random", "hf", "custom","custom_multiModal"],
         help="Name of the dataset to benchmark on.",
     )
     parser.add_argument(
@@ -1100,6 +1112,12 @@ if __name__ == "__main__":
     # group for dataset specific arguments
     custom_group = parser.add_argument_group("custom dataset options")
     custom_group.add_argument(
+        "--custom-input-len",
+        type=int,
+        default=512,
+        help="Number of input tokens per request, used only for custom dataset.",
+    )
+    custom_group.add_argument(
         "--custom-output-len",
         type=int,
         default=256,
@@ -1229,6 +1247,12 @@ if __name__ == "__main__":
         "always use the slow tokenizer. \n* "
         '"mistral" will always use the `mistral_common` tokenizer. \n*'
         '"custom" will use --tokenizer to select the preregistered tokenizer.',
+    )
+    parser.add_argument(
+        "--resize",
+        type=str,
+        default="1920,1080",
+        help='image = Image.open(image_path).convert("RGB").resize((1920, 1080))',
     )
 
     parser.add_argument(
