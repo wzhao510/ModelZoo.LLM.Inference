@@ -114,8 +114,6 @@ async def get_request(
     input_requests: list[SampleRequest],
     request_rate: float,
     burstiness: float = 1.0,
-    semp_empty_slot: asyncio.Semaphore = None,
-    semp_request: asyncio.Semaphore = None
 ) -> AsyncGenerator[SampleRequest, None]:
     """
     Asynchronously generates requests at a specified rate
@@ -143,29 +141,18 @@ async def get_request(
     )
     theta = 1.0 / (request_rate * burstiness)
 
-    is_First = True
- 
     for request in input_requests:
-        # producer        
-        if semp_empty_slot is not None and semp_empty_slot._value == 0:
-            is_First = True
-        if semp_empty_slot:
-            await semp_empty_slot.acquire()
-        if not is_First:
-            if request_rate == float("inf"):
-                # If the request rate is infinity, then we don't need to wait.
-                # continue
-
-                # Sample the request interval from the gamma distribution.
-                # If burstiness is 1, it follows exponential distribution.
-                interval = np.random.gamma(shape=burstiness, scale=theta)
-                # The next request will be sent after the interval.
-                await asyncio.sleep(interval)
-        else:
-            is_First = False
-        if semp_request:
-            semp_request.release()
         yield request
+
+        if request_rate == float("inf"):
+            # If the request rate is infinity, then we don't need to wait.
+            continue
+
+        # Sample the request interval from the gamma distribution.
+        # If burstiness is 1, it follows exponential distribution.
+        interval = np.random.gamma(shape=burstiness, scale=theta)
+        # The next request will be sent after the interval.
+        await asyncio.sleep(interval)
 
 
 def calculate_metrics(
@@ -382,23 +369,17 @@ async def benchmark(
     # and it will simplify the code in limited_request_func.
     #    semaphore = (asyncio.Semaphore(max_concurrency)
     #                 if max_concurrency else contextlib.nullcontext())
-    semp_empty_slot = asyncio.Semaphore(max_concurrency) if max_concurrency else None
-    semp_request = (asyncio.Semaphore(0)
-                      if semp_empty_slot else None)
+    semaphore = asyncio.Semaphore(max_concurrency) if max_concurrency else None
+
     async def limited_request_func(request_func_input, pbar):
-        if semp_empty_slot is None:
-            return await request_func(request_func_input=request_func_input,
-                                      pbar=pbar)
-        # consumer
-        await semp_request.acquire()
-        request_out = await request_func(request_func_input=request_func_input,
-                                         pbar=pbar)
-        semp_empty_slot.release()
-        return request_out
+        if semaphore is None:
+            return await request_func(request_func_input=request_func_input, pbar=pbar)
+        async with semaphore:
+            return await request_func(request_func_input=request_func_input, pbar=pbar)
 
     benchmark_start_time = time.perf_counter()
     tasks: list[asyncio.Task] = []
-    async for request in get_request(input_requests, request_rate, burstiness, semp_empty_slot,semp_request):
+    async for request in get_request(input_requests, request_rate, burstiness):
         prompt, prompt_len, output_len, mm_content = (
             request.prompt,
             request.prompt_len,
