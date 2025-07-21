@@ -1,4 +1,3 @@
-
 from typing import Optional, List, Dict, Any
 import zmq
 import time
@@ -8,72 +7,106 @@ import dataclasses
 
 from utils.utils import *
 
+
 @dataclasses.dataclass
-class LocalCommandType(Enum):
-    master_server = "server"
-    client = "clint"
+class NodeInfo:
+    ip: Optional[str] = ''
+    interface: Optional[str] = ''
+    ib_hcas: Optional[str] = ''
+    socket: Optional[None] = None
+    is_local: Optional[bool] = False
+
 
 class Connection:
-    def __init__(self, machine_info: Dict[str, Any], port:int) -> None:
-        self.machine_socket = []
-        self.machine_info = machine_info
-        self.zmq_port = port
-        self.master_opcontent = OperationContent()
-        self.master_cmd_map = {}
-        self.slave_cmd_map = {}
+    def __init__(self, nodes_config: List[Dict], slave_port: int) -> None:
+        self.nodes_config = nodes_config
+        self.nodes_info = []
+        self.slave_port = slave_port
+        self.sock_timeout = 5000 # 5s
 
     def connect(self) -> None:
-        context = zmq.Context()
-        for server in self.machine_info:
-            print(f"IP: {server['ip']}")
-            socket = context.socket(zmq.REQ)
-            socket.connect(f"tcp://{server['ip']}:{self.zmq_port}")
-            self.machine_socket.append(socket)
+        local_ip = get_ip()
+        if local_ip == '0.0.0.0':
+            print("## unable to get local ip !")
+            exit(1)
 
+        # todo check local gpu in used
+
+        context = zmq.Context()
+        for node in self.nodes_config:
+            node_info = NodeInfo(
+                ip=node['ip'], interface=node['ifname'], ib_hcas=node['ib_hcas']
+            )
+            if node_info.ip == local_ip:
+                node_info.is_local = True
+                self.nodes_info.append(node_info)
+                continue
+            node_info.is_local = False
+
+            print(f"IP: {node_info.ip}")
+            socket = context.socket(zmq.REQ)
+            socket.RCVTIMEO = self.sock_timeout
+            socket.connect(f"tcp://{node_info.ip}:{self.slave_port}")
+
+            # check connect timeout
+            poller = zmq.Poller()
+            poller.register(socket, zmq.POLLIN)
+            op_content = OperationContent(
+                id=get_next_op_id(),
+                type=OperationType.GET,
+            )
+            socket.send_string(f'{op_content.to_json()}')
+            try:
+                output_op = OperationContent.from_json(socket.recv_string())
+                print(f"connect to {node_info.ip} successfully!")
+
+                # todo check slave gpu in used
+                node_info.socket = socket
+                self.nodes_info.append(node_info)
+            except zmq.Again:
+                print(f"## connect to {node_info.ip} failed, exit!")
+                exit(1)
+        print(self.nodes_info)
+            
     def clean(self) -> None:
         self.exit_slave()
-        for sock in self.machine_socket:
-            sock.close()
-        # ...
-        pass
-
+        for node in self.nodes_info:
+            if node.socket is not None:
+                node.socket.close()
+        self.nodes_info.clear()
     
-    def run_local_cmd(self, command:str,cmd_type:LocalCommandType) -> None:
-        if cmd_type == LocalCommandType.master_server:
-            self.master_opcontent = OperationContent(store_output=True, print_output=True, ready_flag=["The server is fired up and ready to roll!"],
-                                                is_master=True)
-            thread = threading.Thread(target=run_sys_cmd, args=(command, self.master_opcontent,))
-            thread.start()
-            time.sleep(2)
-            self.master_cmd_map[command] = self.master_opcontent.handle
-
-    def stop_local_cmd(self, command:str,cmd_type:LocalCommandType) -> None:
-        if cmd_type == LocalCommandType.master_server:
-            if command in self.master_cmd_map.keys():
-                print(f'stop master launch server kill {self.master_cmd_map[command]}')
-                kill_process_all(self.master_cmd_map[command])
+    def run_cmd(self, node: NodeInfo, op_content: OperationContent) -> None:
+        if node.is_local:
+            if op_content.is_async:
+                op_content.thread = threading.Thread(target=run_sys_cmd, args=(op_content,))
+                op_content.thread.start()
+                time.sleep(2)
             else:
-                print(f'{command} proc not exist!')
+                run_sys_cmd(op_content)
+        else:
+            self._run_slave_cmd(node, op_content)
 
-    def run_slave_cmd(self,command:str) -> None:
-        for sock in self.machine_socket:
-            content = OperationContent(type=OperationType.RUN, cmd=command)
-            self.sock_send(sock,content.to_json())
-            self.slave_cmd_map[sock] = content.cmd
+    def stop_cmd(self, node: NodeInfo, op_content: OperationContent) -> None:
+        if node.is_local:
+            if op_content.handle is not None:
+                print(f'stop master launch server kill {op_content.cmd}')
+                kill_process_all(op_content.handle)
+            else:
+                print(f'{op_content.cmd} proc not exist!')
+        else:
+            self._stop_slave_cmd(node, op_content)
 
-    def stop_slave_cmd(self) -> None:
-        for sock, command in self.slave_cmd_map.items():
-            content = OperationContent(type=OperationType.STOP, cmd=command)
-            self.sock_send(sock,content.to_json())
+    def _run_slave_cmd(self, node: NodeInfo, op_content: OperationContent) -> None:
+        self._send_slave_msg(node.socket, op_content)
 
+    def _stop_slave_cmd(self, node: NodeInfo, op_content: OperationContent) -> None:
+        op_content.type = OperationType.STOP
+        self._send_slave_msg(node.socket, op_content)
 
-    def sock_send(self,sock:zmq.sugar.socket.Socket,content:OperationContent) -> None:
-        sock.send_string(content)
+    def _send_slave_msg(self, sock: zmq.sugar.socket.Socket, op_content: OperationContent) -> None:
+        sock.send_string(op_content.to_json())
         message = sock.recv_string()
         print(f'## Recv {message}')
 
-    def exit_slave(self):
+    def _exit_slave(self):
         pass
-
-
-

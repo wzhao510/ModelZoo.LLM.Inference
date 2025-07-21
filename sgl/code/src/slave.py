@@ -7,12 +7,11 @@ import threading
 from utils.utils import *
 
 
-def run_slave_launch_server(cmd:str) -> OperationContent:
-    run_content = OperationContent(store_output=True)
-    thread = threading.Thread(target=run_sys_cmd, args=(cmd, run_content,))
+def run_slave_launch_server(op_content: OperationContent) -> OperationContent:
+    thread = threading.Thread(target=run_sys_cmd, args=(op_content,))
     thread.start()
     time.sleep(2)
-    return run_content
+    return op_content
 
 def set_envs(envs: Optional[List[str]]) -> Dict[str,str]:
     pass
@@ -43,11 +42,9 @@ while True:
     message = zmq_socket.recv_string()
     op_content = OperationContent.from_json(message)
     if op_content.type == OperationType.GET:
-        pass
+        zmq_socket.send_string(f'{op_content.to_json()}')
     elif op_content.type == OperationType.RUN:
-        if op_content.envs:
-            set_envs(op_content.envs)
-        run_content = run_slave_launch_server(op_content.cmd)
+        run_content = run_slave_launch_server(op_content)
         g_opcontent_map[op_content.cmd] = run_content.handle
         zmq_socket.send_string(f"run [{op_content.cmd}] success")
 

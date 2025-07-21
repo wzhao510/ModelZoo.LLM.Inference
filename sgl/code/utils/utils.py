@@ -11,6 +11,7 @@ import subprocess
 import psutil
 import signal
 import logging
+import re
 
 
 _model_dir = Path(__file__).parents[2].resolve(strict=True)
@@ -56,6 +57,15 @@ def create_file(filename):
             pass
     print(f"File {filename} has been created or already exists.")
 
+
+def read_json(json_file):
+    with open(json_file, 'r') as f:
+        config_str = f.read()
+    json_str = re.sub('//.*', '', config_str)
+    json_str = re.sub('/\*.*?\*/', '', json_str, flags=re.S)
+    config = json.loads(json_str)
+    return config
+
 def kill_process_all(process):
     """ kill all process  """
     try:
@@ -93,19 +103,25 @@ def get_interface_by_ip(ip) -> str:
     return ''
 
 
-@dataclasses.dataclass
 class TaskType(Enum):
-    BENCH_NORMAL = "bench_normal"
-    BENCH_RAMPUP = "bench_rampup"
-    BENCH_SEARCH = "bench_search"
-    ACC_CEVAL = "acc_ceval"
-    ACC_MMLU = "acc_mmlu"
+    benchmark = "benchmark"
+    acc = "acc"
+    rampup = "rampup"
+    perf = "perf"
+    search = "search"
 
 
 @dataclasses.dataclass
 class TaskLaunchMode(Enum):
     online = "online"
     offline = "offline"
+
+
+global_operation_id = 0
+def get_next_op_id() -> int:
+    global global_operation_id
+    global_operation_id += 1
+    return global_operation_id
 
 
 class OperationType(IntEnum):
@@ -118,16 +134,18 @@ class OperationType(IntEnum):
 class OperationContent:
     id: int = 0
     type: int = OperationType.GET
-    envs: Optional[List[str]] = None
     cmd: Optional[str] = ''
+    envs: Optional[Dict[str, Any]] = None
+    is_async: Optional[bool] = False
     handle: Optional[None] = None
-    output: Optional[str] = ''
+    output: Optional[List[str]] = None
     store_output: Optional[bool] = False
     print_output: Optional[bool] = True
     ready_flag: Optional[List[str]] = None
     is_ready: Optional[bool] = False
-    statu: Optional[int] = 0
+    status: Optional[int] = 0
     is_master: Optional[bool] = False
+    thread: Optional[None] = None
     # ....
 
     def to_dict(self) -> Dict[str, Any]:
@@ -145,24 +163,32 @@ class OperationContent:
         return cls.from_dict(json.loads(json_str))
     
 
-def run_sys_cmd(cmd: str, proc: OperationContent):
+def run_sys_cmd(op_content: OperationContent):
     """Run |cmd| and return its output."""
-    proc.handle = subprocess.Popen(cmd, shell=True, bufsize=1, text=True, encoding='utf-8',
-                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    custom_env = os.environ.copy()
+    if op_content.envs is not None:
+        for env, vaule in op_content.envs.items():
+            custom_env[env] = vaule
+            print(f'ENV: {env}={vaule}')
+    print(f'## Run Cmd: {op_content.cmd}')
+    op_content.handle = subprocess.Popen(op_content.cmd, shell=True, bufsize=1, text=True, encoding='utf-8',
+                                         env=custom_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     while True:
-        line = proc.handle.stdout.readline()
-        if not line and proc.handle.poll() is not None:
+        line = op_content.handle.stdout.readline()
+        if not line and op_content.handle.poll() is not None:
             break
 
         # store output to memory or not
-        if proc.store_output:
-            proc.output += line
-        if proc.print_output:
+        if op_content.store_output:
+            if op_content.output:
+                op_content.output.append(line.strip())
+            else:
+                op_content.output = [line.strip()]
             print(line.strip())
 
         # check process ready
-        if not proc.is_ready and proc.ready_flag:
-            for flag in proc.ready_flag:
+        if not op_content.is_ready and op_content.ready_flag:
+            for flag in op_content.ready_flag:
                 if flag in line:
-                    proc.is_ready = True
+                    op_content.is_ready = True
                     break

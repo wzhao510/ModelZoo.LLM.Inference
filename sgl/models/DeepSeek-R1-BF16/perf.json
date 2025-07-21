@@ -1,0 +1,61 @@
+{
+    "machine_info": [
+        {
+            "ip": "192.168.2.218",
+            "ifname": "bond0",
+            "mccl_ib_hca": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5"
+        },
+        {
+            "ip": "192.168.2.218",
+            "ifname": "bond0",
+            "mccl_ib_hca": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5"
+        },
+        {
+            "ip": "192.168.2.218",
+            "ifname": "bond0",
+            "mccl_ib_hca": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5"
+        },
+        {
+            "ip": "192.168.2.218",
+            "ifname": "bond0",
+            "mccl_ib_hca": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5"
+        }
+    ],
+    "tasks": [
+        {
+            "task_name": "0716_bf16_daily",
+            "launch_mode": "offline",
+            "world_size": "32",
+            "server_port": "5000",
+            "environment": {
+                "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP": "1",
+                "TRITON_ENABLE_MACA_CHAIN_DOT_OPT": "1",
+                "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM": "1",
+                "MCCL_IB_HCA": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5"
+            },
+            "server_base": {
+                "command_base": "python3 bench_offline_throughput.py --trust-remote-code",
+                "param": [
+                    "--model-path /mnt/data/DeepSeek-R1-BF16/",
+                    "--cuda-graph-max-bs 80",
+                    "--chunked-prefill-size 2048",
+                    "--attention-backend flashinfer --enable-flashinfer-mla",
+                    "--tp 32 --dp 4 --enable-dp-attention",
+                    " --mem-fraction-static 0.86"
+                ]
+            },
+            "benchmark": {
+                "input_output_len": [
+                    "3072/1024",
+                    "128/128"
+                ],
+                "num_prompt": [
+                    "1",
+                    "16",
+                    "32",
+                    "64"
+                ]
+            }
+        }
+    ]
+}

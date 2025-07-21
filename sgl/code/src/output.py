@@ -38,18 +38,19 @@ class OutputManager:
         result_file = self.get_client_result_file(task)
         create_file(result_file)
 
+
     def get_client_result_file(self,task) -> str:
         """ get online/offline bench/acc result file path"""
         if task.launch_mode == TaskLaunchMode.online:
-            if task.task_type == TaskType.BENCH_NORMAL:
+            if task.task_type == TaskType.benchmark:
                 pass
-            elif task.task_type == TaskType.BENCH_RAMPUP:
+            elif task.task_type == TaskType.acc:
                 pass
-            elif task.task_type == TaskType.BENCH_SEARCH:
+            elif task.task_type == TaskType.rampup:
                 pass
-            elif task.task_type == TaskType.ACC_CEVAL:
+            elif task.task_type == TaskType.perf:
                 pass
-            elif task.task_type == TaskType.ACC_MMLU:
+            elif task.task_type == TaskType.search:
                 pass
         return ''
 
