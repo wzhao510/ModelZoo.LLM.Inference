@@ -51,7 +51,7 @@ class VllmBenchmark:
             use_v2_block_manager=args.use_v2_block_manager,
             disable_async_output_proc=args.disable_async_output_proc,
             hf_overrides=args.hf_overrides,
-            show_hidden_metrics_for_version=True,
+            show_hidden_metrics_for_version="1.0",
         )
 
     def make_input(self, in_len, batch, hint=None):
