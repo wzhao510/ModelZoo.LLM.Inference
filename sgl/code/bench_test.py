@@ -3,7 +3,7 @@ import re
 import argparse
 import dataclasses
 from typing import Optional
-from utils import get_params
+from utils.utils import get_params
 from sglang.srt.server_args import ServerArgs
 
 
