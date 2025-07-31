@@ -1,70 +1,57 @@
 {
-  "machine_info": [
-    {
-        "ip": "192.168.2.218",
-        "ifname":"",
-        "mccl_ib_hca": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5",
-    },
-    {
-        "ip": "192.168.2.218",
-        "ifname":"",
-        "mccl_ib_hca": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5",
-    },
-    {
-        "ip": "192.168.2.218",
-        "ifname":"",
-        "mccl_ib_hca": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5",
-    },
-    {
-        "ip": "192.168.2.218",
-        "ifname":"",
-        "mccl_ib_hca": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5",
-    }
-  ],
-  "tasks": [
-              {
-                "task_name": "sglang_bench_rampup__",
-                "launch_mode":"online",
-                "world_size": "32",
-                "server_port": "5000",
-                "environment_variables": {
-                    "GLOO_SOCKET_IFNAME": " ",
-                    "MACA_SMALL_PAGESIZE_ENABLE": "1",
-                    "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP": "1",
-                    "TRITON_ENABLE_MACA_CHAIN_DOT_OPT": "1",
-                    "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM":"1",
-                    "MCCL_IB_HCA":"mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5"
-                },
-                "launch_server": {
-                    "command_base": "python3 -m sglang.launch_server --model-path {} --dist-init-addr {} --nnodes 1 --trust-remote-code",
-                    "cuda_graph": [" --cuda-graph-max-bs 64"],
-                    "torch_compile": [" "],
-                    "dtype": [" --dtype float16",
-                              " --dtype bfloat16"],
-                    "cache": [" --enable-hierarchical-cache",
-                              " --disable-radix-cache --disable-chunked-prefix-cache"],
-                    "quantization": [" --quantization moe_wna16"],
-                    "chunked_prefill_size": [" --chunked-prefill-size 8192"],
-                    "attention_backend": [" --attention-backend flashinfer --enable-flashinfer-mla",
-                                          " --enable-flashmla",
-                                          " --attention-backend triton"],
-                    "enable_parallel": [" --tp 32 ",
-                                        " --dp 4 --enable-dp-attention",
-                                        " --tp 32 --dp 8 --enbale-dp-attention --enable-ep-moe"],
-                    "mtp": [" --speculative-algorithm NEXTN --speculative-draft-model-path {} --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3"],
-                    "mem_fraction_static": [" --mem-fraction-static 0.86"],
-                    "embedding_tp_size": [" --embedding-tp-size 16"]
-                },
-                "benchmark": {
-                    "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path {}",
-                    "max_concurrent_requests":["1","2","4","8","16","32","64","128","256"],
-                    "rampup_period": ["5,5,5,10,10,20,20,30,30"],
-                    "requests_configs": [
-                      " --least_requests_num 16 --num_warmup_requests_ratio 4 --num_benchmark_requests_ratio 16 "
-                    ],
-                    "input_output_len": ["3072/1024", "128/128"]
-                }
+    "machine_info": [
+        {
+            "ip": "192.168.11.25",
+            "ifname":"inbond1",
+            "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5"
+        },
+        {
+            "ip": "192.168.11.22",
+            "ifname":"inbond1",
+            "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5"
+        }
+    ],
+    "tasks": [
+        {
+            "task_name": "DS-R1-W8A8-0724",
+            "launch_mode":"online",
+            "world_size": "16",
+            "server_port": "5005",
+            "environment": {
+                "MACA_SMALL_PAGESIZE_ENABLE": "1",
+                "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP": "1",
+                "TRITON_ENABLE_MACA_CHAIN_DOT_OPT": "1",
+                "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM": "1",
+                "CUDA_GRAPH_DP_USE_SUM_BS": "False",
+                "FUSED_RMSNORM_QUANT": "True"
+            },
+            "launch_server": {
+                "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
+                "model_path": ["--model-path /oschina0/kychina/models/DeepSeek-R1-BF16_W8A8/vllm_quant_model"],
+                "cuda_graph": [""],
+                "torch_compile": [""],
+                "dtype": [""],
+                "cache": ["--disable-radix-cache --disable-chunked-prefix-cache"],
+                "quantization": [""],
+                "chunked_prefill_size": [""],
+                "attention_backend": ["--attention-backend flashinfer"],
+                "enable_parallel": ["--tp 16 --dp 4 --enable-dp-attention"],
+                "mem_fraction_static": [""],
+                "embedding_tp_size": [""],
+                "mtp": [
+                    "--speculative-algo NEXTN --speculative-draft /oschina0/kychina/models/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"
+                ]
+            },
+            "benchmark": {
+                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /oschina0/kychina/tutorial/dataset/ShareGPT_V3_unfiltered_cleaned_split.json ",
+                "max_concurrent_requests":["1","4","8","16","32","64","80","100"],
+                "rampup_period": ["5,5,10,10,20,20,30,30"],
+                "requests_configs": [
+                    " --least_requests_num 16 --num_warmup_requests_ratio 4 --num_benchmark_requests_ratio 16 "
+                ],
+                "input_output_len": ["1024/2048"]
             }
-        ]
-   
+        }
+    ]
+
 }

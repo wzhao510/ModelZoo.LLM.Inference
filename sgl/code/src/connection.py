@@ -69,12 +69,13 @@ class Connection:
         print(self.nodes_info)
             
     def clean(self) -> None:
-        self.exit_slave()
+        op_content = OperationContent(type=OperationType.EXIT)
         for node in self.nodes_info:
             if node.socket is not None:
+                self._send_slave_msg(node.socket, op_content)
                 node.socket.close()
         self.nodes_info.clear()
-    
+
     def run_cmd(self, node: NodeInfo, op_content: OperationContent) -> None:
         if node.is_local:
             if op_content.is_async:
@@ -96,6 +97,33 @@ class Connection:
         else:
             self._stop_slave_cmd(node, op_content)
 
+    def init_slave_output_file(self, node: NodeInfo, info:dict, cmd:str) -> None:
+        """
+        为了在slave收到GET信息时可以正确创建log文件，需要在这里传递当前任务的info和cmd, by ydm.
+        """
+        info[SLAVE_GET_IOF] = True
+        op_content = OperationContent(
+            id=get_next_op_id(),
+            type=OperationType.GET,
+            info=info,
+            cmd=cmd
+        )
+        node.socket.send_string(op_content.to_json())
+        output_op = OperationContent.from_json(node.socket.recv_string())
+        slave_output_file = output_op.info[SLAVE_GET_IOF]
+        logger.info(f'## Recv {node.ip} output_file: {slave_output_file}')
+
+    def check_slave_gpu_in_use(self, node: NodeInfo) -> None:
+        op_content = OperationContent(
+            id=get_next_op_id(),
+            type=OperationType.GET,
+            info={SLAVE_GET_GIU:True}
+        )
+        node.socket.send_string(op_content.to_json())
+        output_op = OperationContent.from_json(node.socket.recv_string())
+        slave_gpu_in_use = output_op.info[SLAVE_GET_GIU]
+        logger.info(f'## Recv {node.ip} gpu: {slave_gpu_in_use}')
+
     def _run_slave_cmd(self, node: NodeInfo, op_content: OperationContent) -> None:
         self._send_slave_msg(node.socket, op_content)
 
@@ -108,5 +136,3 @@ class Connection:
         message = sock.recv_string()
         print(f'## Recv {message}')
 
-    def _exit_slave(self):
-        pass

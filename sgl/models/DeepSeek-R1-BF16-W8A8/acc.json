@@ -1,0 +1,83 @@
+{
+    "machine_info": [
+        {
+            "ip": "192.168.11.25",
+            "ifname":"inbond1",
+            "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5"
+        },
+        {
+            "ip": "192.168.11.22",
+            "ifname":"inbond1",
+            "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5"
+        }
+    ],
+    "tasks": [
+        {
+            "task_name": "DS-R1-W8A8-mmlu-0725",
+            "acc_type": "mmlu",
+            "launch_mode": "online",
+            "world_size": "16",
+            "server_port": "5005",
+            "environment": {
+                "MACA_SMALL_PAGESIZE_ENABLE": "1",
+                "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP": "1",
+                "TRITON_ENABLE_MACA_CHAIN_DOT_OPT": "1",
+                "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM": "1",
+                "CUDA_GRAPH_DP_USE_SUM_BS": "False",
+                "FUSED_RMSNORM_QUANT": "True"
+            },
+            "launch_server": {
+                "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
+                "model_path": ["--model-path /oschina0/kychina/models/DeepSeek-R1-BF16_W8A8/vllm_quant_model"],
+                "cache": ["--disable-radix-cache"],
+                "attention_backend": ["--attention-backend flashinfer"],
+                "enable_parallel": ["--tp 16 --dp 4 --enable-dp-attention"],
+                "mtp": [
+                    "--speculative-algo NEXTN --speculative-draft /oschina0/kychina/models/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8",
+                    ""
+                ],
+                "cuda_graph":[
+                    "--cuda-graph-max-bs 64 --chunked-prefill-size 2048",
+                    ""
+                ]
+            },
+            "benchmark": {
+                "command_base": "python3 bench_sglang.py --data_dir /oschina0/kychina/data/acc/mmlu/data --nsub 60"
+            }
+        },
+        {
+            "task_name": "DS-R1-W8A8-ceval-0725",
+            "acc_type": "ceval",
+            "launch_mode": "online",
+            "world_size": "16",
+            "server_port": "5005",
+            "environment": {
+                "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM":"1",
+                "CUDA_GRAPH_DP_USE_SUM_BS":"False",
+                "MACA_SMALL_PAGESIZE_ENABLE": "1",
+                "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP":"1",
+                "TRITON_ENABLE_MACA_CHAIN_DOT_OPT": "1",
+                "FUSED_RMSNORM_QUANT":"True"
+            },
+            "launch_server": {
+                "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
+                "model_path": ["--model-path /oschina0/kychina/models/DeepSeek-R1-BF16_W8A8/vllm_quant_model"],
+                "cache": ["--disable-radix-cache"],
+                "attention_backend": ["--attention-backend flashinfer"],
+                "enable_parallel": ["--tp 16 --dp 4 --enable-dp-attention"],
+                "mtp": [
+                    "--speculative-algo NEXTN --speculative-draft /oschina0/kychina/models/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8",
+                    ""
+                ],
+                "cuda_graph":[
+                    "--cuda-graph-max-bs 64 --chunked-prefill-size 2048",
+                    ""
+                ]
+            },
+            "benchmark": {
+                "command_base": "python3 run_ceval_client.py --model /oschina0/kychina/models/DeepSeek-R1-BF16_W8A8/vllm_quant_model  --test_jsonl /oschina0/kychina/data/acc/ceval/ceval_val_cmcc.jsonl --batch_size 64",
+                "random": ["--random_seed 0 --random_num 50"]
+            }
+        }
+    ]
+}
