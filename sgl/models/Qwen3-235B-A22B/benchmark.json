@@ -1,0 +1,47 @@
+{
+    "machine_info": [
+        {
+            "ip": "192.168.2.218",
+            "ifname":"bond0",
+            "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5"
+        },
+        {
+            "ip": "192.168.2.136",
+            "ifname":"bond0",
+            "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5"
+        }
+    ],
+    "tasks": [
+        {
+            "task_name": "Qwen3-235B-DP2TP8",
+            "launch_mode": "online",
+            "world_size": "16",
+            "server_port": "9000",
+            "environment": {
+                "MACA_SMALL_PAGESIZE_ENABLE": "1",
+                "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP": "1",
+                "TRITON_ENABLE_MACA_CHAIN_DOT_OPT": "1",
+                "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM": "1"
+            },
+            "launch_server": {
+                "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
+                "model_path": ["--model-path /mnt/shared_data/Qwen3-235B-A22B"],
+                "cuda_graph": ["--cuda-graph-max-bs 256"],
+                "torch_compile": [""],
+                "dtype": [""],
+                "cache": ["--disable-radix-cache --disable-chunked-prefix-cache"],
+                "quantization": [""],
+                "chunked_prefill_size": [""],
+                "attention_backend": ["--attention-backend flashinfer"],
+                "enable_parallel": ["--tp 16 --dp 2 --enable-dp-attention "],
+                "mem_fraction_static": ["--mem-fraction-static 0.86"],
+                "embedding_tp_size": [""]
+            },
+            "benchmark": {
+                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /mnt/dataset/ShareGPT_V3_unfiltered_cleaned_split.json ",
+                "input_output_len": ["3072/1024"],
+                "num_prompt": ["1", "16", "32", "64", "128", "256"]
+            }
+        }
+    ]
+}

@@ -8,6 +8,7 @@ import random
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import json
+from PIL import Image
 
 if TYPE_CHECKING:
     from src.task import TaskOnline, TaskOffline
@@ -518,44 +519,54 @@ class OutputManager:
         self.args = args
         self.task = None
         self.log_file = None
-        self.total_real_progress_file = None
         self.real_progress_file = None
-        self.real_progress_data = {"to_run": "0,0", "tasks": []}
+        self.total_real_progress_file = None
+        self.total_real_progress_data = {"to_run": "0,0", "docker_tag": "", "tasks": []}
+        self.real_progress_data = {"to_run": "0,0", "docker_tag": "", "tasks": []}
         self.now = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.task_full_name = ''
         self.task_type = ''
-        self.inited = False #全局只要一个
         self.node_id = 0 # 默认master
         self.all_task_nums = 1
-        self.cur_task_id = -1
+        self.fail_reason = 'fail'
 
         self.server_args = {}
+
+    def init_total_real_preogress_data(self):
+        self.total_real_progress_file = os.path.join(self.args.output_path,
+                                                     f"total_real_progress_file.json")
+        create_file(self.total_real_progress_file)
+
+        if self.args.specify_task or self.args.incremental_mode:
+            with open(self.total_real_progress_file, "r") as f:
+                self.total_real_progress_data = json.load(f)
+
+        self.real_progress_data["docker_tag"] = self.args.image_tag
+        self.total_real_progress_data["docker_tag"] = self.args.image_tag
 
     def set_all_task_nums(self, task_nums):
         self.all_task_nums = task_nums
 
-    def init_output_file(self,task:Union["TaskOnline","TaskOffline"]) -> None:
+    def init_output_file(self, task:Union["TaskOnline","TaskOffline"]) -> None:
         """
         产生一个realprogress/对应task的目录
         应该在start_server/run_slave_launch_server的时候创建
         并完成logger的配置
         """
         self.task = task
-        self.cur_task_id = self.cur_task_id + 1
 
         # 自己的node
         self.node_id = [item.is_local for item in task.nodes_used].index(1)
         
-        self.server_args, launch_server_args_str = OutputManager.get_launch_server_args(self.cur_task_id, self.task.server_cmd)
+        self.server_args, launch_server_args_str = OutputManager.get_launch_server_args(self.task.task_id, self.task.server_cmd)
         if not self.server_args['Model'][0] or self.server_args['Model'][0].isspace():
             self.server_args['Model'][0] = self.task.model_name.replace("DeepSeek", "DS")
-        self.task_full_name = " ".join((self.task.task_name + launch_server_args_str).split())
+        # self.task_full_name = " ".join((self.task.task_name + launch_server_args_str).split())
+        self.task_full_name = f'{self.task.task_name.replace("-", "_")}_server{self.task.task_id}'   #任务名可能含有'-'
         self.task_type = OutputManager._task_type_safe(self.task.task_type)
 
         self.create_log_file()
-        if not self.inited:
-            self.create_real_progress_file()
-            self.inited = True
+        self.create_real_progress_file()
         self.write_real_progress_start()
         self.precreate_bench_result_files()
         configure_logger(log_file=self.log_file)
@@ -565,7 +576,7 @@ class OutputManager:
         init_output_file 后可以收集本task的基本信息，用于slave对齐master log路径
         """
         task_info = {
-            'task_id': self.cur_task_id,
+            'task_id': self.task.task_id,
             'model_name': self.task.model_name,
             'task_type': self.task_type,
             'task_launch_mode': self.task.launch_mode.value,
@@ -590,11 +601,12 @@ class OutputManager:
         node_id = node_rank_match.group(1) if node_rank_match else random.randint(10, 999)
 
         self.log_file = os.path.join(info['output_path'], 
-                                    f"{task_info['model_name']}_{self.now}",
-                                    task_info['task_type'],
-                                    LOGS_SUBPATH,
-                                    task_info["task_launch_mode"],
-                                    f"{task_info['task_full_name']}_node{node_id}.log"
+                                     f"{self.now}",
+                                     f"{task_info['model_name']}",
+                                     task_info['task_type'],
+                                     LOGS_SUBPATH,
+                                     task_info["task_launch_mode"],
+                                     f"{task_info['task_full_name']}_node{node_id}.log"
                                     )
         if not os.path.exists(self.log_file):
             create_file(self.log_file)
@@ -612,11 +624,12 @@ class OutputManager:
         注意:只能获取当前任务下的log_path
         """
         return os.path.join(self.args.output_path, 
-                                    f"{self.task.model_name}_{self.now}",
-                                    self.task_type,
-                                    LOGS_SUBPATH,
-                                    self.task_online_offline_subpath()
-                                    )
+                            f"{self.now}",
+                            f"{self.task.model_name}",
+                            self.task_type,
+                            LOGS_SUBPATH,
+                            self.task_online_offline_subpath()
+                            )
 
     def get_result_path(self) -> str:
         """
@@ -627,13 +640,14 @@ class OutputManager:
         if self.task.task_type == TaskType.acc:
             acc_path = self.task.acc_type.value
         return os.path.join(self.args.output_path, 
-                                    f"{self.task.model_name}_{self.now}",
-                                    self.task_type,
-                                    RESULT_SUBPATH,
-                                    self.task_online_offline_subpath(),
-                                    acc_path,
-                                    self.task_full_name
-                                    )
+                            f"{self.now}",
+                            f"{self.task.model_name}",
+                            self.task_type,
+                            RESULT_SUBPATH,
+                            self.task_online_offline_subpath(),
+                            acc_path,
+                            self.task_full_name
+                            )
 
     def task_online_offline_subpath(self) -> str:
         """
@@ -643,12 +657,13 @@ class OutputManager:
 
     def create_real_progress_file(self) -> None:
         self.real_progress_file = os.path.join(self.args.output_path, 
-                                                f"{self.task.model_name}_{self.now}",
-                                                f"REAL_PROGRESS_FILE_{self.now}.json")
-        create_file(self.real_progress_file)
-
-        self.total_real_progress_file = os.path.join(self.args.output_path,
-                                                     f"TOTAL_REAL_PROGRESS_FILE.json")
+                                                f"{self.now}",
+                                                f"{self.task.model_name}",
+                                                self.task_type,
+                                                f"real_progress_file.json")
+        if not os.path.exists(self.real_progress_file):
+            self.real_progress_data = {"to_run": "0,0", "docker_tag": "", "tasks": []}
+            create_file(self.real_progress_file)
 
     def precreate_bench_result_files(self) -> None:
         # result/full_model_name/**_result.txt
@@ -656,7 +671,7 @@ class OutputManager:
             for command in self.task.bench_serving:
                 result_file_text = ''
                 if self.task.task_type in [TaskType.benchmark, TaskType.rampup, TaskType.perf,TaskType.search]:
-                    bench_serving_args_str = OutputManager.get_bench_serving_args_str(command)
+                    bench_serving_args_str = OutputManager.get_bench_serving_args_str(command.get_cmd())
                     result_file_text = os.path.join(self.get_result_path(),
                                                 f"{bench_serving_args_str}_result.txt"
                                                 )
@@ -683,7 +698,7 @@ class OutputManager:
                         create_file(result_file_text)
 
                 with open(result_file_text, "a") as result_file:
-                    command_with_result = self.append_result_file_param(command)
+                    command_with_result = self.append_result_file_param(command.get_cmd())
                     print(f"Command: {command_with_result}", file=result_file)
 
         elif self.task.launch_mode is TaskLaunchMode.offline:
@@ -851,11 +866,6 @@ class OutputManager:
             with open(csv_file_name,'w',encoding='utf-8') as csv_file:
                 result_df.to_csv(csv_file, index=False)
                 logger.debug(f"result_csv store in {csv_file_name}")
-            if self.task.task_type == TaskType.search:
-                original_file_path = os.path.join(result_files_path, csv_file_name)
-                ttft_tpot_df = self.parser_ttft_tpot_data(self.task.max_ttft, self.task.max_tpot, result_df,original_file_path)
-                self.plot_specified_data(ttft_tpot_df, original_file_path)
-
         finally:
             os.chdir(original_dir)
 
@@ -883,12 +893,11 @@ class OutputManager:
             output_path = os.path.join(result_path, output_filename)
             with open(output_path,'w',encoding='utf-8') as csv_file:
                 all_data.to_csv(csv_file, index=False)
-            print(f"{OutputManager._task_type_safe(task_type)} result_csv store in {output_path}")
+            logger.info(f"{OutputManager._task_type_safe(task_type)} result_csv store in {output_path}")
         except Exception as e:
-            print(f"merge_result exception {e}")
-            pass
+            logger.info(f"merge_result {OutputManager._task_type_safe(task_type)} exception {e}")
 
-    def merge_online_search_result(self, task_type:TaskType) -> None:
+    def merge_online_search_result(self, task_type:TaskType,max_ttft,max_tpot) -> None:
         try:
             result_path = os.path.join(self.args.output_path, 
                                     f"{self.task.model_name}_{self.now}",   # TODO: 这儿的model_name 也有问题，因为可能不一致
@@ -913,12 +922,10 @@ class OutputManager:
             with open(output_path,'w',encoding='utf-8') as csv_file:
                 all_data.to_csv(csv_file, index=False)
             logger.debug(f"{OutputManager._task_type_safe(task_type)} result_csv store in {output_path}")
-            ttft_tpot_df = self.parser_ttft_tpot_data(self.task.max_ttft, self.task.max_tpot, all_data, output_path)
-            self.plot_specified_data(ttft_tpot_df, output_path)
+            self.parser_total_search_data(result_path,max_ttft,max_tpot)
                 
         except Exception as e:
-            print(f"merge_result exception {e}")
-            pass
+            logger.info(f"merge_search_result exception {e}")
 
     def merge_offline_result(self, task_type:TaskType) -> None:
         try:
@@ -943,10 +950,9 @@ class OutputManager:
             output_path = os.path.join(result_path, output_filename)
             with open(output_path,'w',encoding='utf-8') as csv_file:
                 all_data.to_csv(csv_file, index=False)
-            print(f"{OutputManager._task_type_safe(task_type)} result_csv store in {output_path}")
+            logger.info(f"{OutputManager._task_type_safe(task_type)} result_csv store in {output_path}")
         except Exception as e:
-            print(f"merge_result exception {e}")
-            pass
+            logger.info(f"merge_offline_result exception {e}")
 
     def write_pass_case(self):
         """ write pass case id to file"""
@@ -964,104 +970,236 @@ class OutputManager:
             print(content, file=f)
 
     def write_real_progress_start(self):
+        t_type = task_type_to_string(self.task.task_type)
+
         if self.task.launch_mode == TaskLaunchMode.online:
             online_task_content = {"launch_mode": "online",
+                                   "type": t_type,
                                    "simple_param": self.task_full_name,
-                                   "server_id": str(self.cur_task_id),
+                                   "server_id": str(self.task.task_id),
                                    "cmd": self.task.server_cmd,
                                    "client_test": []}
             self.real_progress_data['tasks'].append(online_task_content)
+
+            is_have_task = False
+            if self.args.specify_task or self.args.incremental_mode:
+                for task in self.total_real_progress_data['tasks']:
+                    if task["server_id"] == str(self.task.task_id):
+                        is_have_task = True
+            if not is_have_task:
+                # 此处不可使用online_task_content
+                # 否则就会出现两条同样的记录,原因暂时未知
+                self.total_real_progress_data['tasks'].append({"launch_mode": "online",
+                                                               "type": t_type,
+                                                               "simple_param": self.task_full_name,
+                                                               "server_id": str(self.task.task_id),
+                                                               "cmd": self.task.server_cmd,
+                                                               "client_test": []})
         elif self.task.launch_mode == TaskLaunchMode.offline:
             offline_task_content = {"launch_mode": "offline",
+                                    "type": t_type,
                                     "simple_param": self.task_full_name,
-                                    "server_id": str(self.cur_task_id),
+                                    "server_id": str(self.task.task_id),
                                     "cmd": self.task.server_cmd,
-                                    "status": ""}
+                                    "status": "",
+                                    "times": 0}
             self.real_progress_data['tasks'].append(offline_task_content)
 
-        with open(self.real_progress_file, 'w') as f:
-            json.dump(self.real_progress_data, f, indent=4, ensure_ascii=False)
+            # 此处不可使用 offline_task_content
+            # 否则就会出现两条同样的记录,原因暂时未知
+            if not self.args.incremental_mode:
+                is_same = False
+                for cur_task in self.total_real_progress_data['tasks']:
+                    if cur_task["server_id"] == str(self.task.task_id):
+                        is_same = True
+                        break
+                if not is_same:
+                    self.total_real_progress_data['tasks'].append({"launch_mode": "offline",
+                                                                   "type": t_type,
+                                                                   "simple_param": self.task_full_name,
+                                                                   "server_id": str(self.task.task_id),
+                                                                   "cmd": self.task.server_cmd,
+                                                                   "status": "",
+                                                                   "times": 0})
 
-    def write_real_progress_bench_serving(self, i):
-        bench_content = {"id": str(i),
-                         "cmd": self.task.bench_serving[i],
-                         "status": ""}
-        self.real_progress_data['tasks'][-1]["client_test"].append(bench_content)
-        self.real_progress_data['to_run'] = "%s,%s" % (str(self.cur_task_id), str(i+1))
+            self.real_progress_data['to_run'] = "%s,%s" % (str(self.task.task_id+1), "0")
+            self.total_real_progress_data['to_run'] = "%s,%s" % (str(self.task.task_id+1), "0")
+        self.write_real_progress_config()
 
-        with open(self.real_progress_file, 'w') as f:
-            json.dump(self.real_progress_data, f, indent=4, ensure_ascii=False)
+    def write_real_progress_bench_serving(self, client_id, is_svr_start=True):
+        id = self.task.task_id
+        c_id = client_id + 1
+        if not is_svr_start:
+            id = self.task.task_id + 1
+            c_id = client_id
+        if (len(self.task.bench_serving) == client_id+1):
+            self.real_progress_data['to_run'] = "%s,%s" % (str(self.task.task_id + 1), "0")
+        else:
+            self.real_progress_data['to_run'] = "%s,%s" % (str(id), str(c_id))
+
+        if (len(self.task.bench_serving) == client_id+1):
+            self.total_real_progress_data['to_run'] = "%s,%s" % (str(self.task.task_id + 1), "0")
+        else:
+            self.total_real_progress_data['to_run'] = "%s,%s" % (str(id), str(c_id))
+
+        if is_svr_start:
+            cmd = self.task.bench_serving[client_id]
+            for cur_task in self.real_progress_data['tasks']:
+                if cur_task["server_id"] != str(self.task.task_id):
+                    continue
+
+                is_same = False
+                for cur_client in cur_task["client_test"]:
+                    if cur_client["id"] == str(cmd.get_id()):
+                        is_same = True
+                        break
+                if not is_same:
+                    cur_task["client_test"].append({"id": str(cmd.get_id()),
+                                                    "cmd": cmd.get_cmd(),
+                                                    "status": "",
+                                                    "times": 0})
+                break
+
+            for cur_task in self.total_real_progress_data['tasks']:
+                if cur_task["server_id"] != str(self.task.task_id):
+                    continue
+
+                is_same = False
+                for cur_client in cur_task["client_test"]:
+                    if cur_client["id"] == str(cmd.get_id()):
+                        is_same = True
+                        break
+                if not is_same:
+                    cur_task["client_test"].append({"id": str(cmd.get_id()),
+                                                    "cmd": cmd.get_cmd(),
+                                                    "status": "",
+                                                    "times": 0})
+                break
+
+        self.write_real_progress_config()
 
     def write_real_progress_result(self, result_flag, i, error=None):
         if self.task.launch_mode is TaskLaunchMode.online:
-            for test in self.real_progress_data["tasks"][-1]["client_test"]:
-                if test['id'] != str(i):
+            for task_content in self.real_progress_data["tasks"]:
+                if task_content["server_id"] != str(self.task.task_id):
                     continue
-                test["status"] = "pass" if result_flag == 'pass' else 'fail'
+                for client_content in task_content["client_test"]:
+                    if client_content["id"] != str(i):
+                        continue
+                    if result_flag == 'pass':
+                        client_content["status"] = "pass"
+                    else:
+                        client_content["status"] = self.fail_reason # 'fail'
+                    client_content["times"] += 1
+            for task_content in self.total_real_progress_data["tasks"]:
+                if task_content["server_id"] != str(self.task.task_id):
+                    continue
+                for client_content in task_content["client_test"]:
+                    if client_content["id"] != str(i):
+                        continue
+                    if result_flag == 'pass':
+                        client_content["status"] = "pass"
+                    else:
+                        client_content["status"] = self.fail_reason
+                    client_content["times"] += 1
         elif self.task.launch_mode is TaskLaunchMode.offline:
-            self.real_progress_data["tasks"][-1]['status'] = "pass" if result_flag == 'pass' else 'fail'
+            for task_content in self.real_progress_data["tasks"]:
+                if task_content["server_id"] != str(self.task.task_id):
+                    continue
+                if result_flag == 'pass':
+                    task_content['status'] = "pass"
+                else:
+                    task_content['status'] = self.fail_reason
+                task_content['times'] += 1
+            for task_content in self.total_real_progress_data["tasks"]:
+                if task_content["server_id"] != str(self.task.task_id):
+                    continue
+                if result_flag == 'pass':
+                    task_content['status'] = "pass"
+                else:
+                    task_content['status'] = self.fail_reason
+                task_content['times'] += 1
 
+        self.write_real_progress_config()
+
+    def write_to_run_args(self, task_id=0, client_id=0):
+        self.real_progress_data['to_run'] = "%s,%s" % (str(task_id), str(client_id))
+        self.total_real_progress_data['to_run'] = "%s,%s" % (str(task_id), str(client_id))
+        self.write_real_progress_config()
+
+    def get_total_real_progress_to_run(self):
+        to_run_config = ["0", "0"]
+        with open(self.total_real_progress_file, "r") as f:
+            total_config = json.load(f)
+            to_run_config = total_config['to_run'].split(",")
+        return to_run_config[0], to_run_config[1]
+
+    def write_real_progress_config(self):
+        if self.real_progress_file is None or self.total_real_progress_file is None:
+            return
         with open(self.real_progress_file, 'w') as f:
             json.dump(self.real_progress_data, f, indent=4, ensure_ascii=False)
+        with open(self.total_real_progress_file, 'w') as f1:
+            json.dump(self.total_real_progress_data, f1, indent=4, ensure_ascii=False)
 
-    def parser_ttft_tpot_data(self,max_ttft, max_tpot, df, original_file_path):
-        logger.debug("start parser ttft tpot data")
-        if not original_file_path.strip():
-            logger.debug("original file path is null !!!")
-            return
-    
-        target_file_path = os.path.dirname(original_file_path)
-        target_data = df[(df["Mean TTFT (ms)"] < float(max_ttft)) & (df["Mean TPOT (ms)"] < float(max_tpot))]
-        
-        output_file = f"{target_file_path}/ttft_{max_ttft}_tpot_{max_tpot}_result.csv"
-        with open(output_file,'w',encoding='utf-8') as csv_file:
-            target_data.to_csv(csv_file, index=False, encoding="utf-8")
-        logger.debug(f"ttft_tpot_csv store in {output_file}")
-        return target_data
-    
-    def plot_specified_data(self, df, file_path):
-        bs = df["batch-size"].values
-        ttft_key = "Mean TTFT (ms)"
-        tpot_key = "Mean TPOT (ms)"
-        tus_key = "Interactivity(toks/User/s)"
-        tgs_key = "TGS(toks/GPU/s)"
-        ott_key = "Output token throughput (tok/s)"
-        img_dir = f"{os.path.dirname(file_path)}/{self.now}_"
-        
-        self.draw_image(bs,df[ttft_key].values,"Time to First Token",ttft_key,f"{img_dir}ttft.png")
-        self.draw_image(bs,df[tpot_key].values,"Time per Output Token (excl. 1st token)",tpot_key,f"{img_dir}tpot.png")
-        self.draw_image(bs,df[ott_key].values,ott_key,ott_key,f"{img_dir}ott.png")
-        self.draw_image(bs,df[tgs_key].values,tgs_key,tgs_key,f"{img_dir}tgs.png")
-        self.draw_image(bs,df[tus_key].values,tus_key,tus_key,f"{img_dir}tus.png")
+    def parser_total_search_data(self,result_files_path,max_ttft,max_tpot):
+        csv_file_name = f"{self.now}_result.csv"
+        logger.debug(f"result_files_path: {result_files_path}")
+        file_path = f"{result_files_path}/{csv_file_name}"
+        df = pd.read_csv(file_path)
+        dp = SearchDataParser()
+        dp.max_tpot = max_tpot
+        dp.max_ttft = max_ttft
+        dp.is_filter = True
+        file_dir = result_files_path
+        optimal_bs = 0
+        if dp.is_filter:
+            file_dir = f"{result_files_path}/total_ttft_{dp.max_ttft}_tpot_{dp.max_tpot}"
+            logger.debug(f"file_dir: {file_dir}")
+            if os.path.isdir(file_dir) == False:
+                try:
+                    os.mkdir(file_dir)
+                    logger.debug(f"folder '{file_dir}' creation successful")
+                except FileExistsError:
+                    logger.debug(f"folder '{file_dir}' already exist")
+                except OSError as e:
+                    logger.debug(f"creation failed:{e}") 
+            result = dp.parser_ttft_tpot_data(df,file_dir)
+            optimal_bs = result[1]
+            dp.plot_specified_data(result[0],file_dir)
+        dp.is_filter = False
+        dp.optimal_bs = optimal_bs
+        dp.plot_specified_data(df,result_files_path)
 
-    def draw_image(self, x, y, title="", legend_label="", image_path=""):
-        logger.debug(f"start draw image {title}")
-        if not image_path.strip():
-            logger.debug("image path is null !!!")
-            return
-        plt.cla()         # 清除当前坐标轴
-        plt.clf()         # 清除当前图形
-        plt.close('all')  # 关闭所有图形窗口
-        mpl.rcParams.update(mpl.rcParamsDefault)  # 恢复默认配置
-        plt.style.use('default')  # 使用默认样式 
-        plt.plot(x, y, marker='o', linestyle='--', color='r', label=legend_label)
-
-        # 设置每个点的值
-        for xt, yt in zip(x, y):
-            plt.text(xt,yt,f"{yt}",fontsize = 8)
-
-        # 添加标题和坐标轴标签
-        plt.title(title)
-        plt.xlabel('batch_size')
-
-        # 设置x轴只显示指定的刻度值 
-        plt.xticks(x)
-        # 添加网格
-        plt.grid(True)
-
-        # 添加图例
-        plt.legend()
-        plt.savefig(image_path)
+    def parser_single_search_data(self):
+        result_files_path = self.get_result_path()
+        csv_file_name = f'{self.task_type}_result.csv'
+        logger.debug(f"result_files_path: {result_files_path}")
+        file_path = f"{result_files_path}/{csv_file_name}"
+        df = pd.read_csv(file_path)
+        dp = SearchDataParser()
+        dp.max_tpot = self.task.max_tpot
+        dp.max_ttft = self.task.max_ttft
+        dp.is_filter = True
+        file_dir = result_files_path
+        optimal_bs = 0
+        if dp.is_filter:
+            file_dir = f"{result_files_path}/ttft_{dp.max_ttft}_tpot_{dp.max_tpot}"
+            logger.debug(f"file_dir: {file_dir}")
+            if os.path.isdir(file_dir) == False:
+                try:
+                    os.mkdir(file_dir)
+                    logger.debug(f"folder '{file_dir}' creation successful")
+                except FileExistsError:
+                    logger.debug(f"folder '{file_dir}' already exist")
+                except OSError as e:
+                    logger.debug(f"creation failed:{e}") 
+            result = dp.parser_ttft_tpot_data(df,file_dir)
+            optimal_bs = result[1]
+            dp.plot_specified_data(result[0],file_dir)
+        dp.is_filter = False
+        dp.optimal_bs = optimal_bs
+        dp.plot_specified_data(df,result_files_path)
 
     def get_single_server_result_csv(self) -> None:
         """ get all client result csv of a server"""
@@ -1069,3 +1207,153 @@ class OutputManager:
 
     def fun(self):
         pass
+
+    def set_fail_reason(self, reason):
+        self.fail_reason = reason
+
+
+class SearchDataParser():
+
+    def __init__(self) -> None:
+        self.max_ttft = None
+        self.max_tpot = None
+        self.is_filter = False
+        self.now = datetime.now().strftime("%Y%m%d_%H%M")
+        self.optimal_bs = None #最优batch size
+ 
+    def parser_ttft_tpot_data(self,df, target_file_path="."):
+        if self.is_filter == False:
+            return (df, None)
+        logger.debug("start parser ttft tpot data")
+        if df is None or df.empty:
+            logger.debug("parser ttft tpot data: df is null or empty")
+            return (None, None)
+        if not target_file_path.strip():
+            logger.debug("target file path is null !!!")
+            return (None, None)
+        optimal_bs = 0
+        try:
+            target_data = df[(df["Mean TTFT (ms)"] < float(self.max_ttft)) & (df["Mean TPOT (ms)"] < float(self.max_tpot))]
+            optimal_data = target_data[target_data["batch-size"] == target_data["batch-size"].max()]
+            optimal_bs = optimal_data["batch-size"].max()
+            output_file = f"{target_file_path}/ttft_{self.max_ttft}_tpot_{self.max_tpot}_result.csv"
+            logger.debug(f"output_file:{output_file}")
+            with open(output_file,'w+',encoding='utf-8') as csv_file:
+                target_data.to_csv(csv_file, index=False, encoding="utf-8")
+
+            optimal_data_file = f"{target_file_path}/max_ttft_{self.max_ttft}_max_tpot_{self.max_tpot}_result.csv"
+            optimal_data.to_csv(optimal_data_file, index=False, encoding="utf-8")
+
+        except Exception as e:
+            logger.debug(f"parser ttft tpot data: exception {e}")
+            return (None, None)
+        logger.debug(f"ttft_tpot_csv store in {output_file}")
+        return (target_data, optimal_bs)
+  
+    def plot_specified_data(self,df,file_path="."):
+        if df is None or df.empty:
+            logger.debug("plot specified data: df is null or empty")
+        else:
+            bs = df["batch-size"].values
+            ttft_key = "Mean TTFT (ms)"
+            tpot_key = "Mean TPOT (ms)"
+            tus_key = "Interactivity(toks/User/s)"
+            tgs_key = "TGS(toks/GPU/s)"
+            ott_key = "Output token throughput (tok/s)"
+            img_dir = f"{file_path}/{self.now}_"
+            ttft_tpot_img_path = f"{file_path}/{self.now}_ttft_tpot.png"
+            if self.max_ttft and self.max_tpot and self.is_filter:
+                 img_dir = f"{file_path}/{self.now}_ttft_{self.max_ttft}_tpot_{self.max_tpot}_"
+                 ttft_tpot_img_path = f"{file_path}/{self.now}_ttft_{self.max_ttft}_tpot_{self.max_tpot}_ttft_tpot.png"
+
+            self.draw_image(bs,df[ttft_key].values,"Time to First Token",ttft_key,f"{img_dir}ttft.png",True,False)
+            self.draw_image(bs,df[tpot_key].values,"Time per Output Token (excl. 1st token)",tpot_key,f"{img_dir}tpot.png",False, True)
+            self.draw_image(bs,df[ott_key].values,ott_key,ott_key,f"{img_dir}ott.png")
+            self.draw_image(bs,df[tgs_key].values,tgs_key,tgs_key,f"{img_dir}tgs.png")
+            self.draw_image(bs,df[tus_key].values,tus_key,tus_key,f"{img_dir}tus.png")
+        
+            img_list = [f"{img_dir}ttft.png",f"{img_dir}tpot.png"]
+            self.stitch_images_horizontally(img_list,ttft_tpot_img_path)
+
+            
+
+    def draw_image(self,x, y, title="", legend_label="", image_path="",is_ttft=False, is_tpot=False):
+        logger.debug(f"start draw image {title}")
+        if not image_path.strip():
+            logger.debug("image path is null !!!")
+        else:
+            plt.cla()         # 清除当前坐标轴
+            plt.clf()         # 清除当前图形
+            plt.close('all')  # 关闭所有图形窗口
+            mpl.rcParams.update(mpl.rcParamsDefault)  # 恢复默认配置
+            plt.style.use('default')  # 使用默认样式 
+            plt.plot(x, y, marker='o', linestyle='--', color = "red",label=legend_label)
+           
+            # 设置每个点的值
+            for xt, yt in zip(x, y):
+                plt.text(xt,yt,f"{yt}",fontsize = 8)
+
+            if self.optimal_bs and self.optimal_bs > 0:
+                if is_ttft:
+                    index = x.tolist().index(self.optimal_bs)
+                    if index > -1:
+                        plt.plot(x[index], y[index], 'go', markersize=8)# 'go'表示绿色圆形标记
+                elif is_tpot:
+                    index = x.tolist().index(self.optimal_bs)
+                    if index > -1:
+                        plt.plot(x[index], y[index], 'go', markersize=8) # 'go'表示绿色圆形标记
+      
+            # 添加标题和坐标轴标签
+            plt.title(title)
+            plt.xlabel('batch_size')
+
+            # 设置x轴只显示指定的刻度值 
+            plt.xticks(x)
+            # 添加网格
+            plt.grid(True)
+
+            # 添加图例
+            plt.legend()
+            plt.savefig(image_path)
+
+    @staticmethod     # 拼接图片（默认垂直）
+    def stitch_images_horizontally(image_paths, output_path, is_vertically=True):
+        
+        # 打开所有图片
+        images = [Image.open(path) for path in image_paths]
+        
+        # 获取所有图片的宽度和高度
+        widths, heights = zip(*(img.size for img in images))
+        
+        # 计算拼接后图片的总宽度和最大高度
+        if is_vertically:
+            total_width = max(widths)
+            max_height = sum(heights)
+        else:
+            total_width = sum(widths)
+            max_height = max(heights)
+        
+        # 创建空白画布
+        new_image = Image.new('RGB', (total_width, max_height))
+        
+        # 拼接图片
+        x_offset = 0
+        y_offset = 0
+        for img in images:
+            if is_vertically:
+                x_offset = (total_width - img.width) // 2
+                new_image.paste(img, (x_offset, y_offset))
+                y_offset += img.height
+            else:
+                new_image.paste(img, (x_offset, 0))
+                x_offset += img.width
+        
+        # 保存结果
+        new_image.save(output_path)
+        for img_pt in image_paths:
+            if os.path.exists(img_pt):
+                try:
+                    os.remove(img_pt)
+                    logger.debug("remove image done")
+                except OSError as e:
+                    logger.debug(e)

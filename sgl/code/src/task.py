@@ -18,6 +18,7 @@ class BaseTask:
         connection: Optional[Connection],
         launch_server: str,
         envs: Optional[Dict],
+        task_id: int,
         port: int = 5000
     ) -> None:
         self.connection = connection
@@ -25,6 +26,7 @@ class BaseTask:
         self.launch_mode = None
         self.task_name = None
         self.task_type = None
+        self.task_id = task_id
         self.server_cmd = launch_server
         self.server_port = port
         self.output_manager = None
@@ -33,7 +35,7 @@ class BaseTask:
         self.timer = None
         self.stopped = False
         self.is_bench_finish = True
-        self.is_abnormal_start = False
+        self.is_kill_abnormal = False
 
         # todo not use all node
         self.nodes_used = self.connection.nodes_info
@@ -45,13 +47,7 @@ class BaseTask:
         self.max_ttft = None
         self.max_tpot = None
 
-    def run(self):
-        pass
-
-    def start_timer(self):
-        pass
-
-    def stop_timer(self):
+    def run(self, client_id=0):
         pass
 
     def start_server(self):
@@ -104,7 +100,9 @@ class BaseTask:
         run_sys_cmd(op_content)
 
     def stop_server(self):
-        self.stop_timer()
+        global abnormal_flag
+        if self.is_kill_abnormal:
+            abnormal_flag = True
         for node, op in zip(self.nodes_used, self.server_cmd_ops):
             self.connection.stop_cmd(node, op)
         self.stopped = True
@@ -129,8 +127,9 @@ class BaseTask:
     def generate_result(self):
         pass
     
-    def set_output_manager(self, output_manager: OutputManager) -> None:
+    def set_output_manager(self, output_manager: OutputManager,is_kill_abnormal) -> None:
         self.output_manager = output_manager
+        self.is_kill_abnormal = is_kill_abnormal
 
     def check_abnormal(self):
         global last_log_folrder_size, is_abnormal_start
@@ -171,6 +170,7 @@ class BaseTask:
                     abnormal_flag = True
                     logger.error(f"********************************abnormal********************************")
                     logger.error(f"****************************{abnormal_str}****************************")
+                    self.output_manager.set_fail_reason(abnormal_str)
                     break
             if abnormal_flag:
                 break
@@ -188,6 +188,7 @@ class BaseTask:
                 abnormal_flag = True
                 logger.error(f"********************************abnormal********************************")
                 logger.error(f"****************************timeout****************************")
+                self.output_manager.set_fail_reason('timeout')
 
         is_abnormal_start = False
         self.stop_all(False)
@@ -209,10 +210,11 @@ class TaskOnline(BaseTask):
         connection: Connection,
         launch_server: str,
         bench_serving: List[str],
+        task_id: int,
         envs: Optional[Dict],
         port: int
     ) -> None:
-        super().__init__(connection, launch_server, envs)
+        super().__init__(connection, launch_server, envs, task_id)
         super().set_server_port(port)
         self.bench_serving = bench_serving
         self.launch_mode = TaskLaunchMode.online
@@ -222,16 +224,16 @@ class TaskOnline(BaseTask):
         self.stopped = False
         self.server_cmd_ops.clear()
 
-    def run(self):
-        self.output_manager.init_output_file(self)
+    def run(self, client_id=0):
         while True:
             self.init()
             self.check_abnormal()
+            self.output_manager.write_real_progress_bench_serving(0, False)
             self.start_server()
             self.is_bench_finish = False
             server_start = self.wait_server_ready()
             if server_start and not self.is_bench_finish:
-                self.bench_test()
+                self.bench_test(client_id)
 
             # 判断运行过程中是否出现错误,导致测试中断
             # 1.未出现错误中断,退出
@@ -255,21 +257,31 @@ class TaskOnline(BaseTask):
             time.sleep(1)
         return True
 
-    def bench_test(self):
+    def bench_test(self, client_id=0):
         if self.stopped:
             return
 
-        for i, one_bench in enumerate(self.bench_serving):
+        #for i, one_bench in enumerate(self.bench_serving):
+        bench_id = -1
+        for content in self.bench_serving:
+            bench_id += 1
             if self.stopped:
                 logger.error(f'bech stop success0')
                 return
-            if i < self.current_bench_id:
+
+            # 此处判断如果上次bench中断,则跳过之前已经跑过的bench client
+            if bench_id < self.current_bench_id:
+                continue
+            self.current_bench_id = bench_id + 1
+
+            # 此处判断如果上次主进程中断,则跳过之前已经跑过的bench client
+            if bench_id < client_id:
+                logger.info("current client id " + str(bench_id) + " last client id " + str(client_id))
                 continue
 
             # --output-file 追加, 不然jsonl生成到其他目录下
-            one_bench_with_output = self.output_manager.append_result_file_param(one_bench)
+            one_bench_with_output = self.output_manager.append_result_file_param(content.get_cmd())
 
-            self.start_timer()
             self.current_bench_op = OperationContent(
                 id=get_next_op_id(),
                 type=OperationType.RUN,
@@ -280,46 +292,46 @@ class TaskOnline(BaseTask):
                 is_benching=True
             )
 
-            self.current_bench_id = i + 1
-            self.output_manager.write_real_progress_bench_serving(i)
+            self.current_bench_id = bench_id + 1
+            self.output_manager.write_real_progress_bench_serving(bench_id)
             self.connection.run_cmd(self.nodes_used[0], self.current_bench_op)
             statu = self.current_bench_op.status
             result = self.current_bench_op.output
 
             if statu == 0:
-                self.output_manager.write_real_progress_result('pass', i)
-                self.output_manager.write_client_result(one_bench, result)
+                self.output_manager.write_real_progress_result('pass', content.get_id())
+                self.output_manager.write_client_result(content.get_cmd(), result)
             else:
-                self.output_manager.write_real_progress_result('fail', i)
-                self.output_manager.write_client_result(one_bench, result, False)
+                self.output_manager.write_real_progress_result('fail', content.get_id())
+                self.output_manager.write_client_result(content.get_cmd(), result, False)
 
             if self.stopped:
                 logger.error(f'bech stop success1')
                 return
-            
+
             self.current_bench_op = None
-            self.stop_timer()
 
         self.output_manager.extract_result_metrics()
+        if self.task_type == TaskType.search:
+            self.output_manager.parser_single_search_data()
         if self.current_bench_id == len(self.bench_serving):
             self.is_bench_finish = True
+            self.output_manager.write_to_run_args(self.task_id+1, 0)
 
 class TaskOffline(BaseTask):
     def __init__(self,
         connection: Connection,
         launch_server: str,
-        task_id:int,
+        task_id: int,
         envs: Optional[Dict],
         port: int
     ) -> None:
-        super().__init__(connection, launch_server, envs)
+        super().__init__(connection, launch_server, envs, task_id)
         super().set_server_port(port)        
         self.launch_mode = TaskLaunchMode.offline
         self.task_id = task_id
     
     def start_offline_server(self):
-        self.start_timer()
-        self.output_manager.init_output_file(self)
         # 拼接 --result-filename = xxxxx.jsonl
         self.server_cmd  = self.output_manager.append_result_file_param(self.server_cmd)
         self.start_server()
@@ -340,7 +352,7 @@ class TaskOffline(BaseTask):
         self.output_manager.extract_result_metrics()
         
         
-    def run(self):
+    def run(self, client_id=0):
         self.check_abnormal()
         self.start_offline_server()
         self.stop_server()

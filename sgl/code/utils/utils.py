@@ -147,6 +147,18 @@ def get_interface_by_ip(ip) -> str:
                 return interface
     return ''
 
+def task_type_to_string(type):
+    if type == TaskType.benchmark:
+        return "benchmark"
+    elif type == TaskType.acc:
+        return "acc"
+    elif type == TaskType.rampup:
+        return "rampup"
+    elif type == TaskType.perf:
+        return "perf"
+    elif type == TaskType.search:
+        return "search"
+
 
 class TaskType(Enum):
     benchmark = "benchmark"
@@ -250,9 +262,9 @@ def run_sys_cmd(op_content: OperationContent):
 
             if line and not line.isspace():    # 有些行为产生空行，比如Loading safetensors时
                 if not op_content.is_benching:
-                    logger.info(f'run sys cmd log : {line}')
+                    logger.info(f'run sys cmd log : {line.strip()}')
                 else:
-                    logger.info(line)
+                    logger.info(line.strip())
 
         if op_content.print_output: # 不确定salve 是否需要判断 by ydm.
             print(line.strip())
@@ -350,3 +362,15 @@ def printenv(envs):
         is_master=True,
     )
     run_sys_cmd(op_content)
+
+
+class BenchmarkCmds:
+    def __init__(self, id, cmd) -> None:
+        self.id = id
+        self.cmd = cmd
+
+    def get_cmd(self):
+        return self.cmd
+
+    def get_id(self):
+        return self.id

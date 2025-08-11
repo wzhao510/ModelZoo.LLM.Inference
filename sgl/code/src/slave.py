@@ -65,6 +65,6 @@ while True:
         else:
             zmq_socket.send_string(f'[{op_content.cmd}] proc not exist!')
     elif op_content.type == OperationType.EXIT:
-        print(f'EXIT kill {g_opcontent_map[op_content.cmd]}')
-        kill_process_all(g_opcontent_map[op_content.cmd])
+        logger.info(f'EXIT kill')
+        zmq_socket.send_string(f"exit success")
         break
