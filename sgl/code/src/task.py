@@ -7,11 +7,11 @@ from src.output import OutputManager
 from utils.utils import *
 
 
-TIMEOUT_DURATION = 60*2.678
+TIMEOUT_DURATION = 60*10.678
 G_MASTER_LOCK = threading.Lock()
 last_log_folrder_size = 0
 is_abnormal_start = False
-
+test_stop = False
 
 class BaseTask:
     def __init__(self,
@@ -33,7 +33,6 @@ class BaseTask:
         self.envs = envs
         self.timeout = None
         self.timer = None
-        self.stopped = False
         self.is_bench_finish = True
         self.is_kill_abnormal = False
 
@@ -105,7 +104,8 @@ class BaseTask:
             abnormal_flag = True
         for node, op in zip(self.nodes_used, self.server_cmd_ops):
             self.connection.stop_cmd(node, op)
-        self.stopped = True
+        global test_stop
+        test_stop = True
 
     def stop_client(self):
         if self.current_bench_op:
@@ -221,7 +221,8 @@ class TaskOnline(BaseTask):
         self.current_bench_id = 0
 
     def init(self):
-        self.stopped = False
+        global test_stop
+        test_stop = False
         self.server_cmd_ops.clear()
 
     def run(self, client_id=0):
@@ -245,8 +246,9 @@ class TaskOnline(BaseTask):
                 break
 
     def wait_server_ready(self):
+        global test_stop
         while True:
-            if self.stopped:
+            if test_stop:
                 logger.error('server has been stopped !')
                 return False
             if (
@@ -258,14 +260,15 @@ class TaskOnline(BaseTask):
         return True
 
     def bench_test(self, client_id=0):
-        if self.stopped:
+        global test_stop
+        if test_stop:
             return
 
         #for i, one_bench in enumerate(self.bench_serving):
         bench_id = -1
         for content in self.bench_serving:
             bench_id += 1
-            if self.stopped:
+            if test_stop:
                 logger.error(f'bech stop success0')
                 return
 
@@ -305,7 +308,7 @@ class TaskOnline(BaseTask):
                 self.output_manager.write_real_progress_result('fail', content.get_id())
                 self.output_manager.write_client_result(content.get_cmd(), result, False)
 
-            if self.stopped:
+            if test_stop:
                 logger.error(f'bech stop success1')
                 return
 
@@ -347,7 +350,8 @@ class TaskOffline(BaseTask):
             self.output_manager.write_real_progress_result('fail',self.task_id)
             self.output_manager.write_client_result(self.server_cmd, result, False)
 
-        if self.stopped:
+        global test_stop
+        if test_stop:
             return
         self.output_manager.extract_result_metrics()
         

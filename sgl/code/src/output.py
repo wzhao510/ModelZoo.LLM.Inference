@@ -5,10 +5,17 @@ from typing import Optional, TYPE_CHECKING, Union
 import re
 import pandas as pd
 import random
-import matplotlib.pyplot as plt
-import matplotlib as mpl
 import json
-from PIL import Image
+
+try:
+    import matplotlib.pyplot as plt
+    import matplotlib as mpl
+    from PIL import Image
+    import_draw_lib_success = True
+except ImportError:
+    import_draw_lib_success = False
+
+    
 
 if TYPE_CHECKING:
     from src.task import TaskOnline, TaskOffline
@@ -871,8 +878,8 @@ class OutputManager:
 
     def merge_online_result(self, task_type:TaskType) -> None:
         try:
-            result_path = os.path.join(self.args.output_path, 
-                                    f"{self.task.model_name}_{self.now}",   # TODO: 这儿的model_name 也有问题，因为可能不一致
+            result_path = os.path.join(self.args.output_path, f"{self.now}", 
+                                    f"{self.task.model_name}",   # TODO: 这儿的model_name 也有问题，因为可能不一致
                                                                             # 如果真的有这种情况，得到外面再按 model_name分组一次
                                     OutputManager._task_type_safe(task_type),
                                     RESULT_SUBPATH,
@@ -900,8 +907,8 @@ class OutputManager:
     def merge_online_search_result(self, task_type:TaskType,max_ttft,max_tpot) -> None:
         try:
             result_path = os.path.join(self.args.output_path, 
-                                    f"{self.task.model_name}_{self.now}",   # TODO: 这儿的model_name 也有问题，因为可能不一致
-                                                                            # 如果真的有这种情况，得到外面再按 model_name分组一次
+                                    f"{self.now}",             # TODO: 这儿的model_name 也有问题，因为可能不一致
+                                    f"{self.task.model_name}", # 如果真的有这种情况，得到外面再按 model_name分组一次
                                     OutputManager._task_type_safe(task_type),
                                     RESULT_SUBPATH,
                                     OutputManager.online_offline_subpath(task_type, TaskLaunchMode.online)
@@ -930,7 +937,8 @@ class OutputManager:
     def merge_offline_result(self, task_type:TaskType) -> None:
         try:
             result_path = os.path.join(self.args.output_path, 
-                                    f"{self.task.model_name}_{self.now}",
+                                    f"{self.now}",
+                                    f"{self.task.model_name}",
                                     OutputManager._task_type_safe(task_type),
                                     RESULT_SUBPATH,
                                     OutputManager.online_offline_subpath(task_type, TaskLaunchMode.offline)
@@ -1166,10 +1174,12 @@ class OutputManager:
                     logger.debug(f"creation failed:{e}") 
             result = dp.parser_ttft_tpot_data(df,file_dir)
             optimal_bs = result[1]
-            dp.plot_specified_data(result[0],file_dir)
+            if import_draw_lib_success:
+                dp.plot_specified_data(result[0],file_dir)
         dp.is_filter = False
         dp.optimal_bs = optimal_bs
-        dp.plot_specified_data(df,result_files_path)
+        if import_draw_lib_success:
+            dp.plot_specified_data(df,result_files_path)
 
     def parser_single_search_data(self):
         result_files_path = self.get_result_path()
@@ -1196,10 +1206,12 @@ class OutputManager:
                     logger.debug(f"creation failed:{e}") 
             result = dp.parser_ttft_tpot_data(df,file_dir)
             optimal_bs = result[1]
-            dp.plot_specified_data(result[0],file_dir)
+            if import_draw_lib_success:
+                dp.plot_specified_data(result[0],file_dir)
         dp.is_filter = False
         dp.optimal_bs = optimal_bs
-        dp.plot_specified_data(df,result_files_path)
+        if import_draw_lib_success:
+            dp.plot_specified_data(df,result_files_path)
 
     def get_single_server_result_csv(self) -> None:
         """ get all client result csv of a server"""

@@ -1,14 +1,14 @@
 {
     "machine_info": [
         {
-            "ip": "192.168.2.218",
+            "ip": "192.168.0.181",
             "ifname":"bond0",
-            "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5"
+            "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3"
         },
         {
-            "ip": "192.168.2.136",
+            "ip": "192.168.3.54",
             "ifname":"bond0",
-            "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5"
+            "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3"
         }
     ],
     "tasks": [
@@ -25,20 +25,20 @@
             },
             "launch_server": {
                 "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
-                "model_path": ["--model-path /mnt/shared_data/Qwen3-235B-A22B"],
+                "model_path": ["--model-path /home/jovyan/models/Qwen/Qwen3-Coder-480B-A35B-Instruct-int8"],
                 "cuda_graph": ["--cuda-graph-max-bs 256"],
                 "torch_compile": [""],
                 "dtype": [""],
                 "cache": ["--disable-radix-cache --disable-chunked-prefix-cache"],
-                "quantization": [""],
+                "quantization": ["--quantization w8a8_int8"],
                 "chunked_prefill_size": [""],
                 "attention_backend": ["--attention-backend flashinfer"],
-                "enable_parallel": ["--tp 16 --dp 4 --enable-dp-attention ", "--tp 16 --dp 2 --enable-dp-attention "],
+                "enable_parallel": ["--tp 16 --dp 4 --enable-dp-attention"],
                 "mem_fraction_static": [""],
                 "embedding_tp_size": [""]
             },
             "benchmark": {
-                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /mnt/dataset/ShareGPT_V3_unfiltered_cleaned_split.json ",
+                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /home/jovyan/share/xinyang/ShareGPT_V3_unfiltered_cleaned_split.json ",
                 "input_output_len": ["3072/1024"],
                 "num_prompt": ["1", "16", "32", "64", "128", "256"]
             }

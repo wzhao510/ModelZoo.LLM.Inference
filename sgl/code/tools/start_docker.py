@@ -299,14 +299,16 @@ def run_cmd(cmd: str, remote_ssh_info: SSHInfo,use_thread = False) -> ProcStatus
 
 def start_models(args,ssh_info_list,tag):
     slave_cmd = f'docker exec -i {args.container_name} /bin/bash -c "source /opt/conda/etc/profile.d/conda.sh; conda activate base;cd {args.target_path}/code;python3 -m src.slave --port {args.port}"'
+    incremental = "--incremental-mode" if args.incremental_mode else ""
+    specify = "--specify-task" if args.specify_task else ""
     benchmark_cmd = f'docker exec -i {args.container_name}  /bin/bash -c "source /opt/conda/etc/profile.d/conda.sh; conda activate base;cd {args.target_path}/code; \
-        python3 -m src.master \
+        python3 -u -m src.master \
             --output-path {args.output_path} \
             --image-tag {tag} \
             --task {" ".join(args.tasks)} \
-            --port {args.port}"'
-            # --incremental-mode
-            # --specify-task
+            --port {args.port} \
+            {incremental} \
+            {specify}"'
     master_ssh_info = None
     # 从服务器启动slave
     for ssh_info in ssh_info_list:
@@ -330,7 +332,7 @@ def get_args():
     parser.add_argument("--container-cycles", type=int, default=1, help="Number of cycles")
     parser.add_argument("--docker-v", type=str,nargs='*', default=[], help="Mounting path")
     parser.add_argument("--rm-exist-docker", action="store_true", help="force remove exist docker")
-    parser.add_argument("--prepare-docker-cmds",nargs='*',type=str,default=["pip install matplotlib"],help="Command for initializing the environment")
+    parser.add_argument("--prepare-docker-cmds",nargs='*',type=str,default=[],help="Command for initializing the environment")
     parser.add_argument("--target-path", type=str, default="/pde_ai/share/sgl_automation/", help="Target work path")
     # 模型相关参数
     parser.add_argument("--output-path", type=str, default="output", help="Path for storing results")
