@@ -1,0 +1,66 @@
+{
+    "tasks": [
+        {
+            "task_name": "DeepSeek-R1-BF16-mmlu",
+            "acc_type": "mmlu",
+            "launch_mode": "online",
+            "world_size": "32",
+            "server_port": "5005",
+            "environment": {
+                "MACA_SMALL_PAGESIZE_ENABLE": "1",
+                "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP": "1",
+                "TRITON_ENABLE_MACA_CHAIN_DOT_OPT": "1",
+                "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM": "1"
+            },
+            "launch_server": {
+                "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
+                "model_path": ["--model-path /models/DeepSeek-R1-BF16"],
+                "cuda_graph": [""],
+                "torch_compile": [""],
+                "dtype": [""],
+                "cache": ["--disable-radix-cache --disable-chunked-prefix-cache"],
+                "quantization": [""],
+                "chunked_prefill_size": [""],
+                "attention_backend": ["--attention-backend flashinfer"],
+                "enable_parallel": ["--tp 32 --dp 8 --enable-dp-attention"],
+                "mem_fraction_static": ["--mem-fraction-static 0.85"],
+                "embedding_tp_size": [""],
+                "mtp": [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-R1-BF16-NextN --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3"]
+            },
+            "benchmark": {
+                "command_base": "python3 bench_sglang.py --data_dir /models/acc/mmlu/data --nsub 60"
+            }
+        },
+        {
+            "task_name": "DeepSeek-R1-BF16-ceval",
+            "acc_type": "ceval",
+            "launch_mode": "online",
+            "world_size": "32",
+            "server_port": "5005",
+            "environment": {
+                "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM":"1",
+                "MACA_SMALL_PAGESIZE_ENABLE": "1",
+                "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP":"1",
+                "TRITON_ENABLE_MACA_CHAIN_DOT_OPT": "1"
+            },
+            "launch_server": {
+                "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
+                "model_path": ["--model-path /models/DeepSeek-R1-BF16"],
+                "cuda_graph": [""],
+                "torch_compile": [""],
+                "dtype": [""],
+                "cache": ["--disable-radix-cache --disable-chunked-prefix-cache"],
+                "quantization": [""],
+                "chunked_prefill_size": [""],
+                "attention_backend": ["--attention-backend flashinfer"],
+                "enable_parallel": ["--tp 32 --dp 8 --enable-dp-attention"],
+                "mem_fraction_static": ["--mem-fraction-static 0.85"],
+                "embedding_tp_size": [""],
+                "mtp": [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-R1-BF16-NextN --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3"]
+            },
+            "benchmark": {
+                "command_base": "python3 run_ceval_client.py --model /models/DeepSeek-R1-BF16 --test_jsonl /models/acc/ceval/ceval_val_cmcc.jsonl --batch_size 64"
+            }
+        }
+    ]
+}

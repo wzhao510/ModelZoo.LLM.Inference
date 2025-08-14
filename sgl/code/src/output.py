@@ -545,8 +545,12 @@ class OutputManager:
         create_file(self.total_real_progress_file)
 
         if self.args.specify_task or self.args.incremental_mode:
-            with open(self.total_real_progress_file, "r") as f:
-                self.total_real_progress_data = json.load(f)
+            with open(self.total_real_progress_file, "r+") as f:
+                if os.path.getsize(self.total_real_progress_file) == 0:
+                    self.total_real_progress_data = {"to_run": "0,0", "docker_tag": "", "tasks": []}
+                    json.dump(self.total_real_progress_data, f, indent=4, ensure_ascii=False)
+                else:
+                    self.total_real_progress_data = json.load(f)
 
         self.real_progress_data["docker_tag"] = self.args.image_tag
         self.total_real_progress_data["docker_tag"] = self.args.image_tag

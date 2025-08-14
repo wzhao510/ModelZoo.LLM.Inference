@@ -1,11 +1,4 @@
 {
-    "machine_info": [
-        {
-            "ip": "192.168.2.218",
-            "ifname":"bond0",
-            "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5"
-        }
-    ],
     "tasks": [
         {
             "task_name": "Qwen3-30B-TP2",
@@ -20,7 +13,7 @@
             },
             "launch_server": {
                 "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
-                "model_path": ["--model-path /mnt/shared_data/Qwen3-30B-A3B"],
+                "model_path": ["--model-path /models/Qwen3-30B-A3B"],
                 "cuda_graph": ["--cuda-graph-max-bs 256"],
                 "torch_compile": [""],
                 "dtype": [""],
@@ -33,7 +26,7 @@
                 "embedding_tp_size": [""]
             },
             "benchmark": {
-                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /mnt/dataset/ShareGPT_V3_unfiltered_cleaned_split.json ",
+                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json ",
                 "input_output_len": ["3072/1024"],
                 "num_prompt": ["1", "16", "32", "64", "128", "256"]
             }
@@ -51,7 +44,7 @@
             },
             "launch_server": {
                 "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
-                "model_path": ["--model-path /mnt/shared_data/Qwen3-30B-A3B"],
+                "model_path": ["--model-path /models/Qwen3-30B-A3B"],
                 "cuda_graph": ["--cuda-graph-max-bs 512"],
                 "torch_compile": [""],
                 "dtype": [""],
@@ -64,7 +57,7 @@
                 "embedding_tp_size": [""]
             },
             "benchmark": {
-                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /mnt/dataset/ShareGPT_V3_unfiltered_cleaned_split.json ",
+                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json ",
                 "input_output_len": ["3072/1024"],
                 "num_prompt": ["1", "16", "32", "64", "128", "256"]
             }

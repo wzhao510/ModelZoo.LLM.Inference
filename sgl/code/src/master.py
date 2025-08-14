@@ -285,10 +285,16 @@ class AccParser(ConfigParser):
 
         elif acc_type == TaskAccType.ceval:
             benchmark_cmds = []
-            for random in benchmark_config['random']:
+            if 'random' in benchmark_config:
+                for random in benchmark_config['random']:
+                    client_id += 1
+                    benchmark_cmds.append(
+                        BenchmarkCmds(client_id, f"{command_base} {random}")
+                    )
+            else:
                 client_id += 1
                 benchmark_cmds.append(
-                    BenchmarkCmds(client_id, f"{command_base} {random}")
+                    BenchmarkCmds(client_id, f"{command_base}")
                 )
             return benchmark_cmds
 
@@ -322,6 +328,11 @@ class TaskScheduler:
         # 2.解析出服务正常和bench PASS的任务
         # 3.放入全局变量 server_pass_list, 以备后续过滤使用
         total_file = os.path.join(self.args.output_path, f"total_real_progress_file.json")
+        directory = os.path.dirname(total_file)
+        if not os.path.exists(total_file):
+            logger.info(f'current total file is not exists..return')
+            return
+
         total_data = {}
         with open(total_file, "r") as f:
             total_data = json.load(f)
@@ -353,15 +364,18 @@ class TaskScheduler:
         if self.args.incremental_mode:
             self.pass_id_filter()
 
-        for config_path in self.args.tasks:
+        machines = read_json(self.args.machine_config)
+        self.connection = Connection(machines['machine_info'], self.args.port)
+        self.connection.connect()
+
+        for config_path in self.args.tasks_config:
             config = read_json(config_path)
             task_type = self.parse_task_type(config_path)
             config['model_name'] = self.extract_task_model_name(config_path)
-            self.connection = Connection(config['machine_info'], self.args.port)
-            self.connection.connect()
-            if task_type == TaskType.perf:
-                self.task_list.extend(PerfParser.from_config(config, self.connection, task_type, self.args.incremental_mode))
-            elif task_type == TaskType.rampup:
+
+            # if task_type == TaskType.perf:
+            #     self.task_list.extend(PerfParser.from_config(config, self.connection, task_type, self.args.incremental_mode))
+            if task_type == TaskType.rampup:
                 self.task_list.extend(RampupParser.from_config(config, self.connection, self.args.incremental_mode))
             elif task_type == TaskType.benchmark or task_type == TaskType.search:
                 self.task_list.extend(BenmchmarkParser.from_config(config, self.connection, task_type, self.args.incremental_mode))
@@ -438,7 +452,8 @@ class TaskScheduler:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-path", type=str, default="output", help="Path for storing results")
-    parser.add_argument("--tasks", type=str,nargs='*', default=["DeepSeek-R1-BF16/benchmark.json"], help="JSON file describing the task list")
+    parser.add_argument("--tasks-config", type=str, nargs='*', help="JSON file describing the task list")
+    parser.add_argument("--machine-config", type=str, help="JSON file describing the machine list")
     parser.add_argument("--image-tag", type=str, default=" ",help="docker image tag")
     parser.add_argument("--incremental-mode", action="store_true", help="only run case not in pass file")
     parser.add_argument("--specify-task", action="store_true", help="Starting from the designated task")

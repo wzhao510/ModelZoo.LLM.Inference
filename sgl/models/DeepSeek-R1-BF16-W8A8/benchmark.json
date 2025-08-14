@@ -1,19 +1,7 @@
 {
-    "machine_info": [
-        {
-            "ip": "192.168.11.25",
-            "ifname":"inbond1",
-            "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5"
-        },
-        {
-            "ip": "192.168.11.22",
-            "ifname":"inbond1",
-            "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5"
-        }
-    ],
     "tasks": [
         {
-            "task_name": "sglang_bench",
+            "task_name": "DS-R1-W8A8",
             "launch_mode": "online",
             "world_size": "16",
             "server_port": "5005",
@@ -21,13 +9,11 @@
                 "MACA_SMALL_PAGESIZE_ENABLE": "1",
                 "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP": "1",
                 "TRITON_ENABLE_MACA_CHAIN_DOT_OPT": "1",
-                "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM": "1",
-                "CUDA_GRAPH_DP_USE_SUM_BS": "False",
-                "FUSED_RMSNORM_QUANT": "True"
+                "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM": "1"
             },
             "launch_server": {
                 "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
-                "model_path": ["--model-path /oschina0/kychina/models/DeepSeek-R1-BF16_W8A8/vllm_quant_model"],
+                "model_path": ["--model-path /models/DeepSeek-R1-BF16_W8A8/vllm_quant_model"],
                 "cuda_graph": [""],
                 "torch_compile": [""],
                 "dtype": [""],
@@ -38,13 +24,12 @@
                 "enable_parallel": ["--tp 16 --dp 4 --enable-dp-attention"],
                 "mem_fraction_static": [""],
                 "embedding_tp_size": [""],
-                "mtp": [" --speculative-algorithm NEXTN --speculative-draft-model-path /oschina0/kychina/models/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8",""
-                        ]
+                "mtp": [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"]
             },
             "benchmark": {
-                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /oschina0/kychina/tutorial/dataset/ShareGPT_V3_unfiltered_cleaned_split.json ",
-                "input_output_len": ["3072/1024", "128/1024"],
-                "num_prompt": ["1", "16", "128", "256", "32", "64"]
+                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json ",
+                "input_output_len": ["3072/1024"],
+                "num_prompt": ["1", "16", "32", "64", "128"]
             }
         }
     ]

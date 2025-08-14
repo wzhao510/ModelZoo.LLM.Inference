@@ -1,0 +1,14 @@
+{
+  "machine_info": [
+    {
+        "ip": "192.168.3.54",
+        "ifname":"bond0",
+        "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3"
+    },
+    {
+        "ip": "192.168.3.77",
+        "ifname":"bond0",
+        "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3"
+    }
+  ]
+}

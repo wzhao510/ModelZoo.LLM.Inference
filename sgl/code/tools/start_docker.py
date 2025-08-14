@@ -1,17 +1,18 @@
 import argparse
 import sys
-import os
 import dataclasses
-import subprocess
 from typing import Optional, List, Dict
 import threading
 import json
 import logging
-import psutil
 import time
-from utils.utils import *
+import os
+import socket
+import subprocess
+import re
 
 logger = logging.getLogger(__name__)
+
 @dataclasses.dataclass
 class ProcStatus:
     handle: Optional[None] = None
@@ -20,12 +21,14 @@ class ProcStatus:
     print_output: Optional[bool] = True
     ready_flag: Optional[List[str]] = None
     is_ready: Optional[bool] = False
+    thread: Optional[None] = None
 
 @dataclasses.dataclass
 class SSHInfo:
     ip: Optional[str] = ''
     user: Optional[str] = ''
     passwd: Optional[str] = '' 
+    is_local: Optional[bool] = False
 
 
 @dataclasses.dataclass
@@ -84,6 +87,7 @@ def launch_docker(ssh_info_list, args, iamge_id):
                 1.镜像id相同，并且force_rm = False,直接start容器
                 2.镜像id不同或者force_rm = True，停止容器，删除容器，重新创建
     '''
+
     for ssh_info in ssh_info_list: 
         print(f'#################################################################### start docker on {ssh_info.ip} ####################################################################')
         start_docker(args, iamge_id, ssh_info, prepare_docker_cmds=args.prepare_docker_cmds, force_rm = args.rm_exist_docker)
@@ -100,6 +104,16 @@ def start_docker(args, image_id: str, remote_ssh_info: SSHInfo, prepare_docker_c
     for v in docker_v:
         docker_v_cmd += f"-v {v.strip()} "
     
+    if remote_ssh_info.is_local:
+        current_file_path = os.path.abspath(__file__)
+        index = current_file_path.find('ModelZoo.LLM.Inference')
+        if index >= 0:
+            docker_v_cmd += f" -v {current_file_path[:index]}ModelZoo.LLM.Inference:{args.target_path} "
+        docker_v_cmd += f" -v {args.output_path}:{args.output_path} "
+        for config_path in args.tasks_config:
+            docker_v_cmd += f" -v {config_path}:{config_path} "
+        docker_v_cmd += f" -v {args.machine_config}:{args.machine_config} "
+    
     docker_start_cmd = f"docker run -it --net=host --uts=host --ipc=host --device=/dev/dri --device=/dev/mxcd  --device=/dev/infiniband --privileged=true \
                          --group-add video --security-opt seccomp=unconfined --security-opt apparmor=unconfined --shm-size 100gb --ulimit memlock=-1 \
                          -d \
@@ -113,7 +127,6 @@ def start_docker(args, image_id: str, remote_ssh_info: SSHInfo, prepare_docker_c
         print(f'## start docker {container_name=} {image_id=} on {remote_ssh_info.ip} faild !!')
         return
     
-
     for cmd in prepare_docker_cmds:
         if not cmd:
             continue
@@ -195,8 +208,6 @@ def get_docker_ps( remote_ssh_info: SSHInfo) -> Dict[str, DockerPsInfo]:
     return docker_ps_name
 
 
-    
-
 def get_docker_images(remote_ssh_info: SSHInfo) -> Dict[str, DockerImagesInfo]:
     images_cmd = 'docker images'
     proc_status = run_cmd(images_cmd,  remote_ssh_info)
@@ -253,59 +264,94 @@ def run_pull_command(rank,pull_flag,ssh_info,args,image_repository,image_tag):
        pull_flag[rank] = 1
 
 
+def get_ip() -> str:
+    host_ip = os.getenv("SGLANG_HOST_IP", "") or os.getenv("HOST_IP", "")
+    if host_ip:
+        return host_ip
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))  # Doesn't need to be reachable
+        return s.getsockname()[0]
+    except Exception:
+        pass
+    return "0.0.0.0"
 
-def get_ssh_info_list(args,json_file_path):
+
+def get_ssh_info_list(args, json_file_path):
     '''
         获取服务器信息列表
     '''
-    with open(json_file_path, 'r') as f:
-        data = json.load(f)
-    ssh_info_list = []
-    machine_info_list = data['machine_info']
-    for  machine_info in machine_info_list:       
-        ssh_info_list.append(SSHInfo( machine_info['ip'],args.user))
-    return ssh_info_list
-
-def run_cmd(cmd: str, remote_ssh_info: SSHInfo,use_thread = False) -> ProcStatus:
-    """"
-        is_master:是否使用ssh命令,本机不需要使用
-    """
     local_ip = get_ip()
     if local_ip == '0.0.0.0':
         print("## unable to get local ip !")
         exit(1)
-    if remote_ssh_info.ip == local_ip:
-        is_master = True
-    else:
-        is_master = False
+
+    with open(json_file_path, 'r') as f:
+        config_str = f.read()
+    json_str = re.sub('//.*', '', config_str)
+    json_str = re.sub('/\*.*?\*/', '', json_str, flags=re.S)
+    config = json.loads(json_str)
+
+    ssh_info_list = []
+    machine_info_list = config['machine_info']
+    for machine_info in machine_info_list:
+        is_local = machine_info['ip'] == local_ip
+        ssh_info_list.append(SSHInfo(machine_info['ip'], args.user, is_local=is_local))
+    return ssh_info_list
+
+
+def run_sys_cmd(cmd: str, proc: ProcStatus):
+    """Run [cmd] and return its output."""
+    print(f"# Run {cmd}")
+    proc.handle = subprocess.Popen([cmd], shell=True, bufsize=1, text=True, encoding='utf-8',
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    while True:
+        line = proc.handle.stdout.readline()
+        if not line and proc.handle.poll() is not None:
+            # print(f"{cmd} exit")
+            break
+
+        # store output to memory or not
+        if proc.store_output:
+            if proc.output:
+                proc.output.append(line.strip())
+            else:
+                proc.output = [line.strip()]
+
+        if proc.print_output:
+            print(line.strip())
+
+        # check process ready
+        if not proc.is_ready and proc.ready_flag:
+            for flag in proc.ready_flag:
+                if flag in line:
+                    proc.is_ready = True
+                    break
+
+
+def run_cmd(cmd: str, remote_ssh_info: SSHInfo,use_thread = False) -> ProcStatus:
+    if not remote_ssh_info.is_local:
         cmd =  f"ssh -o StrictHostKeyChecking=no {remote_ssh_info.user}@{remote_ssh_info.ip} '{cmd}'"
 
-    op_content = OperationContent(
-        id=get_next_op_id(),
-        type=OperationType.RUN,
-        envs=None,
-        cmd=cmd,
-        store_output=True,
-        is_ready=True,
-        is_async=True,
-        is_master=is_master)
+    proc = ProcStatus(store_output=True, is_ready=True)
     if use_thread:
-        op_content.thread = threading.Thread(target = run_sys_cmd,args =(op_content,))
-        op_content.thread.start()
-        op_list.append(op_content)
+        proc.thread = threading.Thread(target = run_sys_cmd,args =(cmd, proc,))
+        proc.thread.start()
+        op_list.append(proc)
     else:
-        run_sys_cmd(op_content)
-    return op_content
+        run_sys_cmd(cmd, proc)
+    return proc
 
 def start_models(args,ssh_info_list,tag):
-    slave_cmd = f'docker exec -i {args.container_name} /bin/bash -c "source /opt/conda/etc/profile.d/conda.sh; conda activate base;cd {args.target_path}/code;python3 -m src.slave --port {args.port}"'
+    slave_cmd = f'docker exec -i {args.container_name} /bin/bash -c "source /opt/conda/etc/profile.d/conda.sh; conda activate base;cd {args.target_path}/code;python3 -m src.slave --port {args.port} &"'
     incremental = "--incremental-mode" if args.incremental_mode else ""
     specify = "--specify-task" if args.specify_task else ""
     benchmark_cmd = f'docker exec -i {args.container_name}  /bin/bash -c "source /opt/conda/etc/profile.d/conda.sh; conda activate base;cd {args.target_path}/code; \
         python3 -u -m src.master \
             --output-path {args.output_path} \
+            --machine-config {args.machine_config} \
             --image-tag {tag} \
-            --task {" ".join(args.tasks)} \
+            --tasks-config {" ".join(args.tasks_config)} \
             --port {args.port} \
             {incremental} \
             {specify}"'
@@ -327,16 +373,18 @@ def start_models(args,ssh_info_list,tag):
 def get_args():
     parser = argparse.ArgumentParser()
     # 容器相关参数
-    parser.add_argument("--container-name", type=str, default="dockertest_dyl", help="container name")
-    parser.add_argument("--container-config", type=str,nargs='*', default=[], help="eg:--docker-config  repository1:tag    repository2:tag   repository1:tag   repository2:tag")
+    parser.add_argument("--container-name", type=str, default="dockertest", help="container name")
+    parser.add_argument("--container-images", type=str,nargs='*', default=[], help="eg:--container-images repository1:tag repository2:tag")
     parser.add_argument("--container-cycles", type=int, default=1, help="Number of cycles")
     parser.add_argument("--docker-v", type=str,nargs='*', default=[], help="Mounting path")
     parser.add_argument("--rm-exist-docker", action="store_true", help="force remove exist docker")
     parser.add_argument("--prepare-docker-cmds",nargs='*',type=str,default=[],help="Command for initializing the environment")
-    parser.add_argument("--target-path", type=str, default="/pde_ai/share/sgl_automation/", help="Target work path")
+    parser.add_argument("--target-path", type=str, default="/workspace/ModelZoo.LLM.Inference/", help="Target work path")
+    parser.add_argument("--pull-images", action="store_true", help="whether to pull image")
     # 模型相关参数
+    parser.add_argument("--machine-config", type=str, help="JSON file describing the machine list")
+    parser.add_argument("--tasks-config", type=str, nargs='*', help="JSON file describing the task list")
     parser.add_argument("--output-path", type=str, default="output", help="Path for storing results")
-    parser.add_argument("--tasks", type=str,nargs='*', default=["DeepSeek-R1-BF16/benchmark.json"], help="JSON file describing the task list")
     parser.add_argument("--user", type=str, default="root", help="client user")
     parser.add_argument("--port",type=int,default=20000,help="client port bind to recv msg")
     parser.add_argument("--incremental-mode", action="store_true", help="only run case not in pass file")
@@ -345,9 +393,30 @@ def get_args():
     args = parser.parse_args(sys.argv[1:])
     return args
 
+
+def convert_path_to_abs(args):
+    for i, config_path in enumerate(args.tasks_config):
+        if not os.path.isabs(config_path):
+            args.tasks_config[i] = os.path.abspath(config_path)
+            
+    if not os.path.isabs(args.machine_config):
+        args.machine_config = os.path.abspath(args.machine_config)
+    args.output_path = os.path.abspath(args.output_path)
+
+
 def run(args,ssh_info_list,repository,tag):
     # 获取镜像id
-    image_id = pull_docker_image(ssh_info_list,args,repository,tag)
+    if args.pull_images:
+        image_id = pull_docker_image(ssh_info_list,args,repository,tag)
+    else:
+        for ssh_info in ssh_info_list:
+            image_id = get_image_id(args,ssh_info,repository,tag)
+            if image_id == '':
+                break
+    if image_id == '':
+        print(f'## image {repository}:{tag} not exist, exit!!')
+        sys.exit(-1)
+
     # 启动容器
     launch_docker(ssh_info_list, args, image_id)
     # 杀死其他进程,这里没有设计exit_sglang.py文件，此功能暂时不加
@@ -356,12 +425,12 @@ def run(args,ssh_info_list,repository,tag):
     # 启动模型脚本
     start_models(args,ssh_info_list,tag)
 
-
         
 if __name__ == "__main__":
     args = get_args()
-    ssh_info_list = get_ssh_info_list(args,args.tasks[0])
-    container_list = args.container_config * args.container_cycles
+    convert_path_to_abs(args)
+    ssh_info_list = get_ssh_info_list(args,args.machine_config)
+    container_list = args.container_images * args.container_cycles
     for config in container_list:
         repository, tag = config.split(":")
         run(args,ssh_info_list,repository,tag)
@@ -370,5 +439,5 @@ if __name__ == "__main__":
             op.thread.join()
         op_list.clear()
 
-    stop_docker_container(ssh_info_list,args.container_name)
+    stop_docker_container(ssh_info_list, args.container_name)
      
