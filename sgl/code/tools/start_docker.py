@@ -109,7 +109,6 @@ def start_docker(args, image_id: str, remote_ssh_info: SSHInfo, prepare_docker_c
         index = current_file_path.find('ModelZoo.LLM.Inference')
         if index >= 0:
             docker_v_cmd += f" -v {current_file_path[:index]}ModelZoo.LLM.Inference:{args.target_path} "
-        docker_v_cmd += f" -v {args.output_path}:{args.output_path} "
         for config_path in args.tasks_config:
             docker_v_cmd += f" -v {config_path}:{config_path} "
         docker_v_cmd += f" -v {args.machine_config}:{args.machine_config} "
@@ -343,10 +342,12 @@ def run_cmd(cmd: str, remote_ssh_info: SSHInfo,use_thread = False) -> ProcStatus
     return proc
 
 def start_models(args,ssh_info_list,tag):
-    slave_cmd = f'docker exec -i {args.container_name} /bin/bash -c "source /opt/conda/etc/profile.d/conda.sh; conda activate base;cd {args.target_path}/code;python3 -m src.slave --port {args.port} &"'
+    target_path = args.target_path.rstrip('/')
+    slave_cmd = f'docker exec -i {args.container_name} /bin/bash -c "source /opt/conda/etc/profile.d/conda.sh; conda activate base;cd {target_path}/code;python3 -u -m src.slave --port {args.port} 2>&1"'
     incremental = "--incremental-mode" if args.incremental_mode else ""
     specify = "--specify-task" if args.specify_task else ""
-    benchmark_cmd = f'docker exec -i {args.container_name}  /bin/bash -c "source /opt/conda/etc/profile.d/conda.sh; conda activate base;cd {args.target_path}/code; \
+
+    benchmark_cmd = f'docker exec -i {args.container_name}  /bin/bash -c "source /opt/conda/etc/profile.d/conda.sh; conda activate base;cd {target_path}/code; \
         python3 -u -m src.master \
             --output-path {args.output_path} \
             --machine-config {args.machine_config} \
@@ -354,7 +355,7 @@ def start_models(args,ssh_info_list,tag):
             --tasks-config {" ".join(args.tasks_config)} \
             --port {args.port} \
             {incremental} \
-            {specify}"'
+            {specify} 2>&1"'
     master_ssh_info = None
     # 从服务器启动slave
     for ssh_info in ssh_info_list:

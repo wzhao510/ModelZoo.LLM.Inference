@@ -681,7 +681,7 @@ class OutputManager:
         if self.task.launch_mode is TaskLaunchMode.online:
             for command in self.task.bench_serving:
                 result_file_text = ''
-                if self.task.task_type in [TaskType.benchmark, TaskType.rampup, TaskType.perf,TaskType.search]:
+                if self.task.task_type in [TaskType.benchmark, TaskType.rampup, TaskType.search]:
                     bench_serving_args_str = OutputManager.get_bench_serving_args_str(command.get_cmd())
                     result_file_text = os.path.join(self.get_result_path(),
                                                 f"{bench_serving_args_str}_result.txt"
@@ -719,7 +719,7 @@ class OutputManager:
                                             )
             create_file(result_file_text)
             
-            if self.task.task_type in [TaskType.perf]:
+            if self.task.task_type in [TaskType.benchmark]:
                 result_file_jsonl = os.path.join(self.get_result_path(),
                                                 f"{bench_serving_args_str}_result.jsonl")
                 create_file(result_file_jsonl)
@@ -734,10 +734,6 @@ class OutputManager:
             result_file_jsonl = os.path.join(self.get_result_path(),
                                             f"{bench_serving_args_str}_result.jsonl"
                                             )
-            return f"{command} --output-file {result_file_jsonl}"
-        elif self.task.task_type is TaskType.perf:
-            result_file_jsonl = os.path.join(self.get_result_path(),
-                                f"{bench_serving_args_str}_result.jsonl")
             if self.task.launch_mode is TaskLaunchMode.offline:
                 return f"{command} --result-filename {result_file_jsonl}"
             else:
@@ -772,15 +768,13 @@ class OutputManager:
                 pass
             elif task.task_type == TaskType.rampup:
                 pass
-            elif task.task_type == TaskType.perf:
-                pass
             elif task.task_type == TaskType.search:
                 pass
         return ''
 
     def write_client_result(self,command,result,is_pass=True) -> None:
         """ write client result log to file"""
-        if self.task.task_type in [TaskType.benchmark, TaskType.rampup, TaskType.perf, TaskType.search]:
+        if self.task.task_type in [TaskType.benchmark, TaskType.rampup, TaskType.search]:
             bench_serving_args_str = OutputManager.get_bench_serving_args_str(command)
             result_file_text = os.path.join(self.get_result_path(),
                                             f"{bench_serving_args_str}_result.txt"
@@ -812,7 +806,6 @@ class OutputManager:
 
     def extract_result_metrics(self)-> None:
         result_files_path = self.get_result_path()
-        
         original_dir = os.getcwd()
         try:
             os.chdir(result_files_path)

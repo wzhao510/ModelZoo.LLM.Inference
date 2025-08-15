@@ -290,7 +290,7 @@ class TaskOnline(BaseTask):
                 type=OperationType.RUN,
                 cmd=one_bench_with_output,
                 store_output=True,
-                print_output=False,
+                print_output=True,
                 is_master=True,
                 is_benching=True
             )
@@ -349,10 +349,6 @@ class TaskOffline(BaseTask):
         else:
             self.output_manager.write_real_progress_result('fail',self.task_id)
             self.output_manager.write_client_result(self.server_cmd, result, False)
-
-        global test_stop
-        if test_stop:
-            return
         self.output_manager.extract_result_metrics()
         
         

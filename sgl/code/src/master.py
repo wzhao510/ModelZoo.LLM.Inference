@@ -43,14 +43,13 @@ class ConfigParser:
         return config[key] if key in config.keys() else default_value
 
     @staticmethod
-    def parse_benchmark(benchmark_config, task_type):
-        command_base = ConfigParser.get_config_default(benchmark_config, 'command_base', '')
-
+    def parse_benchmark(benchmark_config, task_type, launch_mode):
+        command_base = ConfigParser.get_config_default(benchmark_config, 'command_base', '') if launch_mode == 'online' else ''
         client_id = -1
         benchmark_list = []
         for input_output in benchmark_config['input_output_len']:
             input_len, output_len = input_output.split('/')
-            if task_type in [TaskType.benchmark,TaskType.perf]:
+            if task_type in [TaskType.benchmark]:
                 for bs in benchmark_config['num_prompt']:
                     client_id += 1
                     benchmark_list.append(
@@ -89,7 +88,8 @@ class BenmchmarkParser(ConfigParser):
 
         for task in config['tasks']:
             server_list = ConfigParser.online_server(task['launch_server'])
-            benchmark_list = ConfigParser.parse_benchmark(task['benchmark'], task_type)
+            launch_mode = ConfigParser.get_config_default(task, 'launch_mode', 'online')
+            benchmark_list = ConfigParser.parse_benchmark(task['benchmark'], task_type, launch_mode)
             envs = ConfigParser.get_config_default(task, 'environment', [])
             envs['GLOO_SOCKET_IFNAME'] = connection.nodes_info[0].interface
             envs['MCCL_IB_HCA'] = connection.nodes_info[0].ib_hcas
@@ -101,18 +101,29 @@ class BenmchmarkParser(ConfigParser):
                 max_tpot = benchmark["max_tpot"]
 
             for server_cmd in server_list:
-                server_id_global += 1
-                if str(server_id_global) in server_pass_list and len(server_pass_list[str(server_id_global)]) == len(benchmark_list):
-                    continue
+                if launch_mode == 'online':
+                    server_id_global += 1
+                    if str(server_id_global) in server_pass_list and len(server_pass_list[str(server_id_global)]) == len(benchmark_list):
+                        continue
 
-                benchmark_list_filter = ConfigParser.filter_benchmark(server_id_global, benchmark_list, incremental_mode)
-                _task = TaskOnline(connection, server_cmd, benchmark_list_filter, server_id_global, envs, task['server_port'])
-                _task.task_name = ConfigParser.get_config_default(task, 'task_name', f' ')
-                _task.task_type = task_type
-                _task.model_name = config['model_name']
-                _task.max_ttft = max_ttft
-                _task.max_tpot = max_tpot
-                task_list.append(_task)
+                    benchmark_list_filter = ConfigParser.filter_benchmark(server_id_global, benchmark_list, incremental_mode)
+                    _task = TaskOnline(connection, server_cmd, benchmark_list_filter, server_id_global, envs, task['server_port'])
+                    _task.task_name = ConfigParser.get_config_default(task, 'task_name', f' ')
+                    _task.task_type = task_type
+                    _task.model_name = config['model_name']
+                    _task.max_ttft = max_ttft
+                    _task.max_tpot = max_tpot
+                    task_list.append(_task)
+                else:
+                    for benchmark in benchmark_list:
+                        server_id_global += 1
+                        if str(server_id_global) in server_pass_list:
+                            continue
+                        _task = TaskOffline(connection, server_cmd+" "+benchmark.get_cmd(), server_id_global, envs, task['server_port'])
+                        _task.task_name = task['task_name']
+                        _task.task_type = task_type
+                        _task.model_name = config['model_name']
+                        task_list.append(_task)
 
         return task_list
 
@@ -127,9 +138,9 @@ class PerfParser(ConfigParser):
             envs = ConfigParser.get_config_default(task, 'environment', [])
             envs['GLOO_SOCKET_IFNAME'] = connection.nodes_info[0].interface
             envs['MCCL_IB_HCA'] = connection.nodes_info[0].ib_hcas
-            benchmark_list = ConfigParser.parse_benchmark(task['benchmark'],task_type)
-            server_cmd = task['server_base']['command_base']+" " + ' '.join(task['server_base']['param'])
             launch_mode = ConfigParser.get_config_default(task, 'launch_mode', 'online')
+            benchmark_list = ConfigParser.parse_benchmark(task['benchmark'],task_type, launch_mode)
+            server_cmd = task['server_base']['command_base']+" " + ' '.join(task['server_base']['param'])
 
             if launch_mode == 'online':
                 server_id_global += 1
@@ -308,9 +319,7 @@ class TaskScheduler:
         self.connection:Optional[Connection] = None
 
     def parse_task_type(self, config) -> TaskType:
-        if config.endswith("perf.json"):
-            return TaskType.perf
-        elif config.endswith("benchmark.json"):
+        if config.endswith("benchmark.json"):
             return TaskType.benchmark
         elif config.endswith("rampup_bench.json"):
             return TaskType.rampup
@@ -372,9 +381,6 @@ class TaskScheduler:
             config = read_json(config_path)
             task_type = self.parse_task_type(config_path)
             config['model_name'] = self.extract_task_model_name(config_path)
-
-            # if task_type == TaskType.perf:
-            #     self.task_list.extend(PerfParser.from_config(config, self.connection, task_type, self.args.incremental_mode))
             if task_type == TaskType.rampup:
                 self.task_list.extend(RampupParser.from_config(config, self.connection, self.args.incremental_mode))
             elif task_type == TaskType.benchmark or task_type == TaskType.search:
