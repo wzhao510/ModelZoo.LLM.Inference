@@ -1,0 +1,14 @@
+{
+    "//": "",
+    "model_config":{
+        "ori_path":"/external/ai/models/llm/StableDiffusion/stable-diffusion-3.5-medium/",
+        "dataset":"./data/PartiPrompts.tsv",
+        "seed": 0,
+        "num_inference_steps": 50,
+        "outputs_size":["1024#1024", "512#512"],
+        "scheduler":"FlowMatchEulerDiscrete",
+        "max_sequence_length":256,
+        "guidance_scale":4.5,
+        "use_resolution_binning":true
+    }
+}

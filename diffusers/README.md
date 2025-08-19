@@ -117,3 +117,21 @@ average score: 0.390
 Output 2 images, inference cost 29.569 seconds
 StableDiffusion_ox_sd_3_step50_images_per_prompt1 FPS : 0.068, latency : 14784.265ms, memory usage: 43.989 GB
 StableDiffusion_ox_sd_3_step50_images_per_prompt1 Avg Score : 0.390
+
+## sd3.5 medium demo 示例：
+```python
+python code/sample_sd35_medium.py ./models/sd35_medium/ 50 1 512 0 # 执行PyTorch推理，step=50，出图尺寸为512*512，每个prompt生成1张图，使用0卡
+```
+参数
+# modelpath:                需测试的模型路径, 内部包含config.json模型参数文件已配置好
+# step:                     推理step
+# images_per_prompt:        每个prompt生成图片数量
+# output_size:              生成图片尺寸 (size*size)
+# device_id:                使用gpu编号
+
+输出示例
+```
+Output 2 images, inference cost 8.060 seconds
+StableDiffusion_sd35_medium_step50_images_per_prompt1 FPS : 0.248, latency : 4029.977ms, memory usage: 24.563 GB
+StableDiffusion_sd35_medium_step50_images_per_prompt1 Avg Score : 0.386
+```
