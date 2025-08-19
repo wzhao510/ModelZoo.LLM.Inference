@@ -550,7 +550,7 @@ cd /workspace/ModelZoo.LLM.Inference/code
 # 在所有从节点执行， port 可自定义（保持主从一致），
 python3 -m src.slave --port 20005
 # 在主节点执行， port 可自定义（保持主从一致），可不配置，默认20000
-python3 -m src.master --output-path ../outputs/ --tasks ../models/DeepSeek-R1-BF16-W8A8/benchmark.json ../models/DeepSeek-R1-BF16-W8A8/acc.json --port 20005
+python3 -m src.master --output-path ../outputs/ --tasks ../models/DeepSeek-R1-BF16-W8A8/benchmark.json ../models/DeepSeek-R1-BF16-W8A8/acc.json --machine-config ../models/mechines.json --port 20005
 
 # 参数说明：
 --output-path：结果输出的根目录，最好是外部挂载进容器的目录，防止容器删了结果丢失

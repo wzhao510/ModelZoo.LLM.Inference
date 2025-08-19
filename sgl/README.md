@@ -54,7 +54,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 | ---     | ---  |
 | ip      | IP地址 |
 | ifname  | 网络接口名，填写与ip匹配的网卡的名。可以参考下面命令来获取<br>ip -o addr show \| grep  "inet {IP地址}" \| awk '{print $2}' \| sed 's/://'<br>如：<br>ip -o addr show \| grep  "inet 127.0.0.1" \| awk '{print $2}' \| sed 's/://' |
-| ib_hcas | 主机通道适配器<br>使用ibstat命令来获取，ibstat 输出类似如下结果<br>```shell<br>root@****:~# ibstat<br>CA 'mlx5_0'<br>        CA type: ****<br>        Number of ports: 1<br>        ...<br>        Port 1:<br>                State: Active<br>                Physical state: LinkUp<br>                Rate: 200<br>                Base lid: 0<br>                ...<br>CA 'mlx5_1'<br>        CA type: ****<br>        Number of ports: 1<br>        ...<br>        Port 1:<br>                State: Active<br>                Physical state: LinkUp<br>                Rate: 200<br>                ...<br>CA 'mlx5_bond_0'<br>        CA type: ****<br>        Number of ports: 1<br>        ...<br>        Port 1:<br>                State: Active<br>                Physical state: LinkUp<br>                Rate: 100<br>                ...<br>...<br>```<br>请收集所有名称符合 mlx5_\[数字\]，并且State为Active的结果。<br>如上面，则应设置为 "ib_hcas":"mlx5_0,mlx5_1"， bond_0不需要带上。 |
+| ib_hcas | 主机通道适配器<br>使用ibstat命令来获取，ibstat 输出类似如下结果<pre style="font-size: 12px; line-height: 1.2;">root@****:~# ibstat<br>CA 'mlx5_0'<br>        CA type: ****<br>        Number of ports: 1<br>        ...<br>        Port 1:<br>                State: Active<br>                Physical state: LinkUp<br>                Rate: 200<br>                Base lid: 0<br>                ...<br>CA 'mlx5_1'<br>        CA type: ****<br>        Number of ports: 1<br>        ...<br>        Port 1:<br>                State: Active<br>                Physical state: LinkUp<br>                Rate: 200<br>                ...<br>CA 'mlx5_bond_0'<br>        CA type: ****<br>        Number of ports: 1<br>        ...<br>        Port 1:<br>                State: Active<br>                Physical state: LinkUp<br>                Rate: 100<br>                ...<br>...</pre>请收集所有名称符合 mlx5_\[数字\]，并且State为Active的结果。<br>如上面，则应设置为 "ib_hcas":"mlx5_0,mlx5_1"， bond_0不需要带上。 |
 
 已有配置默认路径在sgl/models/mechines.json：
 
@@ -170,7 +170,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 | ---                     | --- |
 | max_concurrent_requests | 爬坡过程参数，只能有一个列表<br>如：\["1","4","8","16"\] |
 | rampup_period           | 爬坡间隔参数，可以有多组，每组长度都必须和max_concurrent_requests等长<br>如：\["5,5,10,10"\]<br>或：\["5,5,10,10", "10,10,20,20"\] |
-| requests_configs        | 请求数量控制参数。由下面三个参数构成<br>num_warmup_requests_ratio 阶段请求数倍率\[必选\]<br>num_warmup_requests_ratio 请求数倍率\[必选\]<br>least_requests_num 每次爬坡发送最小请求数\[可选\]<br>如：--num_warmup_requests_ratio 4 --num_benchmark_requests_ratio 16<br>或：--num_warmup_requests_ratio 4 --num_benchmark_requests_ratio 16 --least_requests_num 16 |
+| requests_configs        | 请求数量控制参数。由下面三个参数构成<br>num\_warmup\_requests\_ratio：warmup倍率\[必选\]<br>num\_benchmark\_requests\_ratio：请求数倍率\[必选\]<br>least\_requests\_num：每次爬坡发送最小请求数\[可选\]<br>如：--num_warmup_requests_ratio 4 --num_benchmark_requests_ratio 16<br>或：--num_warmup_requests_ratio 4 --num_benchmark_requests_ratio 16 --least_requests_num 16 |
 | input_output_len        | 输入token长度/输出token长度 |
 
 ```json
@@ -206,12 +206,12 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
             },
             "benchmark": {
                 "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json ",
-                "max_concurrent_requests":["1","4","8","16","32","64","80","100"], // 爬坡过程参数，只能有一个列表
-                "rampup_period": ["5,5,10,10,20,20,30,30"], // 爬坡间隔参数，可以有多组，每组长度都必须和max_concurrent_requests等长
+                "max_concurrent_requests":["1","4","8","16","32","64","80","100"],
+                "rampup_period": ["5,5,10,10,20,20,30,30"],
                 "requests_configs": [
                     " --num_warmup_requests_ratio 4 --num_benchmark_requests_ratio 16 "
-                ], // warmup阶段请求数倍率 benchmark请求数倍率，还有个可选参数--least_requests_num 表示每次爬坡发送最小请求数
-                "input_output_len": ["128/128"] // intput_len 3072 / output_len 1024
+                ], 
+                "input_output_len": ["128/128"]
             }
         }
     ]
@@ -434,7 +434,7 @@ benchmark|perf|rampup
 　　　　　│　　├── *_result.jsonl                         # 结果
 　　　　　│　　├── *_result.txt                           # 过程输出
 　　　　　│　　└── *_result.csv                           # 指标提取
-　　　　　└── {时间戳}_result.csv                         # 所有精度指标汇总
+　　　　　└── {时间戳}_result.csv                         # 各类指标汇总
 
 search/
 　├── logs/
@@ -453,7 +453,7 @@ search/
 　　　　　│　　├── *_result.txt                          # 过程输出
 　　　　　│　　└── *_result.csv                          # 指标提取
 　　　　　├── *.png                                      # 
-　　　　　└── {时间戳}_result.csv                        # 所有指标汇总
+　　　　　└── {时间戳}_result.csv                        # 摸高指标汇总
 ```
 
 # 4 启动测试
@@ -462,7 +462,7 @@ search/
 
 ### 4.1.1 镜像准备
 
-使用docker pull ${image_name}:${tag} 命令把modelzoo镜像拉取到本地，如果涉及多个节点的，需要在所有节点机器上拉取同一个镜像，确保多机环境一致， 多机测试时必须使用同一个镜像搭建容器， 搭建容器命令可参考如下, 其中`--security-opt seccomp=unconfined`必须加上， 否则会出现线程权限不足报错。-v 处的目录映射为推荐方式，可以根据实际情况调整
+使用`docker pull ${image_name}:${tag}` 命令把modelzoo镜像拉取到本地，如果涉及多个节点的，需要在所有节点机器上拉取同一个镜像，确保多机环境一致， 多机测试时必须使用同一个镜像搭建容器， 搭建容器命令可参考如下, 其中`--security-opt seccomp=unconfined`必须加上， 否则会出现线程权限不足报错。-v 处的目录映射为推荐方式，可以根据实际情况调整
 
 ```shell
 docker run -it --device=/dev/dri --device=/dev/mxcd --device=/dev/infiniband --privileged=true --group-add video --name sglang_bench --device=/dev/mem --network=host --security-opt seccomp=unconfined --security-opt apparmor=unconfined --shm-size '100gb' --ulimit memlock=-1 -v /data/models:/models  $image_id /bin/bash
@@ -550,7 +550,7 @@ cd /workspace/ModelZoo.LLM.Inference/code
 # 在所有从节点执行， port 可自定义（保持主从一致），
 python3 -m src.slave --port 20005
 # 在主节点执行， port 可自定义（保持主从一致），可不配置，默认20000
-python3 -m src.master --output-path ../outputs/ --tasks ../models/DeepSeek-R1-BF16-W8A8/benchmark.json ../models/DeepSeek-R1-BF16-W8A8/acc.json --port 20005
+python3 -m src.master --output-path ../outputs/ --tasks ../models/DeepSeek-R1-BF16-W8A8/benchmark.json ../models/DeepSeek-R1-BF16-W8A8/acc.json --machine-config ../models/mechines.json --port 20005
 
 # 参数说明：
 --output-path：结果输出的根目录，最好是外部挂载进容器的目录，防止容器删了结果丢失
@@ -567,7 +567,7 @@ python3 -m src.master --output-path ../outputs/ --tasks ../models/DeepSeek-R1-BF
 
 ### 4.2.1 镜像和代码准备
 
-使用docker pull ${image_name}:${tag} 命令把modelzoo镜像拉取到本地，如果涉及多个节点的，需要在所有节点机器上拉取同一个镜像，确保多机环境一致
+使用`docker pull ${image_name}:${tag}` 命令把modelzoo镜像拉取到本地，如果涉及多个节点的，需要在所有节点机器上拉取同一个镜像，确保多机环境一致
 
 在主节点上创建一个临时镜像，可以参考下面命令：
 
