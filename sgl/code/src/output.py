@@ -834,12 +834,19 @@ class OutputManager:
                         print(running_server_args_str,file=f)
 
             # 目前只有mmlu是从结果的jsonl提取，替换sorted_files进行结果提取
-            if self.task.task_type == TaskType.acc and self.task.acc_type == TaskAccType.mmlu:
-                jsonl_file = [
-                    entry.name for entry in os.scandir('.')
-                    if entry.name.endswith('.jsonl')
-                ]
-                sorted_files = sorted(jsonl_file, key=lambda f: os.stat(f).st_mtime)
+            if self.task.task_type == TaskType.acc:
+                if self.task.acc_type == TaskAccType.mmlu:
+                    jsonl_file = [
+                        entry.name for entry in os.scandir('.')
+                        if entry.name.endswith('.jsonl')
+                    ]
+                    sorted_files = sorted(jsonl_file, key=lambda f: os.stat(f).st_mtime)
+                elif self.task.acc_type == TaskAccType.ceval:
+                    txt_file = [
+                        entry.name for entry in os.scandir('.')
+                        if entry.name.endswith('.txt') and not entry.name.endswith('result.txt')
+                    ]
+                    sorted_files = sorted(txt_file, key=lambda f: os.stat(f).st_mtime)
 
             for file_index,txt_file in enumerate(sorted_files):
                 if self.task.launch_mode is TaskLaunchMode.online: 
