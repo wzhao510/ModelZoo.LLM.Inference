@@ -393,7 +393,7 @@ class TaskScheduler:
         online_tasks = [task for task in self.task_list if task.launch_mode == TaskLaunchMode.online]
         task_types = [task.task_type for task in online_tasks]
         task_types = list(dict.fromkeys(task_types))    # 去重
-        search_tasks = [task.task_type == TaskType.search for task in online_tasks]
+        search_tasks = [task for task in online_tasks if task.task_type == TaskType.search]
         for task_type in task_types:
             if task_type == TaskType.search:
                 search_task = search_tasks[0]

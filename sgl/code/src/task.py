@@ -12,6 +12,7 @@ G_MASTER_LOCK = threading.Lock()
 last_log_folrder_size = 0
 is_abnormal_start = False
 test_stop = False
+abnormal_flag = False
 
 class BaseTask:
     def __init__(self,
@@ -141,7 +142,7 @@ class BaseTask:
             is_abnormal_start = True
 
     def check_other_abnormal(self):
-        global last_log_folrder_size,is_abnormal_start
+        global last_log_folrder_size,is_abnormal_start,abnormal_flag
         abnormal_flag_str = ["Gracefully exiting... remaining number of requests",
                              "Watchdog timeout (self.watchdog_timeout=300)",
                              "torch.OutOfMemoryError: CUDA out of memory.",
