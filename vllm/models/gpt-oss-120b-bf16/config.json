@@ -1,0 +1,11 @@
+{
+    "model_type": "GPT",
+    "model_path": "/external/ai/models/llm/GPT/gpt-oss-120b-BF16/",
+    "model_param": {
+        "dtype": "bfloat16",
+        "tensor_parallel_size": 8,
+        "gpu_memory_utilization": 0.95,
+        "max_model_len" : 8192,
+        "batch_size": 1
+    }
+}

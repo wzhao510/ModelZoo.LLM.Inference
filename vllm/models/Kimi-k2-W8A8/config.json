@@ -1,0 +1,12 @@
+{
+    "model_type": "kimi_k2",
+    "model_path": "/external/ai/models/llm/Kimi-K2-Instruct-W8A8",
+    "async_engine": true,
+    "model_param": {
+        "dtype": "bfloat16",
+        "tensor_parallel_size": 8,
+        "pipeline_parallel_size": 3,
+        "gpu_memory_utilization": 0.95,
+        "batch_size": 1
+    }
+}
