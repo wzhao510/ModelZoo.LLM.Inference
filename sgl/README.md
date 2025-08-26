@@ -663,7 +663,7 @@ docker run -it --device=/dev/dri --device=/dev/mxcd --device=/dev/infiniband --p
 # 进入host /mnt/data/ModelZoo.LLM.Inference/code目录
 cd /mnt/data/ModelZoo.LLM.Inference/code
 
-python3 -m tools.start_docker --container-name sglang --container-images pub-registry1.metax-tech.com/ai-opentest/master/maca/modelzoo.llm.sglang:maca.ai20250813-124-torch2.6-py310-ubuntu22.04-amd64  --docker-v /models:/models /mnt/data:/mnt/data --rm-exist-docker --machine-config ../models/mechines.json --tasks-config ../models/DeepSeek-R1-BF16-W8A8/benchmark.json ../models/DeepSeek-R1-BF16-W8A8/acc.json  --output-path /mnt/data/benchmark_outputs/0815
+python3 -m tools.start_docker --container-name sglang --container-images pub-registry1.metax-tech.com/ai-opentest/master/maca/modelzoo.llm.sglang:maca.ai20250813-124-torch2.6-py310-ubuntu22.04-amd64  --docker-v /models:/models /mnt/data:/mnt/data --rm-exist-docker --machine-config ../models/mechines.json --tasks-config ../models/DeepSeek-R1-BF16-W8A8/benchmark.json ../models/DeepSeek-R1-BF16-W8A8/acc.json  --output-path /mnt/data/benchmark_outputs
 ```
 
 需要注意的是，任务完成会自动停止镜像，建议output-path设置镜像外部host主机挂载进去的目录，免得镜像被误删后无法查看任务结果
