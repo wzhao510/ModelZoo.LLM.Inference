@@ -87,14 +87,14 @@ def first_option_postprocess(text: str, options: str = "ABCD", cushion: bool = T
         
     return ''  # 安全容错
     
-def query_llm(prompt):
+def query_llm(prompt,timeout):
     input_ids = tokenizer.encode(prompt)
     tries = 0
 
     while tries < 5:
         tries += 1
         try:
-            completion = client.with_options(timeout=600).chat.completions.create(
+            completion = client.with_options(timeout=timeout).chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.6,
@@ -145,7 +145,7 @@ def main(args):
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.batch_size) as executor:
         # 提交所有任务并保留索引
         future_to_index = {
-            executor.submit(query_llm, task["origin_prompt"]): idx
+            executor.submit(query_llm, task["origin_prompt"],args.timeout): idx
             for idx, task in enumerate(tasks)
         }
         
@@ -200,5 +200,6 @@ if __name__ == "__main__":
     parser.add_argument("--model", "-m", type=str, required=True)
     parser.add_argument("--random_seed", "-r", type=int, default=0)
     parser.add_argument("--random_num", "-n", type=int, default=1346)
+    parser.add_argument("--timeout", "-o", type=int, default=1200)
     args = parser.parse_args()
     main(args)
