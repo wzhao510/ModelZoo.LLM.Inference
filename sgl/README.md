@@ -16,6 +16,7 @@ sgl
 │   ├──utils/
 │   │   └── utils.py
 │   ├── accuracy_test.sh
+│   ├── benchmark_serving.py
 │   ├── bench_sglang.py
 │   ├── bench_test.py
 │   ├── dailytest.txt
@@ -701,3 +702,152 @@ python3 -m tools.start_docker --container-name sglang --container-images pub-reg
 \--user：服务器的用户名
 
 \--port：socket的端口号
+
+# 5 精度测试
+
+## opencompass
+测试相关代码和数据集路径：/pde_ai/datasets/dataset-7/ModelZoo_LLM_data/opencompass/
+
+1. opencompass环境准备
+pip install opencompass==0.4.2
+pip install math_verify latex2sympy2_extended
+
+2. serve启动(推荐max-model-len为20K)
+
+3. ceval精度测试(只能离线使用)
+    a. 替换./ceval_gen_5f30c7.py至/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/ceval/ceval_gen_5f30c7.py, 注意95行需要{opencompass完整路径}
+    b. 修改/opt/conda/lib/python3.10/site-packages/opencompass/datasets/ceval.py        #line 25
+        for split in ['val']:
+    c. 修改./eval_ceval.py中模型路径和serve端口号
+    d. run
+        opencompass ./eval_ceval.py
+
+4. mmlu精度测试
+    a. 修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/mmlu/mmlu_gen_4d595a.py        #line 2
+        from opencompass.openicl.icl_retriever import FixKRetriever, ZeroRetriever
+    b. 修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/mmlu/mmlu_gen_4d595a.py        #line 104
+        retriever=dict(type=ZeroRetriever),
+    c. 修改./eval_ceval.py中模型路径和serve端口号
+    d1. 在线run
+        opencompass ./eval_mmlu.py
+
+    d2. 修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/mmlu/mmlu_gen_4d595a.py        #line 116
+        path='{opencompass完整路径}/data/mmlu_csv/'
+    e. 替换./mmlu.py至/opt/conda/lib/python3.10/site-packages/opencompass/datasets/mmlu.py
+    f. 离线run
+        opencompass ./eval_mmlu.py
+
+    ps: qwen3系列mmlu精度测试需要额外修改prompt提示词
+
+        修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/mmlu/mmlu_gen_4d595a.py        #line 78
+
+            _hint = f'There is a single choice question about {_name.replace("_", " ")}. Answer the question by replying Answer: A, Answer: B, Answer: C or Answer: D.'
+
+        修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/mmlu/mmlu_gen_4d595a.py        #line 86
+
+            f'{_hint}\nQuestion: {{input}}\nA. {{A}}\nB. {{B}}\nC. {{C}}\nD. {{D}}\n'
+
+        修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/mmlu/mmlu_gen_4d595a.py        #line 98
+
+            prompt=f'{_hint}\nQuestion: {{input}}\nA. {{A}}\nB. {{B}}\nC. {{C}}\nD. {{D}}\n'
+
+5. gsm8k精度测试
+    a. 修改./eval_gsm8k.py中模型路径和serve端口号
+    b1. 在线run
+        opencompass ./eval_gsm8k.py
+
+    b2. 修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/gsm8k/gsm8k_gen_1dce88.py        #line 81
+        path='{opencompass完整路径}/data/gsm8k_jsonl/main/',
+    c. 修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/gsm8k/gsm8k_gen_1dce88.py        #line 70
+        inferencer=dict(type=GenInferencer))
+    d. 修改/opt/conda/lib/python3.10/site-packages/opencompass/datasets/gsm8k.py            #line 27
+        split_path = os.path.join(path, split + '-00000-of-00001.jsonl')
+    e. 离线run
+        opencompass ./eval_gsm8k.py
+
+6. math500精度测试
+    a. 修改./eval_math.py中模型路径和serve端口号
+    b1. 在线run
+        opencompass ./eval_math.py
+
+    b2. 修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/math/math_500_gen.py        #line 34
+
+          path='{opencompass完整路径}/data/',
+
+    c. 离线run
+
+        opencompass ./eval_math.py
+
+7. aime2024精度测试
+    a. 修改./eval_aime2024.py中模型路径和serve端口号
+    b1. 在线run
+        opencompass ./eval_aime2024.py
+
+    b2. 修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/aime2024/aime2024_gen_6e39a4.py         #line 23
+
+          inferencer=dict(type=GenInferencer)
+
+    c.  修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/aime2024/aime2024_gen_6e39a4.py         #line 34
+
+        path='/mnt/dataset/share/dbshi/opencompass/data/aime.jsonl',
+
+    d. 修改/opt/conda/lib/python3.10/site-packages/opencompass/datasets/aime2024.py        #line 21
+
+        origin_prompt = line['Problem']
+
+    e. 修改/opt/conda/lib/python3.10/site-packages/opencompass/datasets/aime2024.py        #line 23
+
+        line['answer'] = line['Answer']
+
+    f. 离线run
+
+       opencompass ./eval_aime2024.py
+
+8. gpqa精度测试
+
+    a. 修改./eval_gpqa.py中模型路径和serve端口号
+
+    b1. 在线run
+        opencompass ./eval_gpqa.py
+
+    b2. 修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/gpqa/gpqa_openai_simple_evals_gen_5aeece.py        #line 47
+
+        path='{opencompass完整路径}/data/gpqa/',
+
+    c. 离线run
+
+        opencompass ./eval_gpqa.py
+
+## lm_eval
+1.mmul_pro精度测试
+
+    a. pip install tenacity
+
+    b. 修改/opt/conda/lib/python3.10/site-packages/lm_eval/api/task.py                #line 991
+
+        在991行对DATASET_PATH进行赋值：self.DATASET_PATH = "/mnt/dataset/share/xuanCao/mmlu_pro_dataset/MMLU-Pro/"
+
+        else:
+            self.DATASET_PATH = "/mnt/dataset/share/xuanCao/mmlu_pro_dataset/MMLU-Pro/"
+            self.dataset = datasets.load_dataset(
+                path=self.DATASET_PATH,
+                name=self.DATASET_NAME,
+                **dataset_kwargs if dataset_kwargs is not None else {},
+            )
+    c.修改/opt/conda/lib/python3.10/site-packages/lm_eval/models/api_models.py        #line 137
+
+        timeout: int = 900000,
+
+    d.离线run
+
+    lm_eval --model local-completions --model_args model=DeepSeek-R1,tokenizer=/mnt/dataset/models/llm/DeepSeek/DeepSeek-R1-BF16_W8A8/vllm_quant_model/,base_url=http://192.168.3.24:9002/v1/completions,num_concurrent=64,max_retries=3,max_length=65536 --tasks mmlu_pro --output_path /mnt/dataset/share/xuanCao/mmlu_pro_test_result --trust_remote_code --batch_size 1 --max_batch_size 32 --log_samples --apply_chat_template --gen_kwargs temperature=0.6,top_p=0.95,max_gen_toks=16384 --seed 0,0,0,0
+
+# 6 性能测试
+1. benchmark_serving 脚本新增参数 --percentile-metrics参数指定要测的数据(ttft,tpot,itl,e2el) --metric-percentiles参数指定百分位点
+
+```python
+python code/benchmark_serving.py --dataset-name random --random-range-ratio 1.0 \ 
+--dataset-path /mxstorage/pde_ai/models/llm/DeepSeek/ShareGPT_V3_unfiltered_cleaned_split.json \
+--random-input-len 2048 --random-output-len 128 --num-prompt 16  \
+--metric-percentiles 0,25,50,75,90,99 --percentile-metrics ttft,tpot,itl,e2el
+```
