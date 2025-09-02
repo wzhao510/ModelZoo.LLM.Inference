@@ -8,10 +8,9 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import shutil
-import socket
+import csv
 import signal
 import time
-import pandas as pd
 
 # 获取当前文件的绝对路径
 current_file_path = os.path.abspath(__file__)
@@ -314,18 +313,65 @@ class Multimachine:
                         ttft = subs[2]
                         tpot = subs[-1]
                         try:
-                            df = pd.read_csv(merge_file_path, encoding="utf-8")
-                            target_data = df[(df["Mean TTFT (ms)"] < float(ttft)) & (df["Mean TPOT (ms)"] < float(tpot))]
-                            optimal_data = target_data[target_data["batch-size"] == target_data["batch-size"].max()]
-                            output_file = f"{total_ttft_tpot_path}/ttft_{ttft}_tpot_{tpot}_result.csv"
-                            with open(output_file,'w+',encoding='utf-8') as csv_file:
-                                target_data.to_csv(csv_file, index=False, encoding="utf-8")
+                            # 读取CSV文件并解析数据
+                            with open(merge_file_path, 'r', encoding="utf-8", newline='') as f:
+                                reader = csv.DictReader(f)
+                                header = reader.fieldnames
+                                
+                                # 检查必要的列是否存在
+                                required_columns = ["Mean TTFT (ms)", "Mean TPOT (ms)", "batch-size"]
+                                missing = [col for col in required_columns if col not in header]
+                                if missing:
+                                    raise ValueError(f"CSV文件缺少必要的列: {', '.join(missing)}")
+                                
+                                # 筛选符合条件的数据
+                                target_data = []
+                                for row in reader:
+                                    try:
+                                        # 转换为浮点数进行比较
+                                        ttft_val = float(row["Mean TTFT (ms)"])
+                                        tpot_val = float(row["Mean TPOT (ms)"])
+                                        
+                                        if ttft_val < float(ttft) and tpot_val < float(tpot):
+                                            target_data.append(row)
+                                    except (ValueError, TypeError) as e:
+                                        print(f"跳过无效数据行: {row}, 错误: {str(e)}")
+                                        continue
+                            
+                            if not target_data:
+                                print("没有找到符合条件的数据")
+                                # 可以根据需要决定是否创建空文件
+                            else:
+                                # 找到最大的batch-size
+                                try:
+                                    # 提取所有batch-size并转换为整数
+                                    batch_sizes = [int(row["batch-size"]) for row in target_data]
+                                    max_batch_size = max(batch_sizes)
+                                    
+                                    # 筛选出batch-size为最大值的数据
+                                    optimal_data = [row for row in target_data if int(row["batch-size"]) == max_batch_size]
+                                except (ValueError, TypeError) as e:
+                                    print(f"处理batch-size时出错: {str(e)}")
+                                    optimal_data = []
+                                
+                                # 保存目标数据
+                                output_file = f"{total_ttft_tpot_path}/ttft_{ttft}_tpot_{tpot}_result.csv"
+                                with open(output_file, 'w', encoding="utf-8", newline='') as csv_file:
+                                    writer = csv.DictWriter(csv_file, fieldnames=header)
+                                    writer.writeheader()
+                                    writer.writerows(target_data)
+                                
+                                # 保存最优数据
+                                optimal_data_file = f"{total_ttft_tpot_path}/max_ttft_{ttft}_max_tpot_{tpot}_result.csv"
+                                with open(optimal_data_file, 'w', encoding="utf-8", newline='') as csv_file:
+                                    writer = csv.DictWriter(csv_file, fieldnames=header)
+                                    writer.writeheader()
+                                    writer.writerows(optimal_data)
+                                
+                                print(output_file, optimal_data_file)
 
-                            optimal_data_file = f"{total_ttft_tpot_path}/max_ttft_{ttft}_max_tpot_{tpot}_result.csv"
-                            optimal_data.to_csv(optimal_data_file, index=False, encoding="utf-8")
-                            print(output_file, optimal_data_file)
                         except Exception as e:
-                            print(f"csv file fail: {str(e)}")
+                            print(f"csv文件处理失败: {str(e)}")
                                        
             real_progress_file_name = f"{tt}/real_progress_file.json"
             files = get_specified_subfolders_or_file_recursive_os(source_path, real_progress_file_name,True)
@@ -755,26 +801,51 @@ def merge_csv_files(csv_paths, output_file, encoding='utf-8', test_type=""):
         print("No CSV files were found")
         return
 
-    # 读取并合并所有CSV文件
-    dfs = []
+    # 读取所有CSV文件并收集数据
+    all_rows = []
+    header = None
+    
     for csv_file in csv_paths:
         try:
-            df = pd.read_csv(csv_file, encoding=encoding)
-            dfs.append(df)
+            with open(csv_file, 'r', encoding=encoding, newline='') as f:
+                reader = csv.DictReader(f)
+                
+                # 检查表头是否一致
+                if header is None:
+                    header = reader.fieldnames
+                elif reader.fieldnames != header:
+                    print(f"Warning: {csv_file} has different headers, skipped")
+                    continue
+                
+                # 收集数据行
+                for row in reader:
+                    all_rows.append(row)
+                    
         except Exception as e:
             print(f"Read file {csv_file} fail: {str(e)}")
     
-    if not dfs:
+    if not all_rows or header is None:
         print("No CSV files were successfully read")
         return
 
-    # 合并所有DataFrame
-    merged_df = pd.concat(dfs, ignore_index=True)
-    if  test_type != "acc":
-        merged_df = merged_df.sort_values(by=["batch-size"], ascending=True)
+    # 如果不是"acc"类型，按"batch-size"排序
+    if test_type != "acc" and "batch-size" in header:
+        # 尝试将batch-size转换为整数进行排序
+        def sort_key(row):
+            try:
+                return int(row["batch-size"])
+            except (ValueError, TypeError):
+                return 0  # 无法转换时排在前面
+        
+        all_rows.sort(key=sort_key)
+
     # 保存合并后的结果
-    merged_df.to_csv(output_file, index=False, encoding=encoding)
-    print(f"The merger is complete {len(merged_df)} line data, saved to: {output_file}")
+    with open(output_file, 'w', encoding=encoding, newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=header)
+        writer.writeheader()
+        writer.writerows(all_rows)
+    
+    print(f"The merger is complete {len(all_rows)} line data, saved to: {output_file}")
        
 def create_folder(file_dir):
         if os.path.isdir(file_dir) == False:
