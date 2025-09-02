@@ -7,11 +7,11 @@ import sys
 
 import json
 import re
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from src.task import TaskOnline, TaskOffline
 
 from src.connection import Connection
-from src.output import OutputManager
+from src.output import BenchmarkOutputManager, AccOutputManager, SearchOutputManager, RampupOutputManager, RealProgressManager
 
 from utils.utils import *
 from itertools import product
@@ -20,6 +20,7 @@ from collections import defaultdict
 
 server_id_global = -1
 server_pass_list = defaultdict(list) 
+real_progress_manager = None
 
 
 class ConfigParser:
@@ -82,7 +83,7 @@ class ConfigParser:
 
 class BenmchmarkParser(ConfigParser):
     @staticmethod
-    def from_config(config, connection, task_type, incremental_mode):
+    def from_config(config, connection, task_type, incremental_mode, args):
         task_list = []
         global server_id_global
 
@@ -113,6 +114,10 @@ class BenmchmarkParser(ConfigParser):
                     _task.model_name = config['model_name']
                     _task.max_ttft = max_ttft
                     _task.max_tpot = max_tpot
+                    if task_type == TaskType.search:
+                        _task.set_output_manager(SearchOutputManager(args, _task))
+                    else:
+                        _task.set_output_manager(BenchmarkOutputManager(args, _task))
                     task_list.append(_task)
                 else:
                     for benchmark in benchmark_list:
@@ -123,6 +128,10 @@ class BenmchmarkParser(ConfigParser):
                         _task.task_name = task['task_name']
                         _task.task_type = task_type
                         _task.model_name = config['model_name']
+                        if task_type == TaskType.search:
+                            _task.set_output_manager(SearchOutputManager(args, _task))
+                        else:
+                            _task.set_output_manager(BenchmarkOutputManager(args, _task))
                         task_list.append(_task)
 
         return task_list
@@ -168,7 +177,7 @@ class PerfParser(ConfigParser):
 
 class RampupParser(ConfigParser):
     @staticmethod
-    def from_config(config, connection, incremental_mode):
+    def from_config(config, connection, incremental_mode, args):
         global server_id_global
         # parse config and return TaskOffline/TaskONline list
         task_list = []
@@ -190,6 +199,7 @@ class RampupParser(ConfigParser):
                 _task.task_type = TaskType.rampup
                 _task.model_name = config['model_name']
 
+                _task.set_output_manager(RampupOutputManager(args, _task))
                 task_list.append(_task)
 
         return task_list
@@ -258,7 +268,7 @@ class RampupParser(ConfigParser):
 
 class AccParser(ConfigParser):
     @staticmethod
-    def from_config(config, connection, incremental_mode):
+    def from_config(config, connection, incremental_mode, args):
         global server_id_global
         task_list = []
 
@@ -281,6 +291,7 @@ class AccParser(ConfigParser):
                 _task.acc_type = acc_type
                 _task.model_name = config['model_name']
 
+                _task.set_output_manager(AccOutputManager(args, _task))
                 task_list.append(_task)
 
         return task_list
@@ -336,14 +347,13 @@ class TaskScheduler:
         # 1.获取 total_real_progress_file 文件数据
         # 2.解析出服务正常和bench PASS的任务
         # 3.放入全局变量 server_pass_list, 以备后续过滤使用
-        total_file = os.path.join(self.args.output_path, f"total_real_progress_file.json")
-        directory = os.path.dirname(total_file)
-        if not os.path.exists(total_file):
+        global real_progress_manager
+        if not os.path.exists(real_progress_manager.total_real_progress_path):
             logger.info(f'current total file is not exists..return')
             return
 
         total_data = {}
-        with open(total_file, "r") as f:
+        with open(real_progress_manager.total_real_progress_path, "r") as f:
             total_data = json.load(f)
 
         task_list = total_data['tasks']
@@ -368,6 +378,9 @@ class TaskScheduler:
         print(server_pass_list)
 
     def generate_task(self) -> None:
+        global real_progress_manager
+        real_progress_manager = RealProgressManager(self.args)
+
         # 跑非PASS测试, 需要设置此参数
         # 此处将pass的测试id添加到全局变量 server_pass_list, 后续筛选使用
         if self.args.incremental_mode:
@@ -382,42 +395,33 @@ class TaskScheduler:
             task_type = self.parse_task_type(config_path)
             config['model_name'] = self.extract_task_model_name(config_path)
             if task_type == TaskType.rampup:
-                self.task_list.extend(RampupParser.from_config(config, self.connection, self.args.incremental_mode))
+                self.task_list.extend(RampupParser.from_config(config, self.connection, self.args.incremental_mode, self.args))
             elif task_type == TaskType.benchmark or task_type == TaskType.search:
-                self.task_list.extend(BenmchmarkParser.from_config(config, self.connection, task_type, self.args.incremental_mode))
+                self.task_list.extend(BenmchmarkParser.from_config(config, self.connection, task_type, self.args.incremental_mode, self.args))
             elif task_type == TaskType.acc:
-                self.task_list.extend(AccParser.from_config(config, self.connection, self.args.incremental_mode))
+                self.task_list.extend(AccParser.from_config(config, self.connection, self.args.incremental_mode, self.args))
 
-    def merge_result(self, output_manager:OutputManager):
-        # online
-        online_tasks = [task for task in self.task_list if task.launch_mode == TaskLaunchMode.online]
-        task_types = [task.task_type for task in online_tasks]
+    def merge_result(self):
+        task_types = [task.task_type for task in self.task_list]
         task_types = list(dict.fromkeys(task_types))    # 去重
-        search_tasks = [task for task in online_tasks if task.task_type == TaskType.search]
         for task_type in task_types:
             if task_type == TaskType.search:
+                search_tasks = [task for task in self.task_list if task.task_type == TaskType.search]
                 search_task = search_tasks[0]
-                output_manager.merge_online_search_result(task_type,search_task.max_ttft, search_task.max_tpot)
+                search_task.output_manager.merge_online_search_result(task_type,search_task.max_ttft, search_task.max_tpot)
             else:
-                output_manager.merge_online_result(task_type)
-
-        # offline
-        offline_tasks = [task for task in self.task_list if task.launch_mode == TaskLaunchMode.offline]
-        task_types = [task.task_type for task in offline_tasks]
-        task_types = list(dict.fromkeys(task_types))    # 去重
-        for task_type in task_types:
-            output_manager.merge_offline_result(task_type)
+                for task in self.task_list:
+                    if task.task_type == task_type:
+                        task.output_manager.merge_result(task_type)
+                        break
 
     def run(self):
         try:
-            output_manager = OutputManager(self.args)
-            output_manager.set_all_task_nums(len(self.task_list))
-            output_manager.init_total_real_preogress_data()
-
+            global real_progress_manager
             to_run_task_id = "0"
             client_id = "0"
             if self.args.specify_task:
-                to_run_task_id, client_id = output_manager.get_total_real_progress_to_run()
+                to_run_task_id, client_id = real_progress_manager.get_total_real_progress_to_run()
 
             is_task_skip = True
             for index, task in enumerate(self.task_list):
@@ -425,9 +429,9 @@ class TaskScheduler:
                     break
 
                 if index < (len(self.task_list) - 1):
-                    task.set_output_manager(output_manager, False)
+                    task.set_is_kill_abnormal(False)
                 else:
-                    task.set_output_manager(output_manager, True)
+                    task.set_is_kill_abnormal(True)
 
                 # 处理进程异常退出的情况
                 # 1.默认0,0  从第0个server第0个bench开始run
@@ -438,8 +442,9 @@ class TaskScheduler:
                         continue
                     is_task_skip = False
                     logger.info("current task need skip done.." )
-
-                output_manager.init_output_file(task)
+                task.output_manager.init()
+                real_progress_manager.init(task)
+                task.set_real_progress_manager(real_progress_manager)
 
                 task.run(int(client_id))
                 # 此处需要再次初始化,防止跳过其他task的bench
@@ -448,8 +453,8 @@ class TaskScheduler:
             # 从这里开始已经和某个任务无关，但是暂时不想创建单独的文件来存放logger
             # 所以请到最后一个任务里面去看后续的log吧 by ydm.
             if len(self.task_list) != 0:
-                output_manager.write_to_run_args()
-                self.merge_result(output_manager)
+                real_progress_manager.write_to_run_args()
+                self.merge_result()
             self.connection.clean()
         except Exception as e:
             logging.exception(f'{e}')

@@ -4,8 +4,8 @@ import os
 from typing import Optional, TYPE_CHECKING, Union
 import re
 import pandas as pd
-import random
 import json
+import copy
 
 try:
     import matplotlib.pyplot as plt
@@ -15,7 +15,6 @@ try:
 except ImportError:
     import_draw_lib_success = False
 
-    
 
 if TYPE_CHECKING:
     from src.task import TaskOnline, TaskOffline
@@ -28,6 +27,292 @@ RESULT_SUBPATH = 'result'
 TASK_TYPE_UNK = 'tsk_unk'
 
 MODEL_NAME_UNK = 'custom_model'
+
+NOW_TIME = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+class RealProgressManager:
+    def __init__(self, args:argparse.Namespace) -> None:
+        self.args = args
+        self.task = None
+        self.task_full_name = ''
+        self.fail_reason = 'fail'
+
+        self.real_progress_path = ''
+        self.total_real_progress_path = os.path.join(self.args.output_path, f"total_real_progress_file.json")
+
+        self.real_progress_data = ''
+        self.total_real_progress_data = {"to_run": "0,0", "docker_tag": self.args.image_tag, "tasks": list()}
+
+        self.online_task_content = {}
+        self.offline_task_content = {}
+
+    def init(self, task):
+        self.task = task
+        self.task_full_name = f'{task.task_name.replace("-", "_")}_server{task.task_id}'
+        
+        t_type = task_type_to_string(self.task.task_type)
+        self.online_task_content = {"launch_mode": "online",
+                                    "type": t_type,
+                                    "simple_param": self.task_full_name,
+                                    "server_id": f"{self.task.task_id}",
+                                    "cmd": self.task.server_cmd,
+                                    "client_test": list()}
+        self.offline_task_content = {"launch_mode": "offline",
+                                     "type": t_type,
+                                     "simple_param": self.task_full_name,
+                                     "server_id": f"{self.task.task_id}",
+                                     "cmd": self.task.server_cmd,
+                                     "status": "",
+                                     "times": 0}
+        self.create_real_progress_file()
+        self.write_real_progress_start()
+
+    def create_real_progress_file(self) -> None:
+        self.real_progress_path = os.path.join(self.args.output_path,
+                                               f"{NOW_TIME}",
+                                               f"{self.task.model_name}",
+                                               OutputManager._task_type_safe(self.task.task_type),
+                                               f"real_progress_file.json")
+
+        self.real_progress_data = {"to_run": "0,0", "docker_tag": self.args.image_tag, "tasks": list()}
+        if not os.path.exists(self.real_progress_path):
+            create_file(self.real_progress_path)
+
+        if not os.path.exists(self.total_real_progress_path):
+            create_file(self.total_real_progress_path)
+
+    def write_real_progress_start(self):
+        # 因在线和离线的结构不同, 故在此处进行不同类型的处理
+        if self.task.launch_mode == TaskLaunchMode.online:
+            self.real_progress_data['tasks'].append(copy.deepcopy(self.online_task_content))
+
+            # 此处主要是针对增量情况下的处理
+            # 增加判断当前任务是否已被添加
+            #   1.已被添加的情况下, 则不添加同样的一条记录
+            #   2.未被添加的情况下, 则添加
+            is_have_task = False
+            if self.args.specify_task or self.args.incremental_mode:
+                for task in self.total_real_progress_data['tasks']:
+                    if task["server_id"] == f"{self.task.task_id}":
+                        is_have_task = True
+                        break
+            if not is_have_task:
+                self.total_real_progress_data['tasks'].append(self.online_task_content)
+        elif self.task.launch_mode == TaskLaunchMode.offline:
+            self.real_progress_data['tasks'].append(copy.deepcopy(self.offline_task_content))
+
+            # 此处的处理逻辑同在线模式
+            if not self.args.incremental_mode:
+                is_same = False
+                for cur_task in self.total_real_progress_data['tasks']:
+                    if cur_task["server_id"] == f"{self.task.task_id}":
+                        is_same = True
+                        break
+                if not is_same:
+                    self.total_real_progress_data['tasks'].append(self.offline_task_content)
+
+            self.real_progress_data['to_run'] = "%s,%s" % (f"{self.task.task_id+1}", "0")
+            self.total_real_progress_data['to_run'] = "%s,%s" % (f"{self.task.task_id+1}", "0")
+
+        self.write_real_progress_config()
+
+    def write_real_progress_bench_serving(self, client_id, is_svr_start=True):
+        id = self.task.task_id
+        c_id = client_id + 1
+        if not is_svr_start:
+            id = self.task.task_id + 1
+            c_id = client_id
+        if (len(self.task.bench_serving) == client_id+1):
+            self.real_progress_data['to_run'] = "%s,%s" % (str(self.task.task_id + 1), "0")
+        else:
+            self.real_progress_data['to_run'] = "%s,%s" % (str(id), str(c_id))
+
+        if (len(self.task.bench_serving) == client_id+1):
+            self.total_real_progress_data['to_run'] = "%s,%s" % (str(self.task.task_id + 1), "0")
+        else:
+            self.total_real_progress_data['to_run'] = "%s,%s" % (str(id), str(c_id))
+
+        if is_svr_start:
+            cmd = self.task.bench_serving[client_id]
+            self.real_progress_data = self.process_real_progress_bench_serving(self.real_progress_data, cmd)
+            self.total_real_progress_data = self.process_real_progress_bench_serving(self.total_real_progress_data, cmd)
+
+        self.write_real_progress_config()
+
+    def process_real_progress_bench_serving(self, content, cmd):
+        for cur_task in content['tasks']:
+            if cur_task["server_id"] != str(self.task.task_id):
+                continue
+
+            is_same = False
+            for cur_client in cur_task["client_test"]:
+                if cur_client["id"] == str(cmd.get_id()):
+                    is_same = True
+                    break
+            if not is_same:
+                data = {"id": str(cmd.get_id()),
+                        "cmd": cmd.get_cmd(),
+                        "status": "",
+                        "times": 0}
+                cur_task["client_test"].append(copy.deepcopy(data))
+            break
+        return content
+
+    def write_real_progress_result(self, result_flag, i):
+        if self.task.launch_mode is TaskLaunchMode.online:
+            self.real_progress_data = self.process_online_real_progress_result(result_flag, self.real_progress_data, i)
+            self.total_real_progress_data = self.process_online_real_progress_result(result_flag, self.total_real_progress_data, i)
+        elif self.task.launch_mode is TaskLaunchMode.offline:
+            self.real_progress_data = self.process_offline_real_progress_result(result_flag, self.real_progress_data)
+            self.total_real_progress_data = self.process_offline_real_progress_result(result_flag, self.total_real_progress_data)
+
+        self.write_real_progress_config()
+
+    def process_online_real_progress_result(self, result_flag, data_content, i):
+        for task_content in data_content["tasks"]:
+            if task_content["server_id"] != str(self.task.task_id):
+                continue
+            for client_content in task_content["client_test"]:
+                if client_content["id"] != str(i):
+                    continue
+                if result_flag == 'pass':
+                    client_content["status"] = "pass"
+                else:
+                    client_content["status"] = self.fail_reason # 'fail'
+                client_content["times"] += 1
+                break
+            break
+        return data_content
+
+    def process_offline_real_progress_result(self, result_flag, data_content):
+        for task_content in data_content["tasks"]:
+            if task_content["server_id"] != str(self.task.task_id):
+                continue
+            if result_flag == 'pass':
+                task_content['status'] = "pass"
+            else:
+                task_content['status'] = self.fail_reason
+            task_content['times'] += 1
+            break
+        return data_content
+
+    def write_real_progress_config(self):
+        if self.real_progress_path is None or self.total_real_progress_path is None:
+            return
+
+        with open(self.real_progress_path, 'w') as f:
+            json.dump(self.real_progress_data, f, indent=4, ensure_ascii=False)
+        with open(self.total_real_progress_path, 'w') as f1:
+            json.dump(self.total_real_progress_data, f1, indent=4, ensure_ascii=False)
+
+    def get_total_real_progress_to_run(self):
+        to_run_config = ["0", "0"]
+        if not os.path.exists(self.total_real_progress_path):
+            return to_run_config[0], to_run_config[1]
+
+        with open(self.total_real_progress_path, "r+") as f:
+            if os.path.getsize(self.total_real_progress_path) == 0:
+                self.total_real_progress_data = {"to_run": "0,0", "docker_tag": self.args.image_tag, "tasks": []}
+                json.dump(self.total_real_progress_data, f, indent=4, ensure_ascii=False)
+            else:
+                self.total_real_progress_data = json.load(f)
+            to_run_config = self.total_real_progress_data['to_run'].split(",")
+
+        return to_run_config[0], to_run_config[1]
+
+    def write_to_run_args(self, task_id=0, client_id=0):
+        self.real_progress_data['to_run'] = "%s,%s" % (str(task_id), str(client_id))
+        self.total_real_progress_data['to_run'] = "%s,%s" % (str(task_id), str(client_id))
+        self.write_real_progress_config()
+
+    def set_fail_reason(self, reason):
+        self.fail_reason = reason
+
+
+class PathManager:
+    def __init__(self) -> None:
+        self.common_path = ''
+
+        self.node_id = 0
+        self.task_full_name = ''
+
+        self.log_file_path = ''
+        self.result_common = ''
+        self.result_file_path = ''
+        self.result_csv_file_path = ''
+
+        self.other_result_file_txt = ''
+        self.other_result_file_jsonl = ''
+        self.offline_result_file_txt = ''
+        self.offline_result_file_jsonl = ''
+
+    # ---------------------------------------------------
+    #          设置/获取    公共内容
+    # ---------------------------------------------------
+    def init(self, output_args, task: Union["TaskOnline", "TaskOffline"]):
+        self.common_path = os.path.join(output_args,
+                                        f"{NOW_TIME}",
+                                        f"{task.model_name}",
+                                        OutputManager._task_type_safe(task.task_type))
+
+        self.node_id = [item.is_local for item in task.nodes_used].index(1)
+        self.task_full_name = f'{task.task_name.replace("-", "_")}_server{task.task_id}'
+
+        self.log_file_common = os.path.join(self.common_path,
+                                          LOGS_SUBPATH,
+                                          task.launch_mode.value)
+        self.log_file_path = os.path.join(self.log_file_common,
+                                          f"{self.task_full_name}_node{self.node_id}.log")
+        
+        self.result_common = os.path.join(self.common_path, RESULT_SUBPATH, task.launch_mode.value)
+        self.result_csv_file_path = os.path.join(self.result_common, f"{NOW_TIME}_result.csv")
+        acc_path = '' if task.task_type != TaskType.acc else task.acc_type.value
+        self.result_file_path = os.path.join(self.result_common,
+                                             acc_path,
+                                             self.task_full_name)
+
+    def get_task_full_name(self):
+        return self.task_full_name
+
+    def get_node_id(self):
+        return self.node_id
+
+    # ---------------------------------------------------
+    #          获取    result文件路径
+    # ---------------------------------------------------
+    def get_result_path(self) -> str:
+        return self.result_file_path
+
+    def get_result_common_path(self) -> str:
+        return self.result_common
+
+    def get_result_csv_file_path(self) -> str:
+        return self.result_csv_file_path
+
+    # ---------------------------------------------------
+    #       获取 所有情况下txt和jsonl的result文件路径
+    # ---------------------------------------------------
+    def get_other_result_file_txt_jsonl(self, bench_serving_args_str):
+        self.other_result_file_txt = os.path.join(self.get_result_path(), f"{bench_serving_args_str}_result.txt")
+        self.other_result_file_jsonl = os.path.join(self.get_result_path(), f"{bench_serving_args_str}_result.jsonl")
+        return self.other_result_file_txt, self.other_result_file_jsonl
+
+    def get_offline_result_file_txt_jsonl(self, task: Union["TaskOnline","TaskOffline"]):
+        bench_serving_args_str = OutputManager.get_bench_serving_args_str(task.server_cmd)
+        self.offline_result_file_txt = os.path.join(self.get_result_path(), f"{bench_serving_args_str}_result.txt")
+        self.offline_result_file_jsonl = os.path.join(self.get_result_path(), f"{bench_serving_args_str}_result.jsonl")
+        return self.offline_result_file_txt, self.offline_result_file_jsonl
+
+    # ---------------------------------------------------
+    #          获取      log文件路径
+    # ---------------------------------------------------
+    def get_log_path(self) -> str:
+        return self.log_file_path
+
+    def get_log_subpath(self) -> str:
+        return self.log_file_common
+
 
 class OutputManager:
     TASK_TYPE_UNK = TASK_TYPE_UNK
@@ -399,49 +684,6 @@ class OutputManager:
         return bench_result_data
 
     @staticmethod
-    def _extract_acc_metrics_from_file(file_path,server_args,acc_type:TaskAccType):
-        metrics = None
-        if acc_type == TaskAccType.mmlu:
-            if "acc_mmlu" in file_path:  #?
-                metrics = OutputManager._get_acc_mmlu_metrics(file_path)
-        elif acc_type == TaskAccType.ceval:
-            # if "acc_ceval" in file_path:  #?
-            # 改为从ceval输出的txt文件里提取
-            if 'seed' in file_path and 'num' in file_path:
-                metrics = OutputManager._get_acc_ceval_metrics(file_path)
-        return metrics
-
-    @staticmethod
-    def _get_acc_mmlu_metrics(file_path):
-        with open(file_path, 'r', encoding='utf-8') as file:
-            content = file.read()
-        try:
-            data = json.loads(content)
-            accuracy = data.get("accuracy")
-            if accuracy is not None:
-                accuracy = float(accuracy)
-        except json.JSONDecodeError:
-            accuracy = None
-        metrics = {'dataset':'mmlu','Accuracy': [accuracy],}
-        # 改为mmlu的 jsonl 中提取
-        # metrics = {'dataset':'mmlu','Accuracy': [float(re.search(r'accuracy\s*:\s+(\d+\.\d+|\d+)', content).group(1)) if re.search(r'accuracy\s*:\s+(\d+\.\d+|\d+)', content) else None],}
-        return metrics
-
-    @staticmethod
-    def _get_acc_ceval_metrics(file_path):
-        with open(file_path, 'r', encoding='utf-8') as file:
-            content = file.read()
-
-        matches = re.findall(r'Accuracy\s*:\s+(\d+\.\d+|\d+)', content)
-        if matches:
-            last_accuracy = matches[-1]
-        else:
-            last_accuracy = None
-
-        metrics = {'dataset': 'ceval', 'Accuracy': [float(last_accuracy) if last_accuracy else None]}
-        return metrics
-
-    @staticmethod
     def _offline_extract_metrics_from_file(file_path,server_args):
         with open(file_path, 'r', encoding='utf-8') as file:
             content = file.read()
@@ -514,281 +756,169 @@ class OutputManager:
             return TASK_TYPE_UNK
         else:
             return task_type.value
-        
-    @staticmethod
-    def online_offline_subpath(task_type:TaskType, launch_mode:TaskLaunchMode) -> str:
-        """
-        如果返回 '', 则没有online offline的目录级别，可以切换
-        """
-        return launch_mode.value
 
     def __init__(self,args:argparse.Namespace) -> None:
         self.args = args
         self.task = None
-        self.log_file = None
-        self.real_progress_file = None
-        self.total_real_progress_file = None
-        self.total_real_progress_data = {"to_run": "0,0", "docker_tag": "", "tasks": []}
-        self.real_progress_data = {"to_run": "0,0", "docker_tag": "", "tasks": []}
-        self.now = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.task_full_name = ''
         self.task_type = ''
-        self.node_id = 0 # 默认master
-        self.all_task_nums = 1
-        self.fail_reason = 'fail'
-
         self.server_args = {}
+        self.path_manager = PathManager()
 
-    def init_total_real_preogress_data(self):
-        self.total_real_progress_file = os.path.join(self.args.output_path,
-                                                     f"total_real_progress_file.json")
-        create_file(self.total_real_progress_file)
-
-        if self.args.specify_task or self.args.incremental_mode:
-            with open(self.total_real_progress_file, "r+") as f:
-                if os.path.getsize(self.total_real_progress_file) == 0:
-                    self.total_real_progress_data = {"to_run": "0,0", "docker_tag": "", "tasks": []}
-                    json.dump(self.total_real_progress_data, f, indent=4, ensure_ascii=False)
-                else:
-                    self.total_real_progress_data = json.load(f)
-
-        self.real_progress_data["docker_tag"] = self.args.image_tag
-        self.total_real_progress_data["docker_tag"] = self.args.image_tag
-
-    def set_all_task_nums(self, task_nums):
-        self.all_task_nums = task_nums
-
-    def init_output_file(self, task:Union["TaskOnline","TaskOffline"]) -> None:
+    def init_output_file(self) -> None:
         """
         产生一个realprogress/对应task的目录
         应该在start_server/run_slave_launch_server的时候创建
         并完成logger的配置
         """
-        self.task = task
+        self.path_manager.init(self.args.output_path, self.task)
+        self.task.set_file_log_subfile(self.path_manager.get_log_subpath())
 
-        # 自己的node
-        self.node_id = [item.is_local for item in task.nodes_used].index(1)
-        
-        self.server_args, launch_server_args_str = OutputManager.get_launch_server_args(self.task.task_id, self.task.server_cmd)
+        self.server_args, _ = OutputManager.get_launch_server_args(self.task.task_id, self.task.server_cmd)
         if not self.server_args['Model'][0] or self.server_args['Model'][0].isspace():
             self.server_args['Model'][0] = self.task.model_name.replace("DeepSeek", "DS")
-        # self.task_full_name = " ".join((self.task.task_name + launch_server_args_str).split())
-        self.task_full_name = f'{self.task.task_name.replace("-", "_")}_server{self.task.task_id}'   #任务名可能含有'-'
+
         self.task_type = OutputManager._task_type_safe(self.task.task_type)
 
-        self.create_log_file()
-        self.create_real_progress_file()
-        self.write_real_progress_start()
-        self.precreate_bench_result_files()
-        configure_logger(log_file=self.log_file)
+        create_file(self.path_manager.get_log_path())
+        configure_logger(log_file=self.path_manager.get_log_path())
 
     def get_info_for_slave(self) -> dict:
         """
-        init_output_file 后可以收集本task的基本信息，用于slave对齐master log路径
+        init_output_file 后可以收集本task的基本信息, 用于slave对齐master log路径
         """
         task_info = {
             'task_id': self.task.task_id,
             'model_name': self.task.model_name,
             'task_type': self.task_type,
             'task_launch_mode': self.task.launch_mode.value,
-            'task_full_name': self.task_full_name,
+            'task_full_name': self.path_manager.get_task_full_name(),
         }
         info = {
             'task_info': task_info,
-            'now': self.now,
-            'output_path': self.args.output_path,   #output_path 也暂时从这里传？还是从slave启动命令上拿？
+            'now': NOW_TIME,
+            'output_path': self.args.output_path,
         }
         return info
 
-    def init_slave_output_file(self, info:dict, slave_cmd:str) -> None:
-        """
-        slave 使用上面的task_info对齐master
-        """
-        task_info = info['task_info']
-        self.now = info['now']
-        # cur_task_id = task_info['task_id']
-        # task_launch_mode = TaskLaunchMode(task_info['task_launch_mode'])
-        node_rank_match = re.search(r"--node-rank\s+(\d+)", slave_cmd)
-        node_id = node_rank_match.group(1) if node_rank_match else random.randint(10, 999)
+    def extract_result_metrics(self)-> None:
+        result_files_path = self.path_manager.get_result_path()
+        original_dir = os.getcwd()
+        try:
+            os.chdir(result_files_path)
+            txt_files = [
+                entry.name for entry in os.scandir('.')
+                if entry.name.endswith('.txt')
+            ]
+            sorted_files = sorted(txt_files, key=lambda f: os.stat(f).st_mtime)
+            result_df = pd.DataFrame()
 
-        self.log_file = os.path.join(info['output_path'], 
-                                     f"{self.now}",
-                                     f"{task_info['model_name']}",
-                                     task_info['task_type'],
-                                     LOGS_SUBPATH,
-                                     task_info["task_launch_mode"],
-                                     f"{task_info['task_full_name']}_node{node_id}.log"
-                                    )
-        if not os.path.exists(self.log_file):
-            create_file(self.log_file)
-            configure_logger(log_file=self.log_file)
+            server_args = self.server_args
 
-    def create_log_file(self) -> None:
-        self.log_file = os.path.join(self.get_log_path(),
-                                    f"{self.task_full_name}_node{self.node_id}.log"
-                                    )
-        create_file(self.log_file)
+            # with G_MASTER_LOCK:
+            oc:OperationContent = self.task.server_cmd_ops[0]
+            running_server_args_str,running_server_args_dict = OutputManager.get_running_server_args(log="\n".join(oc.output))
+            if running_server_args_dict:
+                server_args['mem_frac'][0] = running_server_args_dict['mem_fraction_static']
+            
+            # mmlu 依然要更新 *.txt
+            for file_index,txt_file in enumerate(sorted_files):
+                if running_server_args_str:
+                    with open(txt_file,'a') as f:
+                        print(running_server_args_str,file=f)
 
-    def get_log_path(self) -> str:
-        """
-        用于简化路径拼接代码的调用
-        注意:只能获取当前任务下的log_path
-        """
-        return os.path.join(self.args.output_path, 
-                            f"{self.now}",
-                            f"{self.task.model_name}",
-                            self.task_type,
-                            LOGS_SUBPATH,
-                            self.task_online_offline_subpath()
-                            )
+            for file_index,txt_file in enumerate(sorted_files):
+                if self.task.launch_mode is TaskLaunchMode.online: 
+                    metrics = OutputManager._extract_metrics_from_file(txt_file,server_args)
+                elif self.task.launch_mode is TaskLaunchMode.offline:
+                    metrics = OutputManager._offline_extract_metrics_from_file(txt_file,server_args)
+                df_server_args = server_args.copy()
+                if self.task.launch_mode == TaskLaunchMode.offline:
+                    df_server_args["Tsid"][0] = file_index
+                df_server_args.pop('tp_size')
+                other_args_df = pd.DataFrame(OutputManager.get_other_args(self.args))
+                server_args_df = pd.DataFrame(df_server_args)
+                bench_result_df = pd.DataFrame(metrics) #might trigger 'used before defined'
+                merge_df = pd.concat([other_args_df,server_args_df,bench_result_df],axis=1)
+                result_df = pd.concat([result_df,merge_df],ignore_index=True)
 
-    def get_result_path(self) -> str:
-        """
-        用于简化路径拼接代码的调用
-        注意:只能获取当前任务下的result_path
-        """
-        acc_path = ''
-        if self.task.task_type == TaskType.acc:
-            acc_path = self.task.acc_type.value
-        return os.path.join(self.args.output_path, 
-                            f"{self.now}",
-                            f"{self.task.model_name}",
-                            self.task_type,
-                            RESULT_SUBPATH,
-                            self.task_online_offline_subpath(),
-                            acc_path,
-                            self.task_full_name
-                            )
+            csv_file_name = f'{self.task_type}_result.csv'
+            with open(csv_file_name,'w',encoding='utf-8') as csv_file:
+                result_df.to_csv(csv_file, index=False)
+                logger.debug(f"result_csv store in {csv_file_name}")
+        finally:
+            os.chdir(original_dir)
 
-    def task_online_offline_subpath(self) -> str:
-        """
-        !仅限当前Task.run() 周期内调用
-        """
-        return OutputManager.online_offline_subpath(self.task.task_type, self.task.launch_mode)
+    def merge_result(self, task_type:TaskType) -> None:
+        try:
+            result_path = self.path_manager.get_result_common_path()
+            all_data = pd.DataFrame()
+            for subdir, dirs, files in os.walk(result_path):
+                if subdir == result_path:
+                    continue
+                # dir_name = os.path.basename(subdir)
+                for file in files:
+                    if file.endswith('.csv'):
+                        file_path = os.path.join(subdir,file)
+                        data = pd.read_csv(file_path)
+                        all_data = pd.concat([all_data, data], ignore_index=True)
 
-    def create_real_progress_file(self) -> None:
-        self.real_progress_file = os.path.join(self.args.output_path, 
-                                                f"{self.now}",
-                                                f"{self.task.model_name}",
-                                                self.task_type,
-                                                f"real_progress_file.json")
-        if not os.path.exists(self.real_progress_file):
-            self.real_progress_data = {"to_run": "0,0", "docker_tag": "", "tasks": []}
-            create_file(self.real_progress_file)
+            output_path = self.path_manager.get_result_csv_file_path()
+            with open(output_path, 'w', encoding='utf-8') as csv_file:
+                all_data.to_csv(csv_file, index=False)
+            logger.info(f"{OutputManager._task_type_safe(task_type)} result_csv store in {output_path}")
+        except Exception as e:
+            logger.info(f"merge_result {OutputManager._task_type_safe(task_type)} exception {e}")
+
+    def write_log_file(self):
+        """ dump logs from server_cmd_ops[0].output to file """
+        outputs = self.task.server_cmd_ops[self.path_manager.get_node_id()].output
+        content = "\n".join(outputs) # 暂时无视 是否 store_output
+        with open(self.path_manager.get_log_path(), 'a') as f:
+            print(content, file=f)
+
+    def set_task(self, task):
+        self.task = task
+
+
+class BenchmarkOutputManager(OutputManager):
+    def __init__(self, args: argparse.Namespace, task: Union["TaskOnline","TaskOffline"]) -> None:
+        super().__init__(args)
+        super().set_task(task)
+
+    def init(self):
+        self.init_output_file()
+        self.precreate_bench_result_files()
 
     def precreate_bench_result_files(self) -> None:
-        # result/full_model_name/**_result.txt
         if self.task.launch_mode is TaskLaunchMode.online:
             for command in self.task.bench_serving:
-                result_file_text = ''
-                if self.task.task_type in [TaskType.benchmark, TaskType.rampup, TaskType.search]:
-                    bench_serving_args_str = OutputManager.get_bench_serving_args_str(command.get_cmd())
-                    result_file_text = os.path.join(self.get_result_path(),
-                                                f"{bench_serving_args_str}_result.txt"
-                                                )
-                    create_file(result_file_text)
-                    result_file_jsonl = os.path.join(self.get_result_path(),
-                                                f"{bench_serving_args_str}_result.jsonl"
-                                                )
-                    create_file(result_file_jsonl)
-                elif self.task.task_type is TaskType.acc:
-                    if self.task.acc_type == TaskAccType.mmlu:
-                        result_file_text = os.path.join(self.get_result_path(),
-                                                    "acc_mmlu_result.txt" #??
-                                                    )
-                        create_file(result_file_text)
-                        result_file_jsonl = os.path.join(self.get_result_path(),
-                                                    "acc_mmlu_result.jsonl" #??
-                                                    )
-                        create_file(result_file_jsonl)
-
-                    elif self.task.acc_type == TaskAccType.ceval:
-                        result_file_text = os.path.join(self.get_result_path(),
-                                                    "acc_ceval_result.txt" #??
-                                                    )
-                        create_file(result_file_text)
+                bench_serving_args_str = OutputManager.get_bench_serving_args_str(command.get_cmd())
+                result_file_text, result_file_jsonl = self.path_manager.get_other_result_file_txt_jsonl(bench_serving_args_str)
+                create_file(result_file_text)
+                create_file(result_file_jsonl)
 
                 with open(result_file_text, "a") as result_file:
                     command_with_result = self.append_result_file_param(command.get_cmd())
                     print(f"Command: {command_with_result}", file=result_file)
-
         elif self.task.launch_mode is TaskLaunchMode.offline:
-            bench_serving_args_str = OutputManager.get_bench_serving_args_str(self.task.server_cmd)
-            result_file_text = os.path.join(self.get_result_path(),
-                                            f"{bench_serving_args_str}_result.txt"
-                                            )
+            result_file_text, result_file_jsonl = self.path_manager.get_offline_result_file_txt_jsonl(self.task)
             create_file(result_file_text)
-            
-            if self.task.task_type in [TaskType.benchmark]:
-                result_file_jsonl = os.path.join(self.get_result_path(),
-                                                f"{bench_serving_args_str}_result.jsonl")
-                create_file(result_file_jsonl)
+            create_file(result_file_jsonl)
 
             with open(result_file_text, "a") as result_file:
                 command_with_result = self.append_result_file_param(self.task.server_cmd)
                 print(f"Command: {command_with_result}", file=result_file)
 
     def append_result_file_param(self, command) -> str:
+        _, result_file_jsonl = self.path_manager.get_offline_result_file_txt_jsonl(self.task)
+        if self.task.launch_mode is TaskLaunchMode.offline:
+            return f"{command} --result-filename {result_file_jsonl}"
+        return f"{command} --output-file {result_file_jsonl}"
+
+    def write_client_result(self, command, result, is_pass= True) -> None:
         bench_serving_args_str = OutputManager.get_bench_serving_args_str(command)
-        if self.task.task_type in [TaskType.benchmark, TaskType.rampup, TaskType.search]:
-            result_file_jsonl = os.path.join(self.get_result_path(),
-                                            f"{bench_serving_args_str}_result.jsonl"
-                                            )
-            if self.task.launch_mode is TaskLaunchMode.offline:
-                return f"{command} --result-filename {result_file_jsonl}"
-            else:
-                return f"{command} --output-file {result_file_jsonl}"
-        elif self.task.task_type is TaskType.acc:
-            result_path = self.get_result_path()
-            command = f"{command} --save_dir {result_path}"
-            if self.task.acc_type == TaskAccType.mmlu:
-                result_file_jsonl = os.path.join(result_path,
-                                                "acc_mmlu_result.jsonl" #??
-                                                )
-                command = f"{command} --result-file {result_file_jsonl}"
-
-        return command
-
-    def create_pass_case_file(self) -> None:
-        """ create pass case file"""
-        file = os.path.join(self.args.target_path,self.args.result_path,self.args.pass_file)
-        create_file(file)
-
-    def create_test_result_file(self,task) -> None:
-        result_file = self.get_client_result_file(task)
-        create_file(result_file)
-
-    def get_client_result_file(self,task) -> str:
-        """ get online/offline bench/acc result file path"""
-        # TODO: 等摸高的逻辑合并进来，我看看怎么把这个方法用起来
-        if task.launch_mode == TaskLaunchMode.online:
-            if task.task_type == TaskType.benchmark:
-                pass
-            elif task.task_type == TaskType.acc:
-                pass
-            elif task.task_type == TaskType.rampup:
-                pass
-            elif task.task_type == TaskType.search:
-                pass
-        return ''
-
-    def write_client_result(self,command,result,is_pass=True) -> None:
-        """ write client result log to file"""
-        if self.task.task_type in [TaskType.benchmark, TaskType.rampup, TaskType.search]:
-            bench_serving_args_str = OutputManager.get_bench_serving_args_str(command)
-            result_file_text = os.path.join(self.get_result_path(),
-                                            f"{bench_serving_args_str}_result.txt"
-                                            )
-        elif self.task.task_type is TaskType.acc:
-            if self.task.acc_type == TaskAccType.mmlu:
-                result_file_text = os.path.join(self.get_result_path(),
-                                            "acc_mmlu_result.txt" #??
-                                            )
-            elif self.task.acc_type == TaskAccType.ceval:
-                result_file_text = os.path.join(self.get_result_path(),
-                                            "acc_ceval_result.txt" #??
-                                            )
-
+        result_file_text = os.path.join(self.path_manager.get_result_path(),
+                                        f"{bench_serving_args_str}_result.txt")
 
         command_with_result = self.append_result_file_param(command)
 
@@ -804,22 +934,113 @@ class OutputManager:
                     print(f"write_client_result exception {e}")
                 pass
 
+
+class AccOutputManager(OutputManager):
+    def __init__(self, args: argparse.Namespace, task: Union["TaskOnline","TaskOffline"]) -> None:
+        super().__init__(args)
+        super().set_task(task)
+        self.acc_ceval_result_file_txt = ''
+        self.acc_mmlu_result_file_txt = ''
+        self.acc_mmlu_result_file_jsonl = ''
+
+    def init(self):
+        self.init_output_file()
+
+        self.acc_ceval_result_file_txt = os.path.join(self.path_manager.get_result_path(), "acc_ceval_result.txt")
+
+        self.acc_mmlu_result_file_txt = os.path.join(self.path_manager.get_result_path(), "acc_mmlu_result.txt")
+        self.acc_mmlu_result_file_jsonl = os.path.join(self.path_manager.get_result_path(), "acc_mmlu_result.jsonl")
+
+        self.precreate_bench_result_files()
+
+    def precreate_bench_result_files(self) -> None:
+        for command in self.task.bench_serving:
+            result_file_text = ''
+            if self.task.acc_type == TaskAccType.mmlu:
+                result_file_text = self.acc_mmlu_result_file_txt
+                create_file(self.acc_mmlu_result_file_txt)
+                create_file(self.acc_mmlu_result_file_jsonl)
+
+            elif self.task.acc_type == TaskAccType.ceval:
+                result_file_text = self.acc_ceval_result_file_txt
+                create_file(result_file_text)
+
+            with open(result_file_text, "a") as result_file:
+                command_with_result = self.append_result_file_param(command.get_cmd())
+                print(f"Command: {command_with_result}", file=result_file)
+
+    def append_result_file_param(self, command) -> str:
+        command = f"{command} --save_dir {self.path_manager.get_result_path()}"
+        if self.task.acc_type == TaskAccType.mmlu:
+            command = f"{command} --result-file {self.acc_mmlu_result_file_jsonl}"
+        return command
+
+    def write_client_result(self, command, result, is_pass=True) -> None:
+        result_file_text = ''
+        if self.task.acc_type == TaskAccType.mmlu:
+            result_file_text = self.acc_mmlu_result_file_txt
+        elif self.task.acc_type == TaskAccType.ceval:
+            result_file_text = self.acc_ceval_result_file_txt
+
+        command_with_result = self.append_result_file_param(command)
+
+        if is_pass:
+            with open(result_file_text, "w") as result_file:
+                print(f"Command: {command_with_result}", file=result_file)
+                print("\n".join(result), file=result_file)
+        else:
+            with open(result_file_text, "a") as result_file:
+                try:
+                    print("\n".join(result), file=result_file)
+                except Exception as e:
+                    print(f"write_client_result exception {e}")
+                pass
+
+    def _get_acc_mmlu_metrics(self, file_path):
+        with open(file_path, 'r', encoding='utf-8') as file:
+            content = file.read()
+        try:
+            data = json.loads(content)
+            accuracy = data.get("accuracy")
+            if accuracy is not None:
+                accuracy = float(accuracy)
+        except json.JSONDecodeError:
+            accuracy = None
+        metrics = {'dataset':'mmlu','Accuracy': [accuracy],}
+        return metrics
+
+    def _get_acc_ceval_metrics(self, file_path):
+        with open(file_path, 'r', encoding='utf-8') as file:
+            content = file.read()
+
+        matches = re.findall(r'Accuracy\s*:\s+(\d+\.\d+|\d+)', content)
+        last_accuracy = matches[-1] if matches else None
+
+        metrics = {'dataset': 'ceval', 'Accuracy': [float(last_accuracy) if last_accuracy else None]}
+        return metrics
+
+    def _extract_acc_metrics_from_file(self, file_path, acc_type: TaskAccType):
+        metrics = None
+        if acc_type == TaskAccType.mmlu:
+            if "acc_mmlu" in file_path:  #?
+                metrics = self._get_acc_mmlu_metrics(file_path)
+        elif acc_type == TaskAccType.ceval:
+            # if "acc_ceval" in file_path:  #?
+            # 改为从ceval输出的txt文件里提取
+            if 'seed' in file_path and 'num' in file_path:
+                metrics = self._get_acc_ceval_metrics(file_path)
+        return metrics
+
     def extract_result_metrics(self)-> None:
-        result_files_path = self.get_result_path()
+        result_files_path = self.path_manager.get_result_path()
         original_dir = os.getcwd()
         try:
             os.chdir(result_files_path)
-            # txt_files = [f for f in os.listdir('.') if f.endswith('.txt')]
-            if self.task.task_type == TaskType.acc:
-                txt_files = [
-                    entry.name for entry in os.scandir('.')
-                    if entry.name.endswith('result.txt')    #acc的ceval需要排除自带的txt结果
-                ]
-            else:
-                txt_files = [
-                    entry.name for entry in os.scandir('.')
-                    if entry.name.endswith('.txt')
-                ]
+            txt_files = [
+                entry.name for entry in os.scandir('.')
+                if entry.name.endswith('result.txt')    #acc的ceval需要排除自带的txt结果
+            ]
+
             sorted_files = sorted(txt_files, key=lambda f: os.stat(f).st_mtime)
             result_df = pd.DataFrame()
 
@@ -830,8 +1051,6 @@ class OutputManager:
             running_server_args_str,running_server_args_dict = OutputManager.get_running_server_args(log="\n".join(oc.output))
             if running_server_args_dict:
                 server_args['mem_frac'][0] = running_server_args_dict['mem_fraction_static']
-            #     logger.debug(f"##get result running server_args: {running_server_args_dict['mem_fraction_static']}")
-            #     logger.debug(f"##get result server args mem frac: {server_args['mem_frac'][0]}")
             
             # mmlu 依然要更新 *.txt
             for file_index,txt_file in enumerate(sorted_files):
@@ -840,21 +1059,24 @@ class OutputManager:
                         print(running_server_args_str,file=f)
 
             # 目前只有mmlu是从结果的jsonl提取，替换sorted_files进行结果提取
-            if self.task.task_type == TaskType.acc and self.task.acc_type == TaskAccType.mmlu:
+            if self.task.acc_type == TaskAccType.mmlu:
                 jsonl_file = [
                     entry.name for entry in os.scandir('.')
                     if entry.name.endswith('.jsonl')
                 ]
                 sorted_files = sorted(jsonl_file, key=lambda f: os.stat(f).st_mtime)
+            elif self.task.acc_type == TaskAccType.ceval:
+                txt_file = [
+                    entry.name for entry in os.scandir('.')
+                    if entry.name.endswith('.txt') and not entry.name.endswith('result.txt')
+                ]
+                sorted_files = sorted(txt_file, key=lambda f: os.stat(f).st_mtime)
 
             for file_index,txt_file in enumerate(sorted_files):
                 if self.task.launch_mode is TaskLaunchMode.online: 
-                    if self.task.task_type != TaskType.acc:
-                        metrics = OutputManager._extract_metrics_from_file(txt_file,server_args)
-                    else:
-                        metrics = OutputManager._extract_acc_metrics_from_file(txt_file,server_args,self.task.acc_type)
-                        if metrics is None:
-                            continue
+                    metrics = self._extract_acc_metrics_from_file(txt_file, self.task.acc_type)
+                    if metrics is None:
+                        continue
                 elif self.task.launch_mode is TaskLaunchMode.offline:
                     metrics = OutputManager._offline_extract_metrics_from_file(txt_file,server_args)
                 df_server_args = server_args.copy()
@@ -868,327 +1090,110 @@ class OutputManager:
                 result_df = pd.concat([result_df,merge_df],ignore_index=True)
 
             csv_file_name = f'{self.task_type}_result.csv'
-            if self.task.task_type == TaskType.acc:
-                if self.task.acc_type == TaskAccType.mmlu:
-                    csv_file_name = 'acc_mmlu_result.csv'
-                elif self.task.acc_type == TaskAccType.ceval:
-                    csv_file_name = 'acc_ceval_result.csv'
+            if self.task.acc_type == TaskAccType.mmlu:
+                csv_file_name = 'acc_mmlu_result.csv'
+            elif self.task.acc_type == TaskAccType.ceval:
+                csv_file_name = 'acc_ceval_result.csv'
             with open(csv_file_name,'w',encoding='utf-8') as csv_file:
                 result_df.to_csv(csv_file, index=False)
                 logger.debug(f"result_csv store in {csv_file_name}")
         finally:
             os.chdir(original_dir)
 
-    def merge_online_result(self, task_type:TaskType) -> None:
-        try:
-            result_path = os.path.join(self.args.output_path, f"{self.now}", 
-                                    f"{self.task.model_name}",   # TODO: 这儿的model_name 也有问题，因为可能不一致
-                                                                            # 如果真的有这种情况，得到外面再按 model_name分组一次
-                                    OutputManager._task_type_safe(task_type),
-                                    RESULT_SUBPATH,
-                                    OutputManager.online_offline_subpath(task_type, TaskLaunchMode.online)
-                                    )
-            all_data = pd.DataFrame()
-            for subdir, dirs, files in os.walk(result_path):
-                if subdir == result_path:
-                    continue
-                # dir_name = os.path.basename(subdir)
-                for file in files:
-                    if file.endswith('.csv'):
-                        file_path = os.path.join(subdir,file)
-                        data = pd.read_csv(file_path)
-                        all_data = pd.concat([all_data, data], ignore_index=True)
 
-            output_filename = f"{self.now}_result.csv"
-            output_path = os.path.join(result_path, output_filename)
-            with open(output_path,'w',encoding='utf-8') as csv_file:
-                all_data.to_csv(csv_file, index=False)
-            logger.info(f"{OutputManager._task_type_safe(task_type)} result_csv store in {output_path}")
-        except Exception as e:
-            logger.info(f"merge_result {OutputManager._task_type_safe(task_type)} exception {e}")
+class RampupOutputManager(OutputManager):
+    def __init__(self, args: argparse.Namespace, task: Union["TaskOnline","TaskOffline"]) -> None:
+        super().__init__(args)
+        super().set_task(task)
 
-    def merge_online_search_result(self, task_type:TaskType,max_ttft,max_tpot) -> None:
-        try:
-            result_path = os.path.join(self.args.output_path, 
-                                    f"{self.now}",             # TODO: 这儿的model_name 也有问题，因为可能不一致
-                                    f"{self.task.model_name}", # 如果真的有这种情况，得到外面再按 model_name分组一次
-                                    OutputManager._task_type_safe(task_type),
-                                    RESULT_SUBPATH,
-                                    OutputManager.online_offline_subpath(task_type, TaskLaunchMode.online)
-                                    )
-            all_data = pd.DataFrame()
-            for subdir, dirs, files in os.walk(result_path):
-                if subdir == result_path:
-                    continue
-                # dir_name = os.path.basename(subdir)
-                for file in files:
-                    if file.endswith('.csv') and "ttft" not in file and "tpot" not in file:
-                        file_path = os.path.join(subdir,file)
-                        data = pd.read_csv(file_path)
-                        all_data = pd.concat([all_data, data], ignore_index=True)
+    def init(self):
+        self.init_output_file()
+        self.precreate_bench_result_files()
 
-            output_filename = f"{self.now}_result.csv"
-            output_path = os.path.join(result_path, output_filename)
-            with open(output_path,'w',encoding='utf-8') as csv_file:
-                all_data.to_csv(csv_file, index=False)
-            logger.debug(f"{OutputManager._task_type_safe(task_type)} result_csv store in {output_path}")
-            self.parser_total_search_data(result_path,max_ttft,max_tpot)
-                
-        except Exception as e:
-            logger.info(f"merge_search_result exception {e}")
+    def precreate_bench_result_files(self) -> None:
+        for command in self.task.bench_serving:
+            bench_serving_args_str = OutputManager.get_bench_serving_args_str(command.get_cmd())
+            result_file_text, result_file_jsonl = self.path_manager.get_other_result_file_txt_jsonl(bench_serving_args_str)
+            create_file(result_file_text)
+            create_file(result_file_jsonl)
 
-    def merge_offline_result(self, task_type:TaskType) -> None:
-        try:
-            result_path = os.path.join(self.args.output_path, 
-                                    f"{self.now}",
-                                    f"{self.task.model_name}",
-                                    OutputManager._task_type_safe(task_type),
-                                    RESULT_SUBPATH,
-                                    OutputManager.online_offline_subpath(task_type, TaskLaunchMode.offline)
-                                    )
-            all_data = pd.DataFrame()
-            for subdir, dirs, files in os.walk(result_path):
-                if subdir == result_path:
-                    continue
-                # dir_name = os.path.basename(subdir)
-                for file in files:
-                    if file.endswith('.csv'):
-                        file_path = os.path.join(subdir,file)
-                        data = pd.read_csv(file_path)
-                        all_data = pd.concat([all_data, data], ignore_index=True)
+            with open(result_file_text, "a") as result_file:
+                command_with_result = self.append_result_file_param(command.get_cmd())
+                print(f"Command: {command_with_result}", file=result_file)
 
-            output_filename = f"{self.now}_result.csv"
-            output_path = os.path.join(result_path, output_filename)
-            with open(output_path,'w',encoding='utf-8') as csv_file:
-                all_data.to_csv(csv_file, index=False)
-            logger.info(f"{OutputManager._task_type_safe(task_type)} result_csv store in {output_path}")
-        except Exception as e:
-            logger.info(f"merge_offline_result exception {e}")
+    def append_result_file_param(self, command) -> str:
+            _, result_file_jsonl = self.path_manager.get_offline_result_file_txt_jsonl(self.task)
+            return f"{command} --output-file {result_file_jsonl}"
 
-    def write_pass_case(self):
-        """ write pass case id to file"""
-        pass
+    def write_client_result(self, command,result, is_pass=True) -> None:
+        bench_serving_args_str = OutputManager.get_bench_serving_args_str(command)
+        result_file_text = os.path.join(self.path_manager.get_result_path(),
+                                        f"{bench_serving_args_str}_result.txt")
 
-    def write_next_task(self):
-        """ write next case id to file"""
-        pass
+        command_with_result = self.append_result_file_param(command)
 
-    def write_log_file(self):
-        """ dump logs from server_cmd_ops[0].output to file """
-        outputs = self.task.server_cmd_ops[self.node_id].output
-        content = "\n".join(outputs) # 暂时无视 是否 store_output
-        with open(self.log_file, 'a') as f:
-            print(content, file=f)
-
-    def write_real_progress_start(self):
-        t_type = task_type_to_string(self.task.task_type)
-
-        if self.task.launch_mode == TaskLaunchMode.online:
-            online_task_content = {"launch_mode": "online",
-                                   "type": t_type,
-                                   "simple_param": self.task_full_name,
-                                   "server_id": str(self.task.task_id),
-                                   "cmd": self.task.server_cmd,
-                                   "client_test": []}
-            self.real_progress_data['tasks'].append(online_task_content)
-
-            is_have_task = False
-            if self.args.specify_task or self.args.incremental_mode:
-                for task in self.total_real_progress_data['tasks']:
-                    if task["server_id"] == str(self.task.task_id):
-                        is_have_task = True
-            if not is_have_task:
-                # 此处不可使用online_task_content
-                # 否则就会出现两条同样的记录,原因暂时未知
-                self.total_real_progress_data['tasks'].append({"launch_mode": "online",
-                                                               "type": t_type,
-                                                               "simple_param": self.task_full_name,
-                                                               "server_id": str(self.task.task_id),
-                                                               "cmd": self.task.server_cmd,
-                                                               "client_test": []})
-        elif self.task.launch_mode == TaskLaunchMode.offline:
-            offline_task_content = {"launch_mode": "offline",
-                                    "type": t_type,
-                                    "simple_param": self.task_full_name,
-                                    "server_id": str(self.task.task_id),
-                                    "cmd": self.task.server_cmd,
-                                    "status": "",
-                                    "times": 0}
-            self.real_progress_data['tasks'].append(offline_task_content)
-
-            # 此处不可使用 offline_task_content
-            # 否则就会出现两条同样的记录,原因暂时未知
-            if not self.args.incremental_mode:
-                is_same = False
-                for cur_task in self.total_real_progress_data['tasks']:
-                    if cur_task["server_id"] == str(self.task.task_id):
-                        is_same = True
-                        break
-                if not is_same:
-                    self.total_real_progress_data['tasks'].append({"launch_mode": "offline",
-                                                                   "type": t_type,
-                                                                   "simple_param": self.task_full_name,
-                                                                   "server_id": str(self.task.task_id),
-                                                                   "cmd": self.task.server_cmd,
-                                                                   "status": "",
-                                                                   "times": 0})
-
-            self.real_progress_data['to_run'] = "%s,%s" % (str(self.task.task_id+1), "0")
-            self.total_real_progress_data['to_run'] = "%s,%s" % (str(self.task.task_id+1), "0")
-        self.write_real_progress_config()
-
-    def write_real_progress_bench_serving(self, client_id, is_svr_start=True):
-        id = self.task.task_id
-        c_id = client_id + 1
-        if not is_svr_start:
-            id = self.task.task_id + 1
-            c_id = client_id
-        if (len(self.task.bench_serving) == client_id+1):
-            self.real_progress_data['to_run'] = "%s,%s" % (str(self.task.task_id + 1), "0")
+        if is_pass:
+            with open(result_file_text, "w") as result_file:
+                print(f"Command: {command_with_result}", file=result_file)
+                print("\n".join(result), file=result_file)
         else:
-            self.real_progress_data['to_run'] = "%s,%s" % (str(id), str(c_id))
-
-        if (len(self.task.bench_serving) == client_id+1):
-            self.total_real_progress_data['to_run'] = "%s,%s" % (str(self.task.task_id + 1), "0")
-        else:
-            self.total_real_progress_data['to_run'] = "%s,%s" % (str(id), str(c_id))
-
-        if is_svr_start:
-            cmd = self.task.bench_serving[client_id]
-            for cur_task in self.real_progress_data['tasks']:
-                if cur_task["server_id"] != str(self.task.task_id):
-                    continue
-
-                is_same = False
-                for cur_client in cur_task["client_test"]:
-                    if cur_client["id"] == str(cmd.get_id()):
-                        is_same = True
-                        break
-                if not is_same:
-                    cur_task["client_test"].append({"id": str(cmd.get_id()),
-                                                    "cmd": cmd.get_cmd(),
-                                                    "status": "",
-                                                    "times": 0})
-                break
-
-            for cur_task in self.total_real_progress_data['tasks']:
-                if cur_task["server_id"] != str(self.task.task_id):
-                    continue
-
-                is_same = False
-                for cur_client in cur_task["client_test"]:
-                    if cur_client["id"] == str(cmd.get_id()):
-                        is_same = True
-                        break
-                if not is_same:
-                    cur_task["client_test"].append({"id": str(cmd.get_id()),
-                                                    "cmd": cmd.get_cmd(),
-                                                    "status": "",
-                                                    "times": 0})
-                break
-
-        self.write_real_progress_config()
-
-    def write_real_progress_result(self, result_flag, i, error=None):
-        if self.task.launch_mode is TaskLaunchMode.online:
-            for task_content in self.real_progress_data["tasks"]:
-                if task_content["server_id"] != str(self.task.task_id):
-                    continue
-                for client_content in task_content["client_test"]:
-                    if client_content["id"] != str(i):
-                        continue
-                    if result_flag == 'pass':
-                        client_content["status"] = "pass"
-                    else:
-                        client_content["status"] = self.fail_reason # 'fail'
-                    client_content["times"] += 1
-            for task_content in self.total_real_progress_data["tasks"]:
-                if task_content["server_id"] != str(self.task.task_id):
-                    continue
-                for client_content in task_content["client_test"]:
-                    if client_content["id"] != str(i):
-                        continue
-                    if result_flag == 'pass':
-                        client_content["status"] = "pass"
-                    else:
-                        client_content["status"] = self.fail_reason
-                    client_content["times"] += 1
-        elif self.task.launch_mode is TaskLaunchMode.offline:
-            for task_content in self.real_progress_data["tasks"]:
-                if task_content["server_id"] != str(self.task.task_id):
-                    continue
-                if result_flag == 'pass':
-                    task_content['status'] = "pass"
-                else:
-                    task_content['status'] = self.fail_reason
-                task_content['times'] += 1
-            for task_content in self.total_real_progress_data["tasks"]:
-                if task_content["server_id"] != str(self.task.task_id):
-                    continue
-                if result_flag == 'pass':
-                    task_content['status'] = "pass"
-                else:
-                    task_content['status'] = self.fail_reason
-                task_content['times'] += 1
-
-        self.write_real_progress_config()
-
-    def write_to_run_args(self, task_id=0, client_id=0):
-        self.real_progress_data['to_run'] = "%s,%s" % (str(task_id), str(client_id))
-        self.total_real_progress_data['to_run'] = "%s,%s" % (str(task_id), str(client_id))
-        self.write_real_progress_config()
-
-    def get_total_real_progress_to_run(self):
-        to_run_config = ["0", "0"]
-        with open(self.total_real_progress_file, "r") as f:
-            total_config = json.load(f)
-            to_run_config = total_config['to_run'].split(",")
-        return to_run_config[0], to_run_config[1]
-
-    def write_real_progress_config(self):
-        if self.real_progress_file is None or self.total_real_progress_file is None:
-            return
-        with open(self.real_progress_file, 'w') as f:
-            json.dump(self.real_progress_data, f, indent=4, ensure_ascii=False)
-        with open(self.total_real_progress_file, 'w') as f1:
-            json.dump(self.total_real_progress_data, f1, indent=4, ensure_ascii=False)
-
-    def parser_total_search_data(self,result_files_path,max_ttft,max_tpot):
-        csv_file_name = f"{self.now}_result.csv"
-        logger.debug(f"result_files_path: {result_files_path}")
-        file_path = f"{result_files_path}/{csv_file_name}"
-        df = pd.read_csv(file_path)
-        dp = SearchDataParser()
-        dp.max_tpot = max_tpot
-        dp.max_ttft = max_ttft
-        dp.is_filter = True
-        file_dir = result_files_path
-        optimal_bs = 0
-        if dp.is_filter:
-            file_dir = f"{result_files_path}/total_ttft_{dp.max_ttft}_tpot_{dp.max_tpot}"
-            logger.debug(f"file_dir: {file_dir}")
-            if os.path.isdir(file_dir) == False:
+            with open(result_file_text, "a") as result_file:
                 try:
-                    os.mkdir(file_dir)
-                    logger.debug(f"folder '{file_dir}' creation successful")
-                except FileExistsError:
-                    logger.debug(f"folder '{file_dir}' already exist")
-                except OSError as e:
-                    logger.debug(f"creation failed:{e}") 
-            result = dp.parser_ttft_tpot_data(df,file_dir)
-            optimal_bs = result[1]
-            if import_draw_lib_success:
-                dp.plot_specified_data(result[0],file_dir)
-        dp.is_filter = False
-        dp.optimal_bs = optimal_bs
-        if import_draw_lib_success:
-            dp.plot_specified_data(df,result_files_path)
+                    print("\n".join(result), file=result_file)
+                except Exception as e:
+                    print(f"write_client_result exception {e}")
+                pass
+
+
+class SearchOutputManager(OutputManager):
+    def __init__(self, args: argparse.Namespace, task: Union["TaskOnline","TaskOffline"]) -> None:
+        super().__init__(args)
+        super().set_task(task)
+
+    def init(self):
+        self.init_output_file()
+        self.precreate_bench_result_files()
+
+    def precreate_bench_result_files(self) -> None:
+        for command in self.task.bench_serving:
+            bench_serving_args_str = OutputManager.get_bench_serving_args_str(command.get_cmd())
+            result_file_text, result_file_jsonl = self.path_manager.get_other_result_file_txt_jsonl(bench_serving_args_str)
+            create_file(result_file_text)
+            create_file(result_file_jsonl)
+
+            with open(result_file_text, "a") as result_file:
+                command_with_result = self.append_result_file_param(command.get_cmd())
+                print(f"Command: {command_with_result}", file=result_file)
+
+    def append_result_file_param(self, command) -> str:
+        _, result_file_jsonl = self.path_manager.get_offline_result_file_txt_jsonl(self.task)
+        return f"{command} --output-file {result_file_jsonl}"
+
+    def write_client_result(self, command, result, is_pass=True) -> None:
+        bench_serving_args_str = OutputManager.get_bench_serving_args_str(command)
+        result_file_text = os.path.join(self.path_manager.get_result_path(),
+                                        f"{bench_serving_args_str}_result.txt")
+
+        command_with_result = self.append_result_file_param(command)
+
+        if is_pass:
+            with open(result_file_text, "w") as result_file:
+                print(f"Command: {command_with_result}", file=result_file)
+                print("\n".join(result), file=result_file)
+        else:
+            with open(result_file_text, "a") as result_file:
+                try:
+                    print("\n".join(result), file=result_file)
+                except Exception as e:
+                    print(f"write_client_result exception {e}")
+                pass
 
     def parser_single_search_data(self):
-        result_files_path = self.get_result_path()
+        result_files_path = self.path_manager.get_result_path()
         csv_file_name = f'{self.task_type}_result.csv'
         logger.debug(f"result_files_path: {result_files_path}")
         file_path = f"{result_files_path}/{csv_file_name}"
+
         df = pd.read_csv(file_path)
         dp = SearchDataParser()
         dp.max_tpot = self.task.max_tpot
@@ -1216,15 +1221,59 @@ class OutputManager:
         if import_draw_lib_success:
             dp.plot_specified_data(df,result_files_path)
 
-    def get_single_server_result_csv(self) -> None:
-        """ get all client result csv of a server"""
-        pass
+    def merge_online_search_result(self, task_type: TaskType, max_ttft, max_tpot) -> None:
+        try:
+            result_path = self.path_manager.get_result_common_path()
+            all_data = pd.DataFrame()
+            for subdir, dirs, files in os.walk(result_path):
+                if subdir == result_path:
+                    continue
+                # dir_name = os.path.basename(subdir)
+                for file in files:
+                    if file.endswith('.csv') and "ttft" not in file and "tpot" not in file:
+                        file_path = os.path.join(subdir,file)
+                        data = pd.read_csv(file_path)
+                        all_data = pd.concat([all_data, data], ignore_index=True)
 
-    def fun(self):
-        pass
+            output_path = self.path_manager.get_result_csv_file_path()
+            with open(output_path,'w',encoding='utf-8') as csv_file:
+                all_data.to_csv(csv_file, index=False)
+            logger.debug(f"{OutputManager._task_type_safe(task_type)} result_csv store in {output_path}")
+            self.parser_total_search_data(result_path, max_ttft, max_tpot)
+                
+        except Exception as e:
+            logger.info(f"merge_search_result exception {e}")
 
-    def set_fail_reason(self, reason):
-        self.fail_reason = reason
+    def parser_total_search_data(self, result_files_path, max_ttft, max_tpot):
+        logger.debug(f"result_files_path: {result_files_path}")
+        file_path = self.path_manager.get_result_csv_file_path()
+
+        df = pd.read_csv(file_path)
+        dp = SearchDataParser()
+        dp.max_tpot = max_tpot
+        dp.max_ttft = max_ttft
+        dp.is_filter = True
+        file_dir = result_files_path
+        optimal_bs = 0
+        if dp.is_filter:
+            file_dir = f"{result_files_path}/total_ttft_{dp.max_ttft}_tpot_{dp.max_tpot}"
+            logger.debug(f"file_dir: {file_dir}")
+            if os.path.isdir(file_dir) == False:
+                try:
+                    os.mkdir(file_dir)
+                    logger.debug(f"folder '{file_dir}' creation successful")
+                except FileExistsError:
+                    logger.debug(f"folder '{file_dir}' already exist")
+                except OSError as e:
+                    logger.debug(f"creation failed:{e}") 
+            result = dp.parser_ttft_tpot_data(df,file_dir)
+            optimal_bs = result[1]
+            if import_draw_lib_success:
+                dp.plot_specified_data(result[0],file_dir)
+        dp.is_filter = False
+        dp.optimal_bs = optimal_bs
+        if import_draw_lib_success:
+            dp.plot_specified_data(df,result_files_path)
 
 
 class SearchDataParser():

@@ -17,6 +17,7 @@ import pandas as pd
 current_file_path = os.path.abspath(__file__)
 # 获取当前文件所在的文件夹路径
 current_dir = os.path.dirname(current_file_path)
+timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime()) # 时间戳
 
 class Machine:
 
@@ -27,6 +28,17 @@ class Machine:
         self.gpu_count = gpu_count
         self.unused_gpu_count = unused_gpu_count
         self.useed_gpu_index = -1
+    
+    def reset(self):
+        self.unused_gpu_count = self.gpu_count
+        self.useed_gpu_index = -1
+class Task:
+    
+    def __init__(self,data, path, gpu_count, index):
+        self.data = data
+        self.path = path
+        self.gpu_count = gpu_count
+        self.index = index
 
 class Multimachine:
     def __init__(self, args:argparse.Namespace):
@@ -35,75 +47,70 @@ class Multimachine:
         self.machine_list: list[Machine] = []
         self.total_gpu_count = 0
         self.expected_total_gpu_count = 0
-        self.total_tasks = []
-        self.cancel_cmds = []
         self.master_nodes = []
+        self.command_list = []
+        self.cancel_cmds = []
         
 
     def run(self) -> None:
         # 注册信号处理函数，监听SIGINT信号（对应Ctrl+C）
         signal.signal(signal.SIGINT, self.handle_ctrl_c)
-        local_ip = get_local_ip()
-        if local_ip == '0.0.0.0':
+        local_ip = get_ip_from_command()
+        if not local_ip:
             print("Error:## unable to get local ip !")
             exit(1)
         print(f"local ip: {local_ip}")
-        
+        total_task_list = list()
         # 读取测试任务信息
         tasks_path_list = self.args.tasks_config
         for path in tasks_path_list:
-            # print(path)
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 self.total_config.append({"data":data,"path":path})
                 tasks = data["tasks"]
-                for task in tasks:
-                    self.expected_total_gpu_count += self.get_expected_gpu_count(task)
-   
+                for i,task in enumerate(tasks):
+                    gpu_count = self.get_expected_gpu_count(task)
+                    total_task_list.append(Task(task,path,gpu_count,i))
+                    self.expected_total_gpu_count += gpu_count
+      
         # 读取节点信息   
         with open(self.args.machine_config,"r", encoding="utf-8") as f:
             data = json.load(f)
             for info in data["machine_info"]:
                 ip = info["ip"]
                 username = self.args.user  # 远程用户名
-                count = self.get_gpu_count(ip, username)
+                count = self.get_gpu_count(ip, username, ip in local_ip)
                 machine = Machine(config=info, ip=ip, gpu_count=count,unused_gpu_count=count)
-                machine.is_local = local_ip == ip
+                machine.is_local =  ip in local_ip
                 self.machine_list.append(machine)
                 self.total_gpu_count += count
-            
+        if not total_task_list or not self.machine_list:
+            print("Task config or machine list config is null !!!")
+            return
         print(f"Total of all nodes:{self.total_gpu_count} GPU")
         print(f"Total required for all tasks:{self.expected_total_gpu_count} GPU")
+        print([task.gpu_count for task in total_task_list])
+        new_json_dir = f"{os.path.dirname(tasks_path_list[0])}/section"
+        delete_folder(new_json_dir)
+        create_folder(new_json_dir)
+        rounds, schedule = self.calculate_task_rounds(self.total_gpu_count, total_task_list)
+        print(f"总可用GPU卡数: {self.total_gpu_count}")
+        print(f"任务所需卡数: {[task.gpu_count for task in total_task_list]}")
+        print(f"总轮数: {rounds}")
+        print("每轮任务分配:")
+        server_port = 0
+        sgl_port = 3000
+        for i, round_tasks in enumerate(schedule, 1):
+            for machine in self.machine_list:
+                machine.reset()
+            print(f"  第{i}轮: 任务卡数 {[task.gpu_count for task in round_tasks]}, 总使用 {sum([task.gpu_count for task in round_tasks])} 卡")
+            run_task, new_server_prot, new_sgl_prot = self.split_config(round_tasks,round_tasks[0].path,server_port,sgl_port)
+            print("\n")
+            server_port = new_server_prot
+            sgl_port = new_sgl_prot
+            self.run_docker(local_ip,run_task)
+        self.merge_result_data()
         
-        if self.expected_total_gpu_count <= self.total_gpu_count:
-            new_json_dir = f"{os.path.dirname(path)}/section"
-            delete_folder(new_json_dir)
-            server_port = 0
-            sgl_port = 3000
-            for config in self.total_config:
-                new_server_port, new_sgl_port = self.split_config(config["data"],config["path"],server_port,sgl_port)
-                server_port = new_server_port
-                sgl_port = new_sgl_port
-            print(server_port,sgl_port)
-            if server_port > 0: 
-                self.run_docker(local_ip)
-                self.merge_result_data()
-        else:
-            a = "="
-            print(f"{a*35} RUN TASKS {a*35}")
-            ip_list = [mc.ip for mc in self.machine_list]
-            if not ip_list:
-                print("Error: Please configure the machine information !!!")
-                return
-            tasks_config = " ".join(self.args.tasks_config)
-            command = self.create_cmd(self.args.container_name,tasks_config,self.args.machine_config,self.args.port,self.args.output_path)
-            if ip_list[0] != local_ip:
-                command =  f'ssh -o StrictHostKeyChecking=no {self.args.user}@{ip_list[0]} "cd {current_dir} ; {command}"'
-            print(command)
-            success, cmd = run_command_realtime(command,"cmd-1")
-            status = "succeed" if success else "fail"
-            print(f"command: {cmd} -> {status}")
-            
     def check_file(self,ip="",username="root",path=""):
         target_path = path
         if check_file_or_dir_is_exist(ip,username,path=target_path) == False:
@@ -113,14 +120,55 @@ class Multimachine:
             print(f"copy config: {reslut}")
         else:
             print(f"file \"{target_path}\" already exist")
-                        
-    def run_docker(self,local_ip):
+            
+    def calculate_task_rounds(self, total_gpus, total_tasks):
+        """
+        计算任务需要的运行轮次，并分配每轮运行的任务
+        
+        参数:
+            total_gpus: 可用的总GPU卡数
+            task_gpus: 每个任务需要的GPU卡数列表
+            
+        返回:
+            rounds: 总轮数
+            schedule: 每轮运行的任务列表，每个元素是该轮运行的任务所需卡数列表
+        """
+        # 复制并按从大到小排序任务
+        sorted_tasks = sorted(total_tasks, key=lambda s:s.gpu_count,reverse=True)
+        remaining_tasks = sorted_tasks.copy()
+        schedule = []
+        
+        # 循环分配任务直到所有任务都被分配
+        while remaining_tasks:
+            current_round = []
+            current_used = 0
+            
+            # 尝试为当前轮次分配任务
+            i = 0
+            while i < len(remaining_tasks):
+                task = remaining_tasks[i]
+                # 检查是否可以加入当前轮次
+                if current_used + task.gpu_count <= total_gpus:
+                    current_round.append(task)
+                    current_used += task.gpu_count
+                    remaining_tasks.pop(i)  # 从剩余任务中移除
+                else:
+                    i += 1  # 不能加入，检查下一个任务
+            
+            if current_round:  # 确保当前轮次有任务
+                schedule.append(current_round)
+            else:
+                # 如果没有任务能被分配，说明有任务所需卡数超过总卡数
+                raise ValueError(f"任务所需卡数 {remaining_tasks[0]} 超过可用总卡数 {total_gpus}")
+        
+        return len(schedule), schedule
     
+    def run_docker(self,local_ip,run_task):
+        all_run_cmds = []
+        all_docker_rm_cmds = []
         port = 0
-        all_commands = []
-        all_docker_cmd = []
         user = self.args.user      
-        for i, task in enumerate(self.total_tasks):
+        for i, task in enumerate(run_task):
             tasks_config = task["tasks_config_path"]
             machine_config = task["machine_config_path"]
             file_name_with_ext = os.path.basename(tasks_config)
@@ -130,51 +178,47 @@ class Multimachine:
             if not ip_list:
                 print("Error: Please configure the machine information !!!")
                 return
-            username = self.args.user
-            output_path = self.args.output_path
             if port == 0:
                 port = self.args.port
             master_node_ip = ip_list[0]
-            is_local_machine = master_node_ip == local_ip
-            output_path = f"{self.args.output_path}/multi"
+            is_local_machine = master_node_ip in local_ip
+            output_path = f"{self.args.output_path}/{timestamp}_multi"
             node = {"ip":master_node_ip,"is_local":is_local_machine,"path":output_path,"task_type":file_name}
             if is_local_machine:
-                self.master_nodes.insert(0,node)
+                if node not in self.master_nodes:
+                    self.master_nodes.insert(0,node) 
             else:
-                self.master_nodes.append(node)
+                if node not in self.master_nodes:
+                    self.master_nodes.append(node)
             cmd = self.create_cmd(container_name, tasks_config, machine_config, port, output_path)
             if is_local_machine:
                 create_folder(output_path)
             else:
-                create_remote_folder(master_node_ip,self.args.user,output_path)        
+                create_remote_folder(master_node_ip,user,output_path)        
                 cmd =  f'ssh -o StrictHostKeyChecking=no {user}@{master_node_ip} "cd {current_dir} ; {cmd}"'
 
             port +=10000
-            docker_cmd = f"docker rm {container_name}"
+            docker_rm_cmd = f"docker rm {container_name}"
             docker_stop_cmd = f"docker stop {container_name}"
             for ip in ip_list:
-                if ip != local_ip:
-                    docker_cmd = f'ssh -o StrictHostKeyChecking=no {user}@{ip} "{docker_cmd}"'
+                if ip not in local_ip:
+                    docker_rm_cmd = f'ssh -o StrictHostKeyChecking=no {user}@{ip} "{docker_rm_cmd}"'
                     docker_stop_cmd = f'ssh -o StrictHostKeyChecking=no {user}@{ip} "{docker_stop_cmd}"'
-                    self.check_file(ip,username,tasks_config)
-                    self.check_file(ip,username,machine_config)
-                    if check_file_or_dir_is_exist(ip,username,output_path) == False:
-                        create_folder(output_path)
-                all_docker_cmd.append(docker_cmd)
+                    self.check_file(ip,user,tasks_config)
+                    self.check_file(ip,user,machine_config)
+                    if check_file_or_dir_is_exist(ip,user,output_path) == False:
+                        create_remote_folder(ip,user,output_path)            
                 self.cancel_cmds.append(docker_stop_cmd)
-                self.cancel_cmds.append(docker_cmd)
-
-            all_commands.append(cmd)
+                self.cancel_cmds.append(docker_rm_cmd)
+                all_docker_rm_cmds.append(docker_rm_cmd)
+                
+            all_run_cmds.append(cmd)   
            
-        # print(all_commands)
-        # print(all_docker_cmd)
-            
         print("Start concurrent execution of commands...")
-    
-
+        
         task_run_results = run_commands_concurrently(
-            commands=all_commands,
-            max_workers=len(all_commands)  # 限制最大并发数
+            commands=all_run_cmds,
+            max_workers=len(all_run_cmds)  # 限制最大并发数
         )
 
         # 输出最终执行结果
@@ -184,8 +228,8 @@ class Multimachine:
             print(f"command: {cmd} -> {status}")
    
         docker_rm_results = run_commands_concurrently(
-            commands=all_docker_cmd,
-            max_workers=len(all_docker_cmd)  # 限制最大并发数
+            commands=all_docker_rm_cmds,
+            max_workers=len(all_docker_rm_cmds)  # 限制最大并发数
         )
         
         print("\n===== All commands have been executed =====")
@@ -194,154 +238,233 @@ class Multimachine:
             print(f"command: {cmd} -> {status}")
          
     def merge_result_data(self):
-        # %Y%m%d_%H%M%S
-        time_str = time.strftime("%Y%m%d_%H", time.localtime())
-        # time_str = "20250825_141600"
+        time_str = timestamp
         print(time_str)
         dst_path = ""
+        source_path = ""
         task_types = set()
+    
         for node in self.master_nodes:
             is_local = node["is_local"]
             task_type = node["task_type"]
+            if task_type == "rampup_bench":
+                task_type = "rampup"
             task_types.add(task_type)
+            ip = node["ip"]
             path = node["path"]
-            if is_local == False:
-                copy_file_or_dir_to_local(node["ip"],self.args.user,path,dst_path)
-            else:
-                dir = os.path.dirname(path)
-                dst_path = f"{dir}/{time_str}"
-                create_folder(dst_path)
-                print(dst_path)
-                
-            print(dst_path, task_type)    
-            result = get_specified_subfolders_recursive_os(dst_path, task_type)
-            # print(result)
-            for p in result:
-                # rsync -av --progress
-                cmd = f"rsync -av {p} {dst_path}" 
+            if not dst_path:
+                dst_path = f"{self.args.output_path}/{time_str}"
+                if is_local:
+                    create_folder(dst_path)
+                else:
+                    create_remote_folder(ip,self.args.user,dst_path)
+            
+            copy_file_or_dir_to_local(ip, self.args.user,path,dst_path)
+            source_path = f"{dst_path}/{time_str}_multi"
+            path_result = get_specified_subfolders_or_file_recursive_os(source_path, task_type)
+            if not path_result:
+                continue
+            for p in path_result:
+                # rsync -av --progress 合并文件夹，同名文件默认保留最新
+                cmd = f"rsync -a {p} {dst_path}" 
                 run_command_realtime(cmd,thread_name="rsync")
-            delete_folder(f"{dst_path}/multi")
+            if is_local:
+                delete_folder(path)
+            else:
+                run_command_realtime(f"ssh {self.args.user}@{ip} \" rm -rf {path}\"",thread_name="rm")
         
-        name = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-        for type in task_types:
-            result = find_files_by_name(f"{dst_path}/{type}",f"{type}_result.csv")
-            first = os.path.dirname(result[0])
-            output_path = os.path.dirname(first)
-            for f in find_files_by_name(output_path,"_result.csv",False):
-                os.remove(f)
-            merge_csv_files(result,f"{output_path}/{name}_result.csv")            
+        total_file = None
+        total_file_name = "total_real_progress_file.json"
+        with open(f"{source_path}/{total_file_name}","r", encoding="utf-8") as f:
+            total_file = json.load(f)
+        total_tasks = []
+        for tt in task_types:
+            target_name = f"{tt}_result.csv"
+            if tt == "acc":
+                acc_sub = ["ceval","mmlu"]
+                acc_all_result = []
+                for sub in acc_sub:
+                    target_name = f"{tt}_{sub}_result.csv"
+                    file_path_result = find_files_by_name(f"{dst_path}/{tt}",target_name)
+                    acc_all_result.extend(file_path_result)
+                if acc_all_result:
+                    first = os.path.dirname(acc_all_result[0])
+                    output_path = os.path.dirname(os.path.dirname(first))
+                    for f in find_files_by_name(output_path,"_result.csv",False):
+                        os.remove(f)
+                    merge_file_path = f"{output_path}/{time_str}_result.csv"
+                    merge_csv_files(acc_all_result, merge_file_path,test_type=tt)
+            else:
+                file_path_result = find_files_by_name(f"{dst_path}/{tt}",target_name)
+                if file_path_result:
+                    first = os.path.dirname(file_path_result[0])
+                    output_path = os.path.dirname(first)
+                    for f in find_files_by_name(output_path,"_result.csv",False):
+                        os.remove(f)
+                    merge_file_path = f"{output_path}/{time_str}_result.csv"
+                    merge_csv_files(file_path_result, merge_file_path,test_type=tt)
+            if tt == "search":
+                folders = get_specified_subfolders_or_file_recursive_os(f"{dst_path}/{tt}","total_ttft",is_fuzzy_match=True)
+                if folders:
+                    ttft = ""
+                    tpot = ""
+                    total_ttft_tpot_path = folders[-1]
+                    subs = total_ttft_tpot_path.split("/")[-1].split("_")
+                    if len(subs) == 5:
+                        ttft = subs[2]
+                        tpot = subs[-1]
+                        try:
+                            df = pd.read_csv(merge_file_path, encoding="utf-8")
+                            target_data = df[(df["Mean TTFT (ms)"] < float(ttft)) & (df["Mean TPOT (ms)"] < float(tpot))]
+                            optimal_data = target_data[target_data["batch-size"] == target_data["batch-size"].max()]
+                            output_file = f"{total_ttft_tpot_path}/ttft_{ttft}_tpot_{tpot}_result.csv"
+                            with open(output_file,'w+',encoding='utf-8') as csv_file:
+                                target_data.to_csv(csv_file, index=False, encoding="utf-8")
+
+                            optimal_data_file = f"{total_ttft_tpot_path}/max_ttft_{ttft}_max_tpot_{tpot}_result.csv"
+                            optimal_data.to_csv(optimal_data_file, index=False, encoding="utf-8")
+                            print(output_file, optimal_data_file)
+                        except Exception as e:
+                            print(f"csv file fail: {str(e)}")
+                                       
+            real_progress_file_name = f"{tt}/real_progress_file.json"
+            files = get_specified_subfolders_or_file_recursive_os(source_path, real_progress_file_name,True)
+            files = sorted(files)
+            real_progress_file = None
+            for file in files:
+                with open(file, "r", encoding="utf-8") as f:
+                    if not real_progress_file:
+                        real_progress_file = json.load(f)
+                    else:
+                        tasks = real_progress_file["tasks"]
+                        data = json.load(f)
+                        tasks.extend(data["tasks"])
+            if real_progress_file:
+                with open(f"{dst_path}/{real_progress_file_name}", 'w', encoding='utf-8') as f:
+                        json.dump(
+                            real_progress_file,
+                            f,
+                            indent=4,
+                            ensure_ascii=False,
+                            sort_keys=False  # 不排序键，保持原字典顺序
+                        )
+            total_tasks.extend(real_progress_file["tasks"])
+            
+        total_file["tasks"] = total_tasks
+        if total_file:
+            with open(f"{dst_path}/{total_file_name}", 'w', encoding='utf-8') as f:
+                        json.dump(
+                            total_file,
+                            f,
+                            indent=4,
+                            ensure_ascii=False,
+                            sort_keys=False  # 不排序键，保持原字典顺序
+                        )
+        delete_folder(source_path)      
        
-    def split_config(self,data,path,server_port,sgl_port):
+    def split_config(self,tasks,path,server_port,sgl_port):
         """
         切分任务
         """
         a = "=="
-        # 读取task信息
-        tasks = data["tasks"]
-        if self.expected_total_gpu_count <= self.total_gpu_count:
-            new_json_dir = f"{os.path.dirname(path)}/section"
-            create_folder(new_json_dir)
-            file_name_with_ext = os.path.basename(path)
+        run_task = []
+        for task in tasks:
+            value = task.data
+            file_name_with_ext = os.path.basename(task.path)
             file_name, ext = os.path.splitext(file_name_with_ext)
             
-            for i, value in enumerate(tasks):
-                
-                if server_port == 0:
-                    server_port = int(value["server_port"])
-                machine_info = []
-                use_machine = None
-                expected_gpu_count = self.get_expected_gpu_count(value)
-                print(f"\n{a*35} START {a*35}")
-                print(f"The number of cards required for a single task: {expected_gpu_count}")
-                
-                count_expected = 0
-                for machine in self.machine_list:
-                    if machine.unused_gpu_count == 0:
-                        continue
-                    print(f"Machine:{machine.ip} number of idle cards: {machine.unused_gpu_count}")
-                    if machine.unused_gpu_count >= expected_gpu_count:
-                        use_machine = machine
+            if server_port == 0:
+                server_port = int(value["server_port"])
+            machine_info = []
+            use_machine = None
+            expected_gpu_count = task.gpu_count
+            print(f"{a*35} START {a*35}")
+            print(f"The number of cards required for a single task: {expected_gpu_count}")
+            
+            count_expected = 0
+            for machine in self.machine_list:
+                if machine.unused_gpu_count == 0:
+                    continue
+                print(f"Machine:{machine.ip} number of idle cards: {machine.unused_gpu_count}")
+                if machine.unused_gpu_count >= expected_gpu_count:
+                    use_machine = machine
+                    machine_info.append(machine.config)
+                    print(f"Number of allocated cards: {expected_gpu_count}")
+                    break
+                else:
+                    count_expected += machine.gpu_count
+                    machine.unused_gpu_count = 0
+                    if machine.is_local:
+                        machine_info.insert(0,machine.config)
+                    else:
                         machine_info.append(machine.config)
+                    if count_expected >= expected_gpu_count:
                         print(f"Number of allocated cards: {expected_gpu_count}")
                         break
-                    else:
-                        count_expected += machine.gpu_count
-                        machine.unused_gpu_count = 0
-                        if machine.is_local:
-                            machine_info.insert(0,machine.config)
-                        else:
-                            machine_info.append(machine.config)
-                        if count_expected >= expected_gpu_count:
-                            print(f"Number of allocated cards: {expected_gpu_count}")
-                            break
-                        
-                new_json_dir = f"{os.path.dirname(path)}/section/{file_name}_{i}"
-                create_folder(new_json_dir)
-                new_json_path = f"{new_json_dir}/{file_name}{ext}"
-                cvd = ""
-                if use_machine != None:
-                    gpu_index = use_machine.useed_gpu_index+1
-                    devices_index = ",".join(map(str, range(gpu_index, gpu_index + expected_gpu_count)))
-                    print(f"gpu_index:{gpu_index} expected_gpu_count:{expected_gpu_count} specified gpu index: {devices_index}")
-                    cvd = f"CUDA_VISIBLE_DEVICES={devices_index} "
-                    use_machine.unused_gpu_count -= expected_gpu_count
-                    use_machine.useed_gpu_index += expected_gpu_count
-                    print(f"Machine:{machine.ip} use the graphics card index: {use_machine.useed_gpu_index}")
-                    print(f"Machine:{machine.ip} number of idle cards: {use_machine.unused_gpu_count}")
-               
-                value["server_port"] = f"{server_port}"
-                if value["launch_mode"] == "offline":
-                    server_base = value["server_base"]
-                    cmb = server_base["command_base"]
-                    server_base["command_base"] = f"{cvd}{cmb} --port {sgl_port}"
-                    print(server_base["command_base"])
-                else:
-                    launch_server = value["launch_server"]
-                    command_base_list = launch_server["command_base"]
-                    new_cmd_list = []
-                    for cmb in command_base_list:
-                        cmb = f"{cvd}{cmb}  --port {sgl_port}"
-                        new_cmd_list.append(cmb)
-                    launch_server["command_base"] = new_cmd_list
-
-                    benchmark = value["benchmark"]
-                    command_base = benchmark["command_base"]
-                    benchmark["command_base"] = f"{cvd}{command_base} --port {sgl_port}"
-                    print(launch_server["command_base"])
-                    print(benchmark["command_base"])
                     
-                
-                print(f'server_port: {value["server_port"]}')
-                
-                # 写入JSON文件
-                new_tasks_json = {"tasks":[value]}
-                with open(new_json_path, 'w', encoding='utf-8') as f:
-                    json.dump(
-                        new_tasks_json,
-                        f,
-                        indent=2,
-                        ensure_ascii=False,
-                        sort_keys=False  # 不排序键，保持原字典顺序
-                    )
-                machine_config_path = f"{new_json_dir}/machines.json"
-                machines_json = {"machine_info":machine_info}
-                with open(machine_config_path, 'w', encoding='utf-8') as f:
-                    json.dump(
-                        machines_json,
-                        f,
-                        indent=2,
-                        ensure_ascii=False,
-                        sort_keys=False  # 不排序键，保持原字典顺序
-                    )
-                if machine_info:
-                    self.total_tasks.append({"tasks_config_path":new_json_path, "machine_config_path":machine_config_path,"ip":[machine["ip"] for machine in machine_info]})
-                    sgl_port +=10
-                    server_port += 1000
-                print(f"{a*35} END {a*35}\n")   
-            return server_port, sgl_port
-        else:
-            print("The number of cards required exceeds the actual number of available cards")
-            return 0,0
+            new_json_dir = f"{os.path.dirname(path)}/section/{file_name}_{task.index}"
+            create_folder(new_json_dir)
+            new_json_path = f"{new_json_dir}/{file_name}{ext}"
+            cvd = ""
+            if use_machine != None:
+                gpu_index = use_machine.useed_gpu_index+1
+                devices_index = ",".join(map(str, range(gpu_index, gpu_index + expected_gpu_count)))
+                print(f"gpu_index:{gpu_index} expected_gpu_count:{expected_gpu_count} specified gpu index: {devices_index}")
+                cvd = f"CUDA_VISIBLE_DEVICES={devices_index} "
+                use_machine.unused_gpu_count -= expected_gpu_count
+                use_machine.useed_gpu_index += expected_gpu_count
+                print(f"Machine:{machine.ip} use the graphics card index: {use_machine.useed_gpu_index}")
+                print(f"Machine:{machine.ip} number of idle cards: {use_machine.unused_gpu_count}")
+            
+            value["server_port"] = f"{server_port}"
+            if value["launch_mode"] == "offline":
+                server_base = value["server_base"]
+                cmb = server_base["command_base"]
+                server_base["command_base"] = f"{cvd}{cmb} --port {sgl_port}"
+                print(server_base["command_base"])
+            else:
+                launch_server = value["launch_server"]
+                command_base_list = launch_server["command_base"]
+                new_cmd_list = []
+                for cmb in command_base_list:
+                    cmb = f"{cvd}{cmb}  --port {sgl_port}"
+                    new_cmd_list.append(cmb)
+                launch_server["command_base"] = new_cmd_list
+
+                benchmark = value["benchmark"]
+                command_base = benchmark["command_base"]
+                benchmark["command_base"] = f"{cvd}{command_base} --port {sgl_port}"
+                print(launch_server["command_base"])
+                print(benchmark["command_base"])
+            
+            print(f'server_port: {value["server_port"]}')
+            
+            # 写入JSON文件
+            new_tasks_json = {"tasks":[value]}
+            with open(new_json_path, 'w', encoding='utf-8') as f:
+                json.dump(
+                    new_tasks_json,
+                    f,
+                    indent=2,
+                    ensure_ascii=False,
+                    sort_keys=False  # 不排序键，保持原字典顺序
+                )
+            machine_config_path = f"{new_json_dir}/machines.json"
+            machines_json = {"machine_info":machine_info}
+            with open(machine_config_path, 'w', encoding='utf-8') as f:
+                json.dump(
+                    machines_json,
+                    f,
+                    indent=2,
+                    ensure_ascii=False,
+                    sort_keys=False  # 不排序键，保持原字典顺序
+                )
+            if machine_info:
+                run_task.append({"tasks_config_path":new_json_path, "machine_config_path":machine_config_path,"ip":[machine["ip"] for machine in machine_info]})
+                sgl_port +=10
+                server_port += 1000
+            print(f"{a*35} END {a*35}")   
+        return run_task, server_port, sgl_port
 
     def create_cmd(self, container_name, tasks_config, machine_config, port, output_path="") ->str:
         incremental = "--incremental-mode" if self.args.incremental_mode else ""
@@ -369,20 +492,25 @@ class Multimachine:
         return cmd
     
     def get_expected_gpu_count(self,task) ->int:
-
-        if task["launch_mode"] == "offline":
-            command = "".join(task["server_base"]["param"])
-            tp_size_match = re.search(r"--(tp|tp-size)\s+(\d+)",command)
-            return int(tp_size_match.group(2))
+        world_size = task["world_size"]
+        if not world_size:
+            if task["launch_mode"] == "offline":
+                command = "".join(task["server_base"]["param"])
+                tp_size_match = re.search(r"--(tp|tp-size)\s+(\d+)",command)
+                return int(tp_size_match.group(2))
+            else:
+                command = "".join(task["launch_server"]["enable_parallel"])
+                tp_size_match = re.search(r"--(tp|tp-size)\s+(\d+)",command)
+                return  int(tp_size_match.group(2))
         else:
-            command = "".join(task["launch_server"]["enable_parallel"])
-            tp_size_match = re.search(r"--(tp|tp-size)\s+(\d+)",command)
-            return  int(tp_size_match.group(2))
-            
-    def get_gpu_count(self,ip, username, port=22): 
+            return int(world_size)
+        
+    def get_gpu_count(self,ip, username, port=22, is_local=True): 
         #  "mx-smi --show-pcie" 
-        gpu_count = -1
-        cmd = f'ssh -o StrictHostKeyChecking=no {username}@{ip} "mx-smi"'
+        gpu_count = 0
+        cmd = "mx-smi"
+        if not is_local:
+            cmd = f'ssh -o StrictHostKeyChecking=no {username}@{ip} "mx-smi"'
         # print(cmd)
         try:
             pp = subprocess.Popen(
@@ -417,11 +545,11 @@ class Multimachine:
         """处理Ctrl+C事件的回调函数"""
         print("\n收到Ctrl+C终止信号，正在安全退出...")
         # 在这里添加清理操作，如关闭文件、释放资源等
+        
         for cmd in self.cancel_cmds:
-           success, _ = run_command_realtime(command=cmd,thread_name="cancel")
-           status = "succeed" if success else "fail"
-           print(f"{cmd} execute {status}")
-    
+            success, _ = run_command_realtime(cmd,"cancel")
+            status = "succeed" if success else "fail"
+            print(f"{cmd} execute {status}")
         exit(0)
         
 def run_command_realtime(command: str, thread_name: str = None) -> Tuple[bool, str]:
@@ -477,19 +605,22 @@ def run_commands_concurrently(
         字典，键为命令，值为执行是否成功
     """
     results = {}
-    
+    futures = {}
     # 线程池执行
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # 提交所有任务
-        futures = {
-            executor.submit(
+    
+        for i, cmd in enumerate(commands):
+            # 提交任务到线程池
+            future = executor.submit(
                 run_command_realtime, 
                 cmd, 
                 thread_name=f"cmd-{i+1}"  # 为每个命令指定线程名
-            ): cmd 
-            for i, cmd in enumerate(commands)
-        }
-        
+            )
+            futures[future] = cmd
+            # 不是最后一个任务时，添加提交间隔
+            if i < len(commands) - 1:
+                time.sleep(1) # 设置任务提交间隔时间(秒)
+                
         # 等待任务完成并收集结果
         for future in as_completed(futures):
             cmd = futures[future]
@@ -525,23 +656,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--specify-task", action="store_true", help="Starting from the designated task")
     return parser.parse_args()
 
-
-def get_local_ip():
-    """
-    获取本机的IP地址
-    返回值: 本机的IP地址字符串，如果获取失败则返回None
-    """
+def get_ip_from_command():
     try:
-        # 创建一个socket连接来确定本机IP
-        # 这里连接的地址不需要实际可达，只是为了获取当前机器的出口IP
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            # 使用公共DNS服务器地址，不实际建立连接
-            s.connect(("8.8.8.8", 80))
-            local_ip = s.getsockname()[0]
-        return local_ip
-    except Exception as e:
-        print(f"An error occurred when obtaining the IP address: {e}")
-        return None
+        # 执行ip addr命令并获取输出
+        result = subprocess.check_output(['ip', 'addr'], text=True)
+        
+        # 使用正则表达式匹配IPv4地址（排除回环地址）
+        ip_pattern = re.compile(r'inet (\d+\.\d+\.\d+\.\d+)/\d+')
+        ips = ip_pattern.findall(result)
+        
+        # 过滤回环地址
+        valid_ips = [ip for ip in ips if not ip.startswith('127.')]
+        return list(set(valid_ips))  # 去重
+    except subprocess.CalledProcessError as e:
+        print(f"执行命令失败: {e}")
+        return []
     
 def check_file_or_dir_is_exist(ip="",username="root",path=""):
     param = "-f"
@@ -564,21 +693,33 @@ def copy_file_or_dir_to_local(ip="",username="root",source_path="",target_path="
 def create_remote_folder(ip="",username="root",path=""):
     cmd = f"ssh {username}@{ip} \"mkdir -p {path}\""
     result, _ = run_command_realtime(command=cmd,thread_name="create_folder")
-    print(f"folder \"{path}\" create: {result}")
+    print(f"remote folder \"{path}\" create: {result}")
     return result
 
-def get_specified_subfolders_recursive_os(parent_folder, target_folder_name):
+def get_specified_subfolders_or_file_recursive_os(parent_folder, target_name, is_file=False,is_fuzzy_match=False):
     """
-    递归获取指定名字的子文件夹路径列表
+    递归获取指定名字的子文件夹/文件路径列表
     :param parent_folder: 父文件夹路径
-    :param target_folder_name: 目标子文件夹名称
-    :return: 符合条件的子文件夹路径列表
+    :param target_folder_name: 目标子文件夹/文件名称
+    :param is_file: 是否是文件
+    :param is_fuzzy_match: 是否模糊匹配
+    :return: 符合条件的子文件夹/文件路径列表
     """
     specified_subfolders = []
     for root, dirs, files in os.walk(parent_folder):
-        for dir_name in dirs:
-            if dir_name == target_folder_name:
-                specified_subfolders.append(os.path.join(root, dir_name))
+        if is_file:
+            for file_name in files:
+                folder = os.path.dirname(os.path.join(root, file_name)).split("/")[-1]
+                if file_name == target_name or f"{folder}/{file_name}" == target_name:
+                    specified_subfolders.append(os.path.join(root, file_name))
+        else:
+            for dir_name in dirs:
+                if is_fuzzy_match:
+                    if target_name in dir_name:
+                        specified_subfolders.append(os.path.join(root, dir_name))
+                else:
+                    if dir_name == target_name:
+                        specified_subfolders.append(os.path.join(root, dir_name))
     return specified_subfolders
 
 def find_files_by_name(root_dir, target_name, recursive=True):
@@ -608,7 +749,7 @@ def find_files_by_name(root_dir, target_name, recursive=True):
     
     return matched_files
 
-def merge_csv_files(csv_paths, output_file, encoding='utf-8'):
+def merge_csv_files(csv_paths, output_file, encoding='utf-8', test_type=""):
     """合并CSV文件路径列表中的所有文件"""
     if not csv_paths:
         print("No CSV files were found")
@@ -619,8 +760,6 @@ def merge_csv_files(csv_paths, output_file, encoding='utf-8'):
     for csv_file in csv_paths:
         try:
             df = pd.read_csv(csv_file, encoding=encoding)
-            # 可选：添加一列记录数据来源文件
-            df['source_file'] = os.path.basename(csv_file)
             dfs.append(df)
         except Exception as e:
             print(f"Read file {csv_file} fail: {str(e)}")
@@ -631,12 +770,12 @@ def merge_csv_files(csv_paths, output_file, encoding='utf-8'):
 
     # 合并所有DataFrame
     merged_df = pd.concat(dfs, ignore_index=True)
-    merged_df = merged_df.sort_values(by=["batch-size"], ascending=True)
+    if  test_type != "acc":
+        merged_df = merged_df.sort_values(by=["batch-size"], ascending=True)
     # 保存合并后的结果
     merged_df.to_csv(output_file, index=False, encoding=encoding)
     print(f"The merger is complete {len(merged_df)} line data, saved to: {output_file}")
-    
-    
+       
 def create_folder(file_dir):
         if os.path.isdir(file_dir) == False:
             try:
@@ -663,6 +802,4 @@ def delete_folder(folder_path):
 
 if __name__ == "__main__":
     Multimachine(parse_args()).run()
-    # TODO 兼容没有共享目录（已完成）；测试结果合并：output 添加标识，测试结束后遍历合并
    #python3 -m multimachine
-   

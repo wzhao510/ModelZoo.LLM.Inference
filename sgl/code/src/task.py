@@ -1,9 +1,9 @@
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 import time
 import threading
 
 from src.connection import Connection
-from src.output import OutputManager
+from src.output import BenchmarkOutputManager, AccOutputManager, SearchOutputManager, RampupOutputManager, RealProgressManager, NOW_TIME
 from utils.utils import *
 
 
@@ -13,6 +13,7 @@ last_log_folrder_size = 0
 is_abnormal_start = False
 test_stop = False
 abnormal_flag = False
+log_file_subpath = ''
 
 class BaseTask:
     def __init__(self,
@@ -30,7 +31,8 @@ class BaseTask:
         self.task_id = task_id
         self.server_cmd = launch_server
         self.server_port = port
-        self.output_manager = None
+        self.output_manager: Union["BenchmarkOutputManager","AccOutputManager", "SearchOutputManager", "RampupOutputManager"] = None
+        self.real_progress_manager = None
         self.envs = envs
         self.timeout = None
         self.timer = None
@@ -117,19 +119,16 @@ class BaseTask:
     def wait_server_ready(self) -> bool:
         pass
 
-    def bench_test(self):
-        # run client and store out to file
-        # ...
-        self.output_manager.write_client_result()
-        self.output_manager.write_pass_case()
-        self.output_manager.write_real_progress()
-        pass
-
     def generate_result(self):
         pass
     
-    def set_output_manager(self, output_manager: OutputManager,is_kill_abnormal) -> None:
+    def set_real_progress_manager(self, real_progress_manager: RealProgressManager):
+        self.real_progress_manager = real_progress_manager
+
+    def set_output_manager(self, output_manager: Union["BenchmarkOutputManager","AccOutputManager", "SearchOutputManager", "RampupOutputManager"]) -> None:
         self.output_manager = output_manager
+
+    def set_is_kill_abnormal(self, is_kill_abnormal):
         self.is_kill_abnormal = is_kill_abnormal
 
     def check_abnormal(self):
@@ -141,8 +140,12 @@ class BaseTask:
             abnormal_thread.start()
             is_abnormal_start = True
 
+    def set_file_log_subfile(self, subpath):
+        global log_file_subpath
+        log_file_subpath = subpath
+
     def check_other_abnormal(self):
-        global last_log_folrder_size,is_abnormal_start,abnormal_flag
+        global last_log_folrder_size,is_abnormal_start,abnormal_flag, log_file_subpath
         abnormal_flag_str = ["Gracefully exiting... remaining number of requests",
                              "Watchdog timeout (self.watchdog_timeout=300)",
                              "torch.OutOfMemoryError: CUDA out of memory.",
@@ -171,12 +174,12 @@ class BaseTask:
                     abnormal_flag = True
                     logger.error(f"********************************abnormal********************************")
                     logger.error(f"****************************{abnormal_str}****************************")
-                    self.output_manager.set_fail_reason(abnormal_str)
+                    self.real_progress_manager.set_fail_reason(abnormal_str)
                     break
             if abnormal_flag:
                 break
 
-            file_size = self.get_folder_size(self.output_manager.get_log_path()) 
+            file_size = self.get_folder_size(log_file_subpath) 
             if file_size > last_log_folrder_size:
                 last_log_update_time = time.time()
                 last_log_folrder_size = file_size
@@ -189,7 +192,7 @@ class BaseTask:
                 abnormal_flag = True
                 logger.error(f"********************************abnormal********************************")
                 logger.error(f"****************************timeout****************************")
-                self.output_manager.set_fail_reason('timeout')
+                self.real_progress_manager.set_fail_reason('timeout')
 
         is_abnormal_start = False
         self.stop_all(False)
@@ -230,7 +233,7 @@ class TaskOnline(BaseTask):
         while True:
             self.init()
             self.check_abnormal()
-            self.output_manager.write_real_progress_bench_serving(0, False)
+            self.real_progress_manager.write_real_progress_bench_serving(0, False)
             self.start_server()
             self.is_bench_finish = False
             server_start = self.wait_server_ready()
@@ -297,16 +300,16 @@ class TaskOnline(BaseTask):
             )
 
             self.current_bench_id = bench_id + 1
-            self.output_manager.write_real_progress_bench_serving(bench_id)
+            self.real_progress_manager.write_real_progress_bench_serving(bench_id)
             self.connection.run_cmd(self.nodes_used[0], self.current_bench_op)
             statu = self.current_bench_op.status
             result = self.current_bench_op.output
 
             if statu == 0:
-                self.output_manager.write_real_progress_result('pass', content.get_id())
+                self.real_progress_manager.write_real_progress_result('pass', content.get_id())
                 self.output_manager.write_client_result(content.get_cmd(), result)
             else:
-                self.output_manager.write_real_progress_result('fail', content.get_id())
+                self.real_progress_manager.write_real_progress_result('fail', content.get_id())
                 self.output_manager.write_client_result(content.get_cmd(), result, False)
 
             if test_stop:
@@ -320,7 +323,7 @@ class TaskOnline(BaseTask):
             self.output_manager.parser_single_search_data()
         if self.current_bench_id == len(self.bench_serving):
             self.is_bench_finish = True
-            self.output_manager.write_to_run_args(self.task_id+1, 0)
+            self.real_progress_manager.write_to_run_args(self.task_id+1, 0)
 
 class TaskOffline(BaseTask):
     def __init__(self,
@@ -345,10 +348,10 @@ class TaskOffline(BaseTask):
         result = master_ops.output
        
         if statu == 0:
-            self.output_manager.write_real_progress_result('pass',self.task_id)
+            self.real_progress_manager.write_real_progress_result('pass',self.task_id)
             self.output_manager.write_client_result(self.server_cmd, result)
         else:
-            self.output_manager.write_real_progress_result('fail',self.task_id)
+            self.real_progress_manager.write_real_progress_result('fail',self.task_id)
             self.output_manager.write_client_result(self.server_cmd, result, False)
         self.output_manager.extract_result_metrics()
         

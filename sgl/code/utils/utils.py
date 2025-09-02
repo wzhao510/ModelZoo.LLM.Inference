@@ -139,13 +139,19 @@ def get_ip() -> str:
     return "0.0.0.0"
 
 
-def get_interface_by_ip(ip) -> str:
+def get_all_local_ip() -> str:
     addrs = psutil.net_if_addrs()
-    for interface, addresses in addrs.items():
-        for addr in addresses:
-            if addr.address == ip:
-                return interface
-    return ''
+    addr_list = []
+    for _, addresses in addrs.items():
+        for address in addresses:
+            # 检查地址类型是否为IPv4或IPv6
+            if str(address.family) not in ['AddressFamily.AF_INET']:
+                continue
+            if address.address == '127.0.0.1' or address.address == '172.17.0.1':
+                continue
+            addr_list.append(address.address)
+    print(addr_list)
+    return addr_list
 
 def task_type_to_string(type):
     if type == TaskType.benchmark:

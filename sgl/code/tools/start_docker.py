@@ -7,9 +7,9 @@ import json
 import logging
 import time
 import os
-import socket
 import subprocess
 import re
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -263,27 +263,26 @@ def run_pull_command(rank,pull_flag,ssh_info,args,image_repository,image_tag):
        pull_flag[rank] = 1
 
 
-def get_ip() -> str:
-    host_ip = os.getenv("SGLANG_HOST_IP", "") or os.getenv("HOST_IP", "")
-    if host_ip:
-        return host_ip
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        s.connect(("8.8.8.8", 80))  # Doesn't need to be reachable
-        return s.getsockname()[0]
-    except Exception:
-        pass
-    return "0.0.0.0"
+def get_all_local_ip() -> str:
+    addrs = psutil.net_if_addrs()
+    addr_list = []
+    for _, addresses in addrs.items():
+        for address in addresses:
+            # 检查地址类型是否为IPv4或IPv6
+            if str(address.family) not in ['AddressFamily.AF_INET']:
+                continue
+            if address.address == '127.0.0.1' or address.address == '172.17.0.1':
+                continue
+            addr_list.append(address.address)
+    print(addr_list)
+    return addr_list
 
 
 def get_ssh_info_list(args, json_file_path):
     '''
         获取服务器信息列表
     '''
-    local_ip = get_ip()
-    if local_ip == '0.0.0.0':
-        print("## unable to get local ip !")
-        exit(1)
+    local_ip = get_all_local_ip()
 
     with open(json_file_path, 'r') as f:
         config_str = f.read()
@@ -294,7 +293,7 @@ def get_ssh_info_list(args, json_file_path):
     ssh_info_list = []
     machine_info_list = config['machine_info']
     for machine_info in machine_info_list:
-        is_local = machine_info['ip'] == local_ip
+        is_local = machine_info['ip'] in local_ip
         ssh_info_list.append(SSHInfo(machine_info['ip'], args.user, is_local=is_local))
     return ssh_info_list
 
@@ -343,7 +342,6 @@ def run_cmd(cmd: str, remote_ssh_info: SSHInfo,use_thread = False) -> ProcStatus
 
 def start_models(args,ssh_info_list,tag):
     target_path = args.target_path.rstrip('/')
-    slave_cmd = f'docker exec -i {args.container_name} /bin/bash -c "source /opt/conda/etc/profile.d/conda.sh; conda activate base;cd {target_path}/code;python3 -u -m src.slave --port {args.port} 2>&1"'
     incremental = "--incremental-mode" if args.incremental_mode else ""
     specify = "--specify-task" if args.specify_task else ""
 
@@ -359,11 +357,10 @@ def start_models(args,ssh_info_list,tag):
     master_ssh_info = None
     # 从服务器启动slave
     for ssh_info in ssh_info_list:
-        local_ip = get_ip()
-        if local_ip == '0.0.0.0':
-            print("## unable to get local ip !")
-            exit(1)
-        if ssh_info.ip != local_ip:
+        local_ip = get_all_local_ip()
+
+        if ssh_info.ip not in local_ip:
+            slave_cmd = f'docker exec -i {args.container_name} /bin/bash -c "source /opt/conda/etc/profile.d/conda.sh; conda activate base;cd {target_path}/code;python3 -u -m src.slave --local-ip {ssh_info.ip} --port {args.port} 2>&1"'
             run_cmd(slave_cmd,ssh_info,use_thread = True)
         else:
             master_ssh_info = ssh_info

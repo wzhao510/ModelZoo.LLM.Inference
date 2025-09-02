@@ -25,10 +25,7 @@ class Connection:
         self.sock_timeout = 5000 # 5s
 
     def connect(self) -> None:
-        local_ip = get_ip()
-        if local_ip == '0.0.0.0':
-            print("## unable to get local ip !")
-            exit(1)
+        local_ip = get_all_local_ip()
 
         # todo check local gpu in used
 
@@ -37,7 +34,7 @@ class Connection:
             node_info = NodeInfo(
                 ip=node['ip'], interface=node['ifname'], ib_hcas=node['ib_hcas']
             )
-            if node_info.ip == local_ip:
+            if node_info.ip in local_ip:
                 node_info.is_local = True
                 self.nodes_info.append(node_info)
                 continue
