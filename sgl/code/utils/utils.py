@@ -140,8 +140,14 @@ def get_ip() -> str:
 
 
 def get_all_local_ip() -> str:
-    addrs = psutil.net_if_addrs()
     addr_list = []
+    host_ip = os.getenv("SGLANG_HOST_IP", "") or os.getenv("HOST_IP", "")
+    if host_ip:
+        addr_list.append(host_ip)
+        print(addr_list)
+        return addr_list
+
+    addrs = psutil.net_if_addrs()
     for _, addresses in addrs.items():
         for address in addresses:
             # 检查地址类型是否为IPv4或IPv6

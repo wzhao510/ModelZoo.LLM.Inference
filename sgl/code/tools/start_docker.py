@@ -9,7 +9,7 @@ import time
 import os
 import subprocess
 import re
-import psutil
+import socket
 
 logger = logging.getLogger(__name__)
 
@@ -264,16 +264,21 @@ def run_pull_command(rank,pull_flag,ssh_info,args,image_repository,image_tag):
 
 
 def get_all_local_ip() -> str:
-    addrs = psutil.net_if_addrs()
     addr_list = []
-    for _, addresses in addrs.items():
-        for address in addresses:
-            # 检查地址类型是否为IPv4或IPv6
-            if str(address.family) not in ['AddressFamily.AF_INET']:
-                continue
-            if address.address == '127.0.0.1' or address.address == '172.17.0.1':
-                continue
-            addr_list.append(address.address)
+    host_ip = os.getenv("SGLANG_HOST_IP", "") or os.getenv("HOST_IP", "")
+    if host_ip:
+        addr_list.append(host_ip)
+        print(addr_list)
+        return addr_list
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        addr_list.append(s.getsockname()[0])
+    except Exception:
+        print("get local ip error...")
+        addr_list.append("0.0.0.0")
+        pass
+    s.close()
     print(addr_list)
     return addr_list
 
