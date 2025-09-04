@@ -54,35 +54,56 @@ class BaseTask:
 
     def start_server(self):
         nodes_num = len(self.nodes_used)
-        
-        # 先做一遍全节点检查，目前只是集中了日志，还没有实际行为 by ydm.
-        for index, node in enumerate(self.nodes_used):
-            if index == 0:
-                printenv(self.envs)
-                check_gpu_in_use(self.envs)
-            else:
-                cmd = self.server_cmd + f'  --nnodes {nodes_num} --node-rank {index}'
-                self.connection.init_slave_output_file(node, self.output_manager.get_info_for_slave(), cmd)
-                self.connection.check_slave_gpu_in_use(node)
+        local_node = None
+        expected_gpu_count = self._get_gpu_count(self.server_cmd)
+        is_single = expected_gpu_count <= 8 # 目前单机8卡
 
-        for index, node in enumerate(self.nodes_used):
-            cmd = self.server_cmd
-            if nodes_num > 1:
-                cmd += f' --dist-init-addr {self.nodes_used[0].ip}:{self.server_port}'
-                cmd += f'  --nnodes {nodes_num} --node-rank {index}'
-
+        for node in self.nodes_used:
+            if node.is_local:
+                local_node = node
+                break
+        if local_node and is_single:
             op_content = OperationContent(
-                id=get_next_op_id(),
-                type=OperationType.RUN,
-                envs=self.envs,
-                cmd=cmd,
-                store_output=True,
-                is_ready=True,
-                is_async=True,
-                is_master=index == 0,
-            )
-            self.connection.run_cmd(node, op_content)
+                        id=get_next_op_id(),
+                        type=OperationType.RUN,
+                        envs=self.envs,
+                        cmd=self.server_cmd,
+                        store_output=True,
+                        is_ready=True,
+                        is_async=True,
+                        is_master=True,
+                    )
+            self.connection.run_cmd(local_node, op_content)
             self.server_cmd_ops.append(op_content)
+        else:            
+            # 先做一遍全节点检查，目前只是集中了日志，还没有实际行为 by ydm.
+            for index, node in enumerate(self.nodes_used):
+                if index == 0:
+                    printenv(self.envs)
+                    check_gpu_in_use(self.envs)
+                else:
+                    cmd = self.server_cmd + f'  --nnodes {nodes_num} --node-rank {index}'
+                    self.connection.init_slave_output_file(node, self.output_manager.get_info_for_slave(), cmd)
+                    self.connection.check_slave_gpu_in_use(node)
+
+            for index, node in enumerate(self.nodes_used):
+                cmd = self.server_cmd
+                if nodes_num > 1:
+                    cmd += f' --dist-init-addr {self.nodes_used[0].ip}:{self.server_port}'
+                    cmd += f'  --nnodes {nodes_num} --node-rank {index}'
+
+                op_content = OperationContent(
+                    id=get_next_op_id(),
+                    type=OperationType.RUN,
+                    envs=self.envs,
+                    cmd=cmd,
+                    store_output=True,
+                    is_ready=True,
+                    is_async=True,
+                    is_master=index == 0,
+                )
+                self.connection.run_cmd(node, op_content)
+                self.server_cmd_ops.append(op_content)
 
     def stop_all(self, normal=True):
         if not normal:
@@ -208,6 +229,34 @@ class BaseTask:
 
     def set_server_port(self, port):
         self.server_port = port
+
+    def _get_gpu_count(self,command_str):
+        # 初始化要提取的参数
+        params = {
+            'tp': None,
+            'dp': None,
+            'pp': None
+        }
+        
+        # 分割命令字符串为参数列表
+        parts = command_str.split()
+        
+        # 遍历参数列表查找目标参数
+        for i in range(len(parts)):
+            for param in params.keys():
+                if parts[i] == f'--{param}':
+                    # 确保有下一个元素作为值
+                    if i + 1 < len(parts):
+                        params[param] = int(parts[i + 1])
+        
+        tp = params["tp"]
+        pp = params["pp"]
+        gpu_count = 0
+        if pp:
+            gpu_count = pp*tp
+        else:
+            gpu_count = tp
+        return gpu_count
 
 class TaskOnline(BaseTask):
     def __init__(self,
