@@ -1,5 +1,6 @@
 import argparse
 import sys
+import signal
 #import os
 # 获取当前文件所在目录的上一级目录（即项目的根目录）
 #root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -8,7 +9,7 @@ import sys
 import json
 import re
 from typing import Optional, List, Dict, Any, Union
-from src.task import TaskOnline, TaskOffline
+from src.task import TaskOnline, TaskOffline,BaseTask
 
 from src.connection import Connection
 from src.output import BenchmarkOutputManager, AccOutputManager, SearchOutputManager, RampupOutputManager, RealProgressManager
@@ -328,6 +329,7 @@ class TaskScheduler:
         self.current_task = None
         self.finish_flag = False
         self.connection:Optional[Connection] = None
+        self.is_stopped = False
 
     def parse_task_type(self, config) -> TaskType:
         if config.endswith("benchmark.json"):
@@ -416,6 +418,9 @@ class TaskScheduler:
                         break
 
     def run(self):
+        # 注册信号处理
+        signal.signal(signal.SIGINT, self.handle_termination)   # 处理Ctrl+C
+        signal.signal(signal.SIGTERM, self.handle_termination)  # 处理kill命令
         try:
             global real_progress_manager
             to_run_task_id = "0"
@@ -425,7 +430,7 @@ class TaskScheduler:
 
             is_task_skip = True
             for index, task in enumerate(self.task_list):
-                if self.finish_flag:
+                if self.finish_flag or self.is_stopped:
                     break
 
                 if index < (len(self.task_list) - 1):
@@ -445,11 +450,11 @@ class TaskScheduler:
                 task.output_manager.init()
                 real_progress_manager.init(task)
                 task.set_real_progress_manager(real_progress_manager)
-
+                self.current_task = task
                 task.run(int(client_id))
                 # 此处需要再次初始化,防止跳过其他task的bench
                 client_id = "0"
-
+                self.current_task = None
             # 从这里开始已经和某个任务无关，但是暂时不想创建单独的文件来存放logger
             # 所以请到最后一个任务里面去看后续的log吧 by ydm.
             if len(self.task_list) != 0:
@@ -459,6 +464,27 @@ class TaskScheduler:
         except Exception as e:
             logging.exception(f'{e}')
 
+    def handle_termination(self, signal_num, frame):
+        """处理终止信号的通用回调函数（支持SIGINT、SIGTERM）"""
+        signal_name = signal.Signals(signal_num).name
+        logger.info(f"收到{signal_name}终止信号,正在安全退出...")
+        self.is_stopped = True
+        try:
+            # 停止当前任务
+            if isinstance(self.current_task, BaseTask):
+                try:
+                    self.current_task.stop_all()
+                    logger.info(f"任务  ({type(self.current_task).__name__}) 已停止")
+                except Exception as e:
+                    logger.info(f"任务({type(self.current_task).__name__}) 停止失败: {e}")
+                
+            # 清理连接
+            self.connection.clean()
+            
+        except Exception as e:
+            logging.exception(f"退出过程中发生错误: {str(e)}")
+            sys.exit(1)  # 异常退出
+        sys.exit(0) 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
