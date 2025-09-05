@@ -493,6 +493,7 @@ docker run -it --device=/dev/dri --device=/dev/mxcd --device=/dev/infiniband --p
     ],
 }
 ```
+需要注意的是，如果后续使用手动启动的方式，该文件配置时需使用几台机器，配置几台机器即可。否则，多余配置的机器也需要作为从节点启动。一键启动的方式无需这样设置。
 
 ### 4.1.3 配置任务信息
 
@@ -559,6 +560,7 @@ python3 -m src.master --output-path ../outputs/ --tasks ../models/DeepSeek-R1-BF
 --output-path：结果输出的根目录，最好是外部挂载进容器的目录，防止容器删了结果丢失
 --tasks：指定测试的配置文件，可以指定多个配置
 --port：socket的端口号，默认
+--local-ip：从节点ip，与mechines.json中配置的从节点ip保持一致
 # 增量功能
 --incremental-mode：测试当前任务中非PASS的项
 --specify-task：从上次中断处继续执行测试
