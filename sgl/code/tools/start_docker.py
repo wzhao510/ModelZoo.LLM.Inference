@@ -270,15 +270,14 @@ def get_all_local_ip() -> str:
         addr_list.append(host_ip)
         print(addr_list)
         return addr_list
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
     try:
-        s.connect(("8.8.8.8", 80))
-        addr_list.append(s.getsockname()[0])
-    except Exception:
-        print("get local ip error...")
-        addr_list.append("0.0.0.0")
-        pass
-    s.close()
+        output = subprocess.check_output("ifconfig", shell=True)
+        for line in output.decode('utf-8').splitlines():
+            if 'inet' in line:
+                addr_list.append(line.split()[1])
+    except subprocess.CalledProcessError as e:
+        print("error:", e)
     print(addr_list)
     return addr_list
 
