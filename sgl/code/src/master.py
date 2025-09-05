@@ -340,6 +340,12 @@ class TaskScheduler:
             return TaskType.acc
         elif config.endswith("search.json"):
             return TaskType.search
+        elif config.endswith("benchmark_daily.json"):
+            return TaskType.benchmark
+        elif config.endswith("benchmark_weekly.json"):
+            return TaskType.benchmark
+        elif config.endswith("acc_weekly.json"):
+            return TaskType.acc
         
     def extract_task_model_name(self, config_path) -> str:
         # 默认认为倒数第一个路径是模型名
@@ -388,7 +394,17 @@ class TaskScheduler:
         if self.args.incremental_mode:
             self.pass_id_filter()
 
-        machines = read_json(self.args.machine_config)
+        machines = {'machine_info':[{"ip": "0.0.0.0",
+                                     "ifname":"",
+                                     "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3"}]}
+        if self.args.machine_config == "":
+            machines['machine_info'][0]["ip"], machines['machine_info'][0]["ifname"] = get_ip()
+        else:
+            machines = read_json(self.args.machine_config)
+        if self.args.machine_config == "":
+            machines['machine_info'][0]["ip"], machines['machine_info'][0]["ifname"] = get_ip()
+        else:
+            machines = read_json(self.args.machine_config)
         self.connection = Connection(machines['machine_info'], self.args.port)
         self.connection.connect()
 
@@ -490,7 +506,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-path", type=str, default="output", help="Path for storing results")
     parser.add_argument("--tasks-config", type=str, nargs='*', help="JSON file describing the task list")
-    parser.add_argument("--machine-config", type=str, help="JSON file describing the machine list")
+    parser.add_argument("--machine-config", type=str, default="", help="JSON file describing the machine list")
     parser.add_argument("--image-tag", type=str, default=" ",help="docker image tag")
     parser.add_argument("--incremental-mode", action="store_true", help="only run case not in pass file")
     parser.add_argument("--specify-task", action="store_true", help="Starting from the designated task")

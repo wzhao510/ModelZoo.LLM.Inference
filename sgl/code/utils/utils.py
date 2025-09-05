@@ -133,7 +133,12 @@ def get_ip() -> str:
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("8.8.8.8", 80))  # Doesn't need to be reachable
-        return s.getsockname()[0]
+        inference_name = ""
+        for name, addrs in psutil.net_if_addrs().items():
+            for addr in addrs:
+                if addr.family == socket.AF_INET and s.getsockname()[0] == addr.address:
+                    inference_name = name
+        return s.getsockname()[0], inference_name
     except Exception:
         pass
     return "0.0.0.0"
