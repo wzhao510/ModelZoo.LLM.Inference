@@ -1,4 +1,4 @@
-# ModelZoo SGLang ReadMe
+# ModelZoo SGLang ReadMe
 
 # 1 目录结构
 
@@ -36,26 +36,26 @@ sgl
 └── README.md
 ```
 
-code下存放的是测试代码和脚本, models目录下存放的是支持的模型的配置文件
+code下存放的是测试代码和脚本, models目录下存放的是支持的模型的配置文件
 
 # 2 测试类型
 
-| 测试类型      | 说明 |
-| ---          | ---  |
-| benchmark    | 可以组合各种参数的benchmark测试 |
-| rampup_bench | 爬坡测试 |
+| 测试类型     | 说明                                                         |
+| ------------ | ------------------------------------------------------------ |
+| benchmark    | 可以组合各种参数的benchmark测试                              |
+| rampup_bench | 爬坡测试                                                     |
 | search       | 摸高测试，指定指标如tpot、input、output等，搜索出满足指标的最大batch |
-| acc          | 精度测试，目前支持 mmlu和ceval |
+| acc          | 精度测试，目前支持 mmlu和ceval                               |
 
 服务器信息参数如下：
 
 - **machine_info：节点配置**
 
-| 参数     | 说明 |
-| ---     | ---  |
-| ip      | IP地址 |
-| ifname  | 网络接口名，填写与ip匹配的网卡的名。可以参考下面命令来获取<br>ip -o addr show \| grep  "inet {IP地址}" \| awk '{print $2}' \| sed 's/://'<br>如：<br>ip -o addr show \| grep  "inet 127.0.0.1" \| awk '{print $2}' \| sed 's/://' |
-| ib_hcas | 主机通道适配器<br>使用ibstat命令来获取，ibstat 输出类似如下结果<pre style="font-size: 12px; line-height: 1.2;">root@****:~# ibstat<br>CA 'mlx5_0'<br>        CA type: ****<br>        Number of ports: 1<br>        ...<br>        Port 1:<br>                State: Active<br>                Physical state: LinkUp<br>                Rate: 200<br>                Base lid: 0<br>                ...<br>CA 'mlx5_1'<br>        CA type: ****<br>        Number of ports: 1<br>        ...<br>        Port 1:<br>                State: Active<br>                Physical state: LinkUp<br>                Rate: 200<br>                ...<br>CA 'mlx5_bond_0'<br>        CA type: ****<br>        Number of ports: 1<br>        ...<br>        Port 1:<br>                State: Active<br>                Physical state: LinkUp<br>                Rate: 100<br>                ...<br>...</pre>请收集所有名称符合 mlx5_\[数字\]，并且State为Active的结果。<br>如上面，则应设置为 "ib_hcas":"mlx5_0,mlx5_1"， bond_0不需要带上。 |
+| 参数    | 说明                                                         |
+| ------- | ------------------------------------------------------------ |
+| ip      | IP地址                                                       |
+| ifname  | 网络接口名，填写与ip匹配的网卡的名。可以参考下面命令来获取<br>ip -o addr show \| grep  "inet {IP地址}" \| awk '{print $2}' \| sed 's/://'<br>如：<br>ip -o addr show \| grep  "inet 127.0.0.1" \| awk '{print $2}' \| sed 's/://' |
+| ib_hcas | 主机通道适配器<br>使用ibstat命令来获取，ibstat 输出类似如下结果<pre style="font-size: 12px; line-height: 1.2;">root@****:~# ibstat<br>CA 'mlx5_0'<br>        CA type: ****<br>        Number of ports: 1<br>        ...<br>        Port 1:<br>                State: Active<br>                Physical state: LinkUp<br>                Rate: 200<br>                Base lid: 0<br>                ...<br>CA 'mlx5_1'<br>        CA type: ****<br>        Number of ports: 1<br>        ...<br>        Port 1:<br>                State: Active<br>                Physical state: LinkUp<br>                Rate: 200<br>                ...<br>CA 'mlx5_bond_0'<br>        CA type: ****<br>        Number of ports: 1<br>        ...<br>        Port 1:<br>                State: Active<br>                Physical state: LinkUp<br>                Rate: 100<br>                ...<br>...</pre>请收集所有名称符合 mlx5_\[数字\]，并且State为Active的结果。<br>如上面，则应设置为 "ib_hcas":"mlx5_0,mlx5_1"， bond_0不需要带上。 |
 
 已有配置默认路径在sgl/models/mechines.json：
 
@@ -76,51 +76,51 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 }
 ```
 
-- **tasks: 测试任务信息**
+- **tasks: 测试任务信息**
 
-| 参数         | 说明 |
-| ---         | --- |
-| task_name   | 任务名称 |
-| launch_mode | 模式：online、offline |
+| 参数        | 说明                         |
+| ----------- | ---------------------------- |
+| task_name   | 任务名称                     |
+| launch_mode | 模式：online、offline        |
 | world_size  | 跑本任务测试需要用到的卡数量 |
-| server_port | 端口号 |
+| server_port | 端口号                       |
 
 - **environment：环境变量配置**
 
-| 参数                                              | 说明 |
-| ---                                               | --- |
-| MACA_SMALL_PAGESIZE_ENABLE                        | 页面大小优化 |
-| TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP | Triton 编译器优化 |
-| TRITON_ENABLE_MACA_CHAIN_DOT_OPT                  | Triton 编译器的链式 Dot 操作优化 |
-| PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM            | PyTorch 的优先级流（Priority Stream）优化 |
-| CUDA_GRAPH_DP_USE_SUM_BS                          | CUDA Graph 的动态批处理优化，默认False |
+| 参数                                              | 说明                                      |
+| ------------------------------------------------- | ----------------------------------------- |
+| MACA_SMALL_PAGESIZE_ENABLE                        | 页面大小优化                              |
+| TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP | Triton 编译器优化                         |
+| TRITON_ENABLE_MACA_CHAIN_DOT_OPT                  | Triton 编译器的链式 Dot 操作优化          |
+| PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM            | PyTorch 的优先级流（Priority Stream）优化 |
+| CUDA_GRAPH_DP_USE_SUM_BS                          | CUDA Graph 的动态批处理优化，默认False    |
 
 - **launch_server：服务配置**
 
-| 参数                  | 说明 |
-| ---                  | --- |
-| command_base         | 服务启动命令 |
-| model_path           | 模型路径 |
-| cache                | 缓存配置:用于配置是否启用KV缓存机制 |
-| attention_backend    | 配置后端注意力 |
-| enable_parallel      | 配置分布式并行策略 |
-| mtp                  | MTP（Massive Text Prediction）加速推理配置 |
-| cuda_graph           | 用于捕获 GPU 操作序列并重复执行，减少内核启动开销 |
-| mem_fraction_static  | 静态内存分配比例 |
-| chunked_prefill_size | 分块预填充大小（单位：token） |
+| 参数                 | 说明                                                         |
+| -------------------- | ------------------------------------------------------------ |
+| command_base         | 服务启动命令                                                 |
+| model_path           | 模型路径                                                     |
+| cache                | 缓存配置:用于配置是否启用KV缓存机制                          |
+| attention_backend    | 配置后端注意力                                               |
+| enable_parallel      | 配置分布式并行策略                                           |
+| mtp                  | MTP（Massive Text Prediction）加速推理配置                   |
+| cuda_graph           | 用于捕获 GPU 操作序列并重复执行，减少内核启动开销            |
+| mem_fraction_static  | 静态内存分配比例                                             |
+| chunked_prefill_size | 分块预填充大小（单位：token）                                |
 | dtype                | 数据类型：常见选项：float32（单精度，精度最高但内存占用大）、float16/bfloat16（半精度，内存占用减半，精度损失可控）、float8（低精度，适合高吞吐量场景） |
-| torch_compile        | PyTorch 的编译优化 |
-| embedding_tp_size    | 嵌入层（embedding layer）的张量并行（Tensor Parallel）尺寸：例如 embedding_tp_size=2 表示将嵌入层权重拆分到 2 张 GPU 上，每张 GPU 存储部分嵌入表，计算时通过跨卡通信协同完成 |
-| quantization         | 量化配置：指定模型参数的量化方式（将高精度权重转换为低精度，如 int8、int4），以减少内存占用并加速推理。 |
+| torch_compile        | PyTorch 的编译优化                                           |
+| embedding_tp_size    | 嵌入层（embedding layer）的张量并行（Tensor Parallel）尺寸：例如 embedding_tp_size=2 表示将嵌入层权重拆分到 2 张 GPU 上，每张 GPU 存储部分嵌入表，计算时通过跨卡通信协同完成 |
+| quantization         | 量化配置：指定模型参数的量化方式（将高精度权重转换为低精度，如 int8、int4），以减少内存占用并加速推理。 |
 
 **所有内置的模型json文件都是当前版本的最佳性能参数，只需要修改模型路径和机器等信息即可**
 
-## 2.1 Benchmark 测试 (benchmark.json)
+## 2.1 Benchmark 测试 (benchmark.json)
 
-| 参数              | 说明 |
-| ---              | --- |
+| 参数             | 说明                        |
+| ---------------- | --------------------------- |
 | input_output_len | 输入token长度/输出token长度 |
-| num_prompt       | 并发请求数 |
+| num_prompt       | 并发请求数                  |
 
 ```json
 {
@@ -163,16 +163,16 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 
 ```
 
-其中model path和 benchmark的 ShareGPT_V3_unfiltered_cleaned_split.json需要修改为镜像内可访问的路径
+其中model path和 benchmark的 ShareGPT_V3_unfiltered_cleaned_split.json需要修改为镜像内可访问的路径
 
-## 2.2 爬坡测试 (rampup_bench.json)
+## 2.2 爬坡测试 (rampup_bench.json)
 
-| 参数                    | 说明 |
-| ---                     | --- |
-| max_concurrent_requests | 爬坡过程参数，只能有一个列表<br>如：\["1","4","8","16"\] |
-| rampup_period           | 爬坡间隔参数，可以有多组，每组长度都必须和max_concurrent_requests等长<br>如：\["5,5,10,10"\]<br>或：\["5,5,10,10", "10,10,20,20"\] |
-| requests_configs        | 请求数量控制参数。由下面三个参数构成<br>num\_warmup\_requests\_ratio：warmup倍率\[必选\]<br>num\_benchmark\_requests\_ratio：请求数倍率\[必选\]<br>least\_requests\_num：每次爬坡发送最小请求数\[可选\]<br>如：--num_warmup_requests_ratio 4 --num_benchmark_requests_ratio 16<br>或：--num_warmup_requests_ratio 4 --num_benchmark_requests_ratio 16 --least_requests_num 16 |
-| input_output_len        | 输入token长度/输出token长度 |
+| 参数                    | 说明                                                         |
+| ----------------------- | ------------------------------------------------------------ |
+| max_concurrent_requests | 爬坡过程参数，只能有一个列表<br>如：\["1","4","8","16"\]     |
+| rampup_period           | 爬坡间隔参数，可以有多组，每组长度都必须和max_concurrent_requests等长<br>如：\["5,5,10,10"\]<br>或：\["5,5,10,10", "10,10,20,20"\] |
+| requests_configs        | 请求数量控制参数。由下面三个参数构成<br>num\_warmup\_requests\_ratio：warmup倍率\[必选\]<br>num\_benchmark\_requests\_ratio：请求数倍率\[必选\]<br>least\_requests\_num：每次爬坡发送最小请求数\[可选\]<br>如：--num_warmup_requests_ratio 4 --num_benchmark_requests_ratio 16<br>或：--num_warmup_requests_ratio 4 --num_benchmark_requests_ratio 16 --least_requests_num 16 |
+| input_output_len        | 输入token长度/输出token长度                                  |
 
 ```json
 {
@@ -211,7 +211,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
                 "rampup_period": ["5,5,10,10,20,20,30,30"],
                 "requests_configs": [
                     " --num_warmup_requests_ratio 4 --num_benchmark_requests_ratio 16 "
-                ], 
+                ],
                 "input_output_len": ["128/128"]
             }
         }
@@ -219,18 +219,18 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 }
 ```
 
-其中model path和 测试用的 ShareGPT_V3_unfiltered_cleaned_split.json需要修改为镜像内可访问的路径
+其中model path和 测试用的 ShareGPT_V3_unfiltered_cleaned_split.json需要修改为镜像内可访问的路径
 
-## 2.3 摸高测试 (search.json)
+## 2.3 摸高测试 (search.json)
 
-| 参数              | 说明 |
-| ---               | --- |
-| input_output_len  | 输入token长度/输出token长度 |
-| batch_size_config | 摸高测试，batch size 相关配置 |
-| range             | batch size 范围，包含起始值 ，但不包含结束值 |
-| steps             | batch size 增加步幅 |
-| max_ttft          | 限定最大ttft，单位：毫秒 |
-| max_tpot          | 限定最大tpot，单位：毫秒 |
+| 参数              | 说明                                         |
+| ----------------- | -------------------------------------------- |
+| input_output_len  | 输入token长度/输出token长度                  |
+| batch_size_config | 摸高测试，batch size 相关配置                |
+| range             | batch size 范围，包含起始值 ，但不包含结束值 |
+| steps             | batch size 增加步幅                          |
+| max_ttft          | 限定最大ttft，单位：毫秒                     |
+| max_tpot          | 限定最大tpot，单位：毫秒                     |
 
 ```json
 {
@@ -279,23 +279,25 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 }
 ```
 
-其中model path 和 测试用的ShareGPT_V3_unfiltered_cleaned_split.json需要修改为镜像内可访问的路径
+其中model path 和 测试用的ShareGPT_V3_unfiltered_cleaned_split.json需要修改为镜像内可访问的路径
 
-## 2.4 精度测试 (acc.json)
+## 2.4 精度测试 (acc.json)
 
 目前只支持mmlu和ceval精度测试
 
 - **mmlu**
 
-| 参数 | 说明 |
-| ---  | --- |
-| nsub | 学科数，默认60 |
+| 参数     | 说明                                                         |
+| -------- | ------------------------------------------------------------ |
+| nsub     | 学科数，默认60                                               |
+| data_dir | 如果使用mmlu数据集进行精度测试，需要准备data数据，请从https://people.eecs.berkeley.edu/~hendrycks/data.tar下载、解压, 使用此路径。此外，还需要从https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken下载"cl100k_base.tiktoken"文件，放到容器内任意位置。 |
 
 - **ceval**
 
-| 参数            | 说明 |
-| ---             | --- |
-| random\[可选\]  | 随机抽样设置，由下面两个参数构成。<br>random_seed 随机种子\[必选\]<br>random_num 抽样数\[必选\]<br>如：--random_seed 0 --random_num 50<br>如果不设置此项，则为全量测试。 |
+| 参数           | 说明                                                         |
+| -------------- | ------------------------------------------------------------ |
+| random\[可选\] | 随机抽样设置，由下面两个参数构成。<br>random_seed 随机种子\[必选\]<br>random_num 抽样数\[必选\]<br>如：--random_seed 0 --random_num 50<br>如果不设置此项，则为全量测试。 |
+| test_jsonl     | /workspace/ModelZoo.LLM.Inference/dataset下提供了ceval_val_cmcc.jsonl |
 
 ```json
 {
@@ -369,15 +371,15 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 }
 ```
 
-其中model path和 精度测试的data路径 需要修改为镜像内可访问的路径
+其中model path和 精度测试的data路径 需要修改为镜像内可访问的路径
 
 # 3 输出结构
 
-\--output-path 指定的输出目录，建议使用镜像挂载的外部目录，否则默认生成在镜像内部，当镜像移除后无法查看
+\--output-path 指定的输出目录，建议使用镜像挂载的外部目录，否则默认生成在镜像内部，当镜像移除后无法查看
 
 输出目录大概分为三个**层级**
 
-**层级1**: 包含多轮测试结果的总目录，每轮测试一个目录，以{时间戳}方式命名，如20250805_181420。
+**层级1**: 包含多轮测试结果的总目录，每轮测试一个目录，以{时间戳}方式命名，如20250805_181420。
 
 ```markdown
 └── {输出目录}/                                # --output-path
@@ -385,7 +387,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 　　└── total_real_progress_file.json          # 全局进度控制文件
 ```
 
-**层级2**: 每轮测试目录包含该轮测试所指定的各个项目，如DeepSeek-R1-BF16-W8A8，Qwen3_32B等。
+**层级2**: 每轮测试目录包含该轮测试所指定的各个项目，如DeepSeek-R1-BF16-W8A8，Qwen3_32B等。
 
 ```markdown
 └── outputs/                                   # --output-path
@@ -395,7 +397,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 　　└── total_real_progress_file.json           # 全局进度控制文件
 ```
 
-**层级3**: 每轮测试目录包含该轮测试所指定的各大类任务，如acc(精度)，benchmark(标准benchmark)等。
+**层级3**: 每轮测试目录包含该轮测试所指定的各大类任务，如acc(精度)，benchmark(标准benchmark)等。
 
 ```markdown
 {模型名}/
@@ -409,7 +411,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
     └── real_progress_file.json
 ```
 
-**层级4**: 每种任务各自目录，包含logs(实时日志)，result(任务结果相关)。logs/result下根据任务的 online/offline 类型各有一个子目录。result下目录结构根据任务类型不同有所差异，具体参考下面结构。
+**层级4**: 每种任务各自目录，包含logs(实时日志)，result(任务结果相关)。logs/result下根据任务的 online/offline 类型各有一个子目录。result下目录结构根据任务类型不同有所差异，具体参考下面结构。
 
 ```plaintext
 acc/
@@ -444,36 +446,36 @@ search/
 　└── result/
 　　　└── online|offline/
 　　　　　├── total_ttft_{ttft}-tpot_{tpot}/             # 所有摸高结果汇总解析
-　　　　　│　　├── *.png                                 # 
-　　　　　│　　└── *.csv                                 # 
+　　　　　│　　├── *.png                                 #
+　　　　　│　　└── *.csv                                 #
 　　　　　├── {任务名}-server{任务编号}/                  # 单次摸高结果
 　　　　　│　　├── ttft_{ttft}-tpot_{tpot}/              # 解析
-　　　　　│　　│　　├── *.png                            # 
-　　　　　│　　│　　└── *.csv                            # 
+　　　　　│　　│　　├── *.png                            #
+　　　　　│　　│　　└── *.csv                            #
 　　　　　│　　├── *_result.jsonl                        # 结果
 　　　　　│　　├── *_result.txt                          # 过程输出
 　　　　　│　　└── *_result.csv                          # 指标提取
-　　　　　├── *.png                                      # 
+　　　　　├── *.png                                      #
 　　　　　└── {时间戳}_result.csv                        # 摸高指标汇总
 ```
 
 # 4 启动测试
 
-## 4.1 容器内部手动启动方式
+## 4.1 容器内部手动启动方式
 
-### 4.1.1 镜像准备
+### 4.1.1 镜像准备
 
-使用`docker pull ${image_name}:${tag}` 命令把modelzoo镜像拉取到本地，如果涉及多个节点的，需要在所有节点机器上拉取同一个镜像，确保多机环境一致， 多机测试时必须使用同一个镜像搭建容器， 搭建容器命令可参考如下, 其中`--security-opt seccomp=unconfined`必须加上， 否则会出现线程权限不足报错。-v 处的目录映射为推荐方式，可以根据实际情况调整
+使用`docker pull ${image_name}:${tag}` 命令把modelzoo镜像拉取到本地，如果涉及多个节点的，需要在所有节点机器上拉取同一个镜像，确保多机环境一致， 多机测试时必须使用同一个镜像搭建容器， 搭建容器命令可参考如下, 其中`--security-opt seccomp=unconfined`必须加上， 否则会出现线程权限不足报错。-v 处的目录映射为推荐方式，可以根据实际情况调整
 
 ```shell
 docker run -it --device=/dev/dri --device=/dev/mxcd --device=/dev/infiniband --privileged=true --group-add video --name sglang_bench --device=/dev/mem --network=host --security-opt seccomp=unconfined --security-opt apparmor=unconfined --shm-size '100gb' --ulimit memlock=-1 -v /data/models:/models  $image_id /bin/bash
 ```
 
-### 4.1.2 配置机器信息
+### 4.1.2 配置机器信息
 
-进入主节点容器内部，modelzoo目录就在 /workspace/ModelZoo.LLM.Inference
+进入主节点容器内部，modelzoo目录就在 /workspace/ModelZoo.LLM.Inference
 
-修改  /workspace/ModelZoo.LLM.Inference/models/mechines.json 使用的节点信息，填写指南参考 第2章节的 测试类型的服务器信息部分，此处DeepSeek-R1-BF16-W8A8使用的双机，只需要添加两个节点信息：
+修改  /workspace/ModelZoo.LLM.Inference/models/mechines.json 使用的节点信息，填写指南参考 第2章节的 测试类型的服务器信息部分，此处DeepSeek-R1-BF16-W8A8使用的双机，只需要添加两个节点信息：
 
 ```json
 {
@@ -492,13 +494,13 @@ docker run -it --device=/dev/dri --device=/dev/mxcd --device=/dev/infiniband --p
 }
 ```
 
-### 4.1.3 配置任务信息
+### 4.1.3 配置任务信息
 
-进入主节点容器内部，modelzoo目录就在 /workspace/ModelZoo.LLM.Inference
+进入主节点容器内部，modelzoo目录就在 /workspace/ModelZoo.LLM.Inference
 
-以DeepSeek-R1-BF16-W8A8为例，测试的任务是benchmark，那么修改 
+以DeepSeek-R1-BF16-W8A8为例，测试的任务是benchmark，那么修改 
 
- /workspace/ModelZoo.LLM.Inference/models/DeepSeek-R1-BF16-W8A8/benchmark.json
+ /workspace/ModelZoo.LLM.Inference/models/DeepSeek-R1-BF16-W8A8/benchmark.json
 
 ```json
 {
@@ -539,16 +541,16 @@ docker run -it --device=/dev/dri --device=/dev/mxcd --device=/dev/infiniband --p
 }
 ```
 
-配置里面默认带的是本版本最佳性能参数，需要用户手动手改model_path，mtp model_path，ShareGPT_V3_unfiltered_cleaned_split.json（如有使用）的路径为镜像内部可以访问的路径，
+配置里面默认带的是本版本最佳性能参数，需要用户手动手改model_path，mtp model_path，ShareGPT_V3_unfiltered_cleaned_split.json（如有使用）的路径为镜像内部可以访问的路径，
 
 如果想测试其他参数组合，可以在launch_server里面加，会自动组合生成测试结果，且json支持添加多个任务
 
-### 4.1.4 启动benchmark
+### 4.1.4 启动benchmark
 
 ```python
 # (容器内)进入code目录
 cd /workspace/ModelZoo.LLM.Inference/code
-# 在所有从节点执行， port 可自定义（保持主从一致），
+# 对mechines.json文件中除主节点以外的“所有”从节点执行（无论从节点在此任务中有没有使用到），以上面4.1.2中的配置信息为例，需要对ip为192.168.0.2的设备执行即可。 port 可自定义（保持主从一致），
 python3 -m src.slave --port 20005
 # 在主节点执行， port 可自定义（保持主从一致），可不配置，默认20000
 python3 -m src.master --output-path ../outputs/ --tasks ../models/DeepSeek-R1-BF16-W8A8/benchmark.json ../models/DeepSeek-R1-BF16-W8A8/acc.json --machine-config ../models/mechines.json --port 20005
@@ -562,13 +564,13 @@ python3 -m src.master --output-path ../outputs/ --tasks ../models/DeepSeek-R1-BF
 --specify-task：从上次中断处继续执行测试
 ```
 
-测试完成日志和结果都存放在output-path，结构说明见第3章 
+测试完成日志和结果都存放在output-path，结构说明见第3章 
 
-## 4.2 容器外部一键式启动方式
+## 4.2 容器外部一键式启动方式
 
-### 4.2.1 镜像和代码准备
+### 4.2.1 镜像和代码准备
 
-使用`docker pull ${image_name}:${tag}` 命令把modelzoo镜像拉取到本地，如果涉及多个节点的，需要在所有节点机器上拉取同一个镜像，确保多机环境一致
+使用`docker pull ${image_name}:${tag}` 命令把modelzoo镜像拉取到本地，如果涉及多个节点的，需要在所有节点机器上拉取同一个镜像，确保多机环境一致
 
 在主节点上创建一个临时镜像，可以参考下面命令：
 
@@ -578,17 +580,17 @@ docker run -it --device=/dev/dri --device=/dev/mxcd --device=/dev/infiniband --p
 
 将本机路径挂载到镜像里面，方便拷贝modelzoo代码出来
 
-进入镜像内部，将 /workspace/ModelZoo.LLM.Inference 拷贝到外面host路径(假如是/mnt/data)
+进入镜像内部，将 /workspace/ModelZoo.LLM.Inference 拷贝到外面host路径(假如是/mnt/data)
 
 然后退出镜像，确保host上/mnt/data/ModelZoo.LLM.Inference存在，同时临时镜像可以删除
 
 后续操作都是在主节点侧镜像外部
 
-### 2.2.2 配置机器信息
+### 4.2.2 配置机器信息
 
 进入主节点host的/mnt/data/ModelZoo.LLM.Inference目录
 
-修改  /mnt/data/ModelZoo.LLM.Inference/models/mechines.json 使用的节点信息，填写指南参考 第2章节的 测试类型的服务器信息部分，此处DeepSeek-R1-BF16-W8A8使用的双机，只需要添加两个节点信息：
+修改  /mnt/data/ModelZoo.LLM.Inference/models/mechines.json 使用的节点信息，填写指南参考 第2章节的 测试类型的服务器信息部分，此处DeepSeek-R1-BF16-W8A8使用的双机，只需要添加两个节点信息：
 
 ```json
 {
@@ -607,13 +609,13 @@ docker run -it --device=/dev/dri --device=/dev/mxcd --device=/dev/infiniband --p
 }
 ```
 
-### 4.2.3 配置任务信息
+### 4.2.3 配置任务信息
 
 进入主节点host的/mnt/data/ModelZoo.LLM.Inference目录
 
-以DeepSeek-R1-BF16-W8A8为例，测试的任务是benchmark，那么修改 
+以DeepSeek-R1-BF16-W8A8为例，测试的任务是benchmark，那么修改 
 
-  /mnt/data/ModelZoo.LLM.Inference/models/DeepSeek-R1-BF16-W8A8/benchmark.json
+  /mnt/data/ModelZoo.LLM.Inference/models/DeepSeek-R1-BF16-W8A8/benchmark.json
 
 ```json
 {
@@ -654,13 +656,16 @@ docker run -it --device=/dev/dri --device=/dev/mxcd --device=/dev/infiniband --p
 }
 ```
 
-配置里面默认带的是本版本最佳性能参数，需要用户手动手改model_path，mtp model_path，ShareGPT_V3_unfiltered_cleaned_split.json（如有使用）的路径为镜像内部可以访问的路径，
+配置里面默认带的是本版本最佳性能参数，需要用户手动手改model_path，mtp model_path，ShareGPT_V3_unfiltered_cleaned_split.json（如有使用）的路径为镜像内部可以访问的路径，
 
 如果想测试其他参数组合，可以在launch_server里面加，会自动组合生成测试结果，且json支持添加多个任务
 
-### 4.2.4 启动一键式benchmark
+### 4.2.4 启动一键式benchmark
 
 ```shell
+#mechines.json中的主节点对“所有”从节点执行免密登录，以上面4.2.2为例，在IP为192.168.0.1的设备上执行下面命令
+#username@192.168.0.2 是从节点的用户名和ip
+ssh-copy-id username@192.168.0.2 
 # 进入host /mnt/data/ModelZoo.LLM.Inference/code目录
 cd /mnt/data/ModelZoo.LLM.Inference/code
 
@@ -669,7 +674,7 @@ python3 -m tools.start_docker --container-name sglang --container-images pub-reg
 
 需要注意的是，任务完成会自动停止镜像，建议output-path设置镜像外部host主机挂载进去的目录，免得镜像被误删后无法查看任务结果
 
-测试完成日志和结果都存放在output-path，结构说明见第3章 
+测试完成日志和结果都存放在output-path，结构说明见第3章 
 
 参数说明：
 
@@ -740,15 +745,15 @@ pip install math_verify latex2sympy2_extended
     ps: qwen3系列mmlu精度测试需要额外修改prompt提示词
 
         修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/mmlu/mmlu_gen_4d595a.py        #line 78
-
+        
             _hint = f'There is a single choice question about {_name.replace("_", " ")}. Answer the question by replying Answer: A, Answer: B, Answer: C or Answer: D.'
-
+        
         修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/mmlu/mmlu_gen_4d595a.py        #line 86
-
+        
             f'{_hint}\nQuestion: {{input}}\nA. {{A}}\nB. {{B}}\nC. {{C}}\nD. {{D}}\n'
-
+        
         修改/opt/conda/lib/python3.10/site-packages/opencompass/configs/datasets/mmlu/mmlu_gen_4d595a.py        #line 98
-
+        
             prompt=f'{_hint}\nQuestion: {{input}}\nA. {{A}}\nB. {{B}}\nC. {{C}}\nD. {{D}}\n'
 
 5. gsm8k精度测试
@@ -822,11 +827,11 @@ pip install math_verify latex2sympy2_extended
 1.mmul_pro精度测试
 
     a. pip install tenacity
-
+    
     b. 修改/opt/conda/lib/python3.10/site-packages/lm_eval/api/task.py                #line 991
-
+    
         在991行对DATASET_PATH进行赋值：self.DATASET_PATH = "/mnt/dataset/share/xuanCao/mmlu_pro_dataset/MMLU-Pro/"
-
+    
         else:
             self.DATASET_PATH = "/mnt/dataset/share/xuanCao/mmlu_pro_dataset/MMLU-Pro/"
             self.dataset = datasets.load_dataset(
@@ -835,18 +840,18 @@ pip install math_verify latex2sympy2_extended
                 **dataset_kwargs if dataset_kwargs is not None else {},
             )
     c.修改/opt/conda/lib/python3.10/site-packages/lm_eval/models/api_models.py        #line 137
-
+    
         timeout: int = 900000,
-
+    
     d.离线run
-
+    
     lm_eval --model local-completions --model_args model=DeepSeek-R1,tokenizer=/mnt/dataset/models/llm/DeepSeek/DeepSeek-R1-BF16_W8A8/vllm_quant_model/,base_url=http://192.168.3.24:9002/v1/completions,num_concurrent=64,max_retries=3,max_length=65536 --tasks mmlu_pro --output_path /mnt/dataset/share/xuanCao/mmlu_pro_test_result --trust_remote_code --batch_size 1 --max_batch_size 32 --log_samples --apply_chat_template --gen_kwargs temperature=0.6,top_p=0.95,max_gen_toks=16384 --seed 0,0,0,0
 
 # 6 性能测试
 1. benchmark_serving 脚本新增参数 --percentile-metrics参数指定要测的数据(ttft,tpot,itl,e2el) --metric-percentiles参数指定百分位点
 
 ```python
-python code/benchmark_serving.py --dataset-name random --random-range-ratio 1.0 \ 
+python code/benchmark_serving.py --dataset-name random --random-range-ratio 1.0 \
 --dataset-path /mxstorage/pde_ai/models/llm/DeepSeek/ShareGPT_V3_unfiltered_cleaned_split.json \
 --random-input-len 2048 --random-output-len 128 --num-prompt 16  \
 --metric-percentiles 0,25,50,75,90,99 --percentile-metrics ttft,tpot,itl,e2el
