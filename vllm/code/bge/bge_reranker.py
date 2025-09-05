@@ -39,6 +39,8 @@ def setup_args():
                        help='Maximum length of each text in characters')
     parser.add_argument('--seed', type=int, default=42,
                        help='Random seed for reproducibility')
+    parser.add_argument('--profile', action='store_true',
+                       help='Enable torch.profiler to capture GPU profiling data')
     
 
     return parser.parse_args()
@@ -138,7 +140,7 @@ class BGEReranker:
         load_time = (time.time() - start_time) * 1000  # Convert to milliseconds
         print(f"Model loaded successfully, time taken: {load_time:.2f} ms")
         
-    def score(self, queries: List[str], documents: List[str]) -> Tuple[np.ndarray, float, float]:
+    def score(self, queries: List[str], documents: List[str], args) -> Tuple[np.ndarray, float, float]:
         """
         Score query-document pairs and calculate TPS
         
@@ -178,8 +180,24 @@ class BGEReranker:
         batch_documents = [pair[1] for pair in query_doc_pairs]
         
         try:
-            outputs = self.llm.score(batch_queries, batch_documents)
+            if args.profile:
+                with torch.profiler.profile(
+                    activities=[
+                        torch.profiler.ProfilerActivity.CUDA,
+                        torch.profiler.ProfilerActivity.CPU,
+                    ],
+                    ) as prof:
+                        outputs = self.llm.score(batch_queries, batch_documents)
+                prof.export_chrome_trace("bge_reranker_profile.json")
+                pertable=prof.key_averages().table(sort_by="cuda_time_total",row_limit=60,max_name_column_width=128)
+                print('====================profile===================')
+                print(pertable)
+                print('====================profile===================')
 
+                with open("bge_reranker_profile.txt", "w") as f:
+                    f.write(pertable)
+            else:
+                outputs = self.llm.score(batch_queries, batch_documents)
             # Extract scores from outputs
             batch_scores = []
             for output in outputs:
@@ -257,7 +275,7 @@ def main():
     
     # Score query-document pairs and calculate TPS
     try:
-        scores, tps, process_time_ms = reranker.score(queries, documents)
+        scores, tps, process_time_ms = reranker.score(queries, documents,args)
     except Exception as e:
         print(f"Scoring failed: {e}")
         return

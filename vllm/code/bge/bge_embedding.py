@@ -12,7 +12,7 @@ from typing import List, Tuple
 import time
 import os
 from transformers import AutoTokenizer
-from tqdm import tqdm
+import torch
 
 def setup_args():
     """Setup command line arguments"""
@@ -35,6 +35,8 @@ def setup_args():
     parser.add_argument('--input-len', type=int, default=-1,
                        help='Number of texts to read, -1 means read all texts')
     
+    parser.add_argument('--profile', action='store_true',
+                       help='Enable torch.profiler to capture GPU profiling data')
     
     return parser.parse_args()
 
@@ -138,7 +140,7 @@ class BGEEmbedder:
         load_time = (time.time() - start_time) * 1000  # Convert to milliseconds
         print(f"Model loaded successfully, time taken: {load_time:.2f} ms")
         
-    def embed(self, prompts: List[str]) -> Tuple[np.ndarray, float, float]:
+    def embed(self, prompts: List[str], args) -> Tuple[np.ndarray, float, float]:
         """
         Generate text embeddings and calculate TPS
         
@@ -165,8 +167,24 @@ class BGEEmbedder:
         start_time = time.time()
         
         try:
-            # Use llm.embed to get embeddings directly
-            embeddings_output = self.llm.embed(prompts)
+            if args.profile:
+                with torch.profiler.profile(
+                    activities=[
+                        torch.profiler.ProfilerActivity.CUDA,
+                        torch.profiler.ProfilerActivity.CPU,
+                    ],
+                    ) as prof:
+                        embeddings_output = self.llm.embed(prompts)
+                prof.export_chrome_trace("bge_embedding_profile.json")
+                pertable=prof.key_averages().table(sort_by="cuda_time_total",row_limit=60,max_name_column_width=128)
+                print('====================profile===================')
+                print(pertable)
+                print('====================profile===================')
+
+                with open("bge_embedding_profile.txt", "w") as f:
+                    f.write(pertable)
+            else:
+                embeddings_output = self.llm.embed(prompts)
             
             # Handle different return types from llm.embed()
             if isinstance(embeddings_output, torch.Tensor):
@@ -253,7 +271,7 @@ def main():
     
     # Generate embeddings and calculate TPS
     try:
-        embeddings, tps, process_time_ms = embedder.embed(prompts)
+        embeddings, tps, process_time_ms = embedder.embed(prompts, args)
     except Exception as e:
         print(f"Embedding generation failed: {e}")
         return
