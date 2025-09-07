@@ -138,44 +138,6 @@ class BenmchmarkParser(ConfigParser):
         return task_list
 
 
-class PerfParser(ConfigParser):
-    @staticmethod
-    # parse config and return TaskOffline/TaskONline list
-    def from_config(config, connection, task_type, incremental_mode):
-        global server_id_global
-        task_list = []
-        for task in config['tasks']:
-            envs = ConfigParser.get_config_default(task, 'environment', [])
-            envs['GLOO_SOCKET_IFNAME'] = connection.nodes_info[0].interface
-            envs['MCCL_IB_HCA'] = connection.nodes_info[0].ib_hcas
-            launch_mode = ConfigParser.get_config_default(task, 'launch_mode', 'online')
-            benchmark_list = ConfigParser.parse_benchmark(task['benchmark'],task_type, launch_mode)
-            server_cmd = task['server_base']['command_base']+" " + ' '.join(task['server_base']['param'])
-
-            if launch_mode == 'online':
-                server_id_global += 1
-                if str(server_id_global) in server_pass_list and len(server_pass_list[str(server_id_global)]) == len(benchmark_list):
-                    continue
-
-                benchmark_list_filter = ConfigParser.filter_benchmark(server_id_global, benchmark_list, incremental_mode)
-                _task = TaskOnline(connection, server_cmd, benchmark_list_filter, server_id_global, envs, task['server_port'])
-                _task.task_name = task['task_name']
-                _task.task_type = TaskType.perf
-                _task.model_name = config['model_name']
-                task_list.append(_task)
-            else:
-                for benchmark in benchmark_list:
-                    server_id_global += 1
-                    if str(server_id_global) in server_pass_list:
-                        continue
-                    _task = TaskOffline(connection, server_cmd+" "+benchmark.get_cmd(), server_id_global, envs, task['server_port'])
-                    _task.task_name = task['task_name']
-                    _task.task_type = TaskType.perf
-                    _task.model_name = config['model_name']
-                    task_list.append(_task)
-        return task_list
-
-
 class RampupParser(ConfigParser):
     @staticmethod
     def from_config(config, connection, incremental_mode, args):

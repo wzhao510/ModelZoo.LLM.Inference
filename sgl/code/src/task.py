@@ -178,7 +178,8 @@ class BaseTask:
                              "ModuleNotFoundError: No module named 'flashinfer'",
                              "CUDA error: an illegal memory access was encountered",
                              "RuntimeError: NCCL error: internal error",
-                             "CUDA error: invalid device ordinal"
+                             "CUDA error: invalid device ordinal",
+                             "ImportError: cannot import name 'layer_type_validation'"
                             ]
 
         last_log_update_time = time.time()
@@ -341,6 +342,7 @@ class TaskOnline(BaseTask):
             self.current_bench_op = OperationContent(
                 id=get_next_op_id(),
                 type=OperationType.RUN,
+                envs=self.envs,
                 cmd=one_bench_with_output,
                 store_output=True,
                 print_output=True,
