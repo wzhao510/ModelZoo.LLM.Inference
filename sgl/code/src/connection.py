@@ -7,7 +7,6 @@ import dataclasses
 
 from utils.utils import *
 
-
 @dataclasses.dataclass
 class NodeInfo:
     ip: Optional[str] = ''
@@ -18,7 +17,13 @@ class NodeInfo:
 
 
 class Connection:
-    def __init__(self, nodes_config: List[Dict], slave_port: int, logger = None) -> None:
+    def __init__(
+        self,
+        nodes_config: List[Dict],
+        gpu_num_per_node: int,
+        slave_port: int,
+        logger = None
+    ) -> None:
         self.nodes_config = nodes_config
         self.nodes_info = []
         self.slave_port = slave_port
@@ -26,6 +31,7 @@ class Connection:
         self.logger = logger
         self.task_logger = None
         self.send_recv_lock = threading.Lock()
+        self.gpu_num_per_node = gpu_num_per_node
 
     def connect(self) -> None:
         local_ip = get_all_local_ip(self.logger)

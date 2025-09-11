@@ -22,7 +22,7 @@ import pandas as pd
 
 server_id_global = -1
 server_pass_list = defaultdict(list)
-
+GPU_NUM_PER_NODE_DEFAULT = 8
 
 class ConfigParser:
     @staticmethod
@@ -354,7 +354,10 @@ class TaskScheduler:
         #     self.pass_id_filter()
         incremental_mode = False
         machines = read_json(self.args.machine_config)
-        self.connection = Connection(machines['machine_info'], self.args.port, logger=self.global_logger)
+        gpu_num_per_node = int(
+            ConfigParser.get_config_default(machines, 'gpu_num_per_node', GPU_NUM_PER_NODE_DEFAULT))
+        self.connection = Connection(
+            machines['machine_info'], gpu_num_per_node, self.args.port, logger=self.global_logger)
         self.connection.connect()
         common_envs = ConfigParser.get_config_default(machines, 'common_envs', {})
 

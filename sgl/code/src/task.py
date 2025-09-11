@@ -8,7 +8,6 @@ from utils.utils import *
 
 
 TIMEOUT_DURATION = 60*10.678
-GPU_NUM_PER_NODE = 8
 
 class BaseTask:
     def __init__(self,
@@ -225,8 +224,8 @@ class BaseTask:
 
     def _get_nodes_used(self):
         expected_gpu_count = self._get_gpu_count(self.server_cmd)
-        node_num = -(-expected_gpu_count // GPU_NUM_PER_NODE)
-        self.nodes_used = [None] * node_num
+        node_num = -(-expected_gpu_count // self.connection.gpu_num_per_node)
+        self.nodes_used = [None] * min(node_num, len(self.all_nodes))
         slave_node = 1
         for node in self.all_nodes:
             if node.is_local:
