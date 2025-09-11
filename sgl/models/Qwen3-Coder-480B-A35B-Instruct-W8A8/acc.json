@@ -23,7 +23,7 @@
                 "embedding_tp_size": [""]
             },
             "benchmark": {
-                "command_base": "python3  run_ceval_client.py --model /models/Qwen3-Coder-480B-A35B-Instruct-int8  --test_jsonl /models/acc/ceval/ceval_val_cmcc.jsonl --batch_size 64 --random_seed 0 --random_num 50"
+                "command_base": "python3  run_ceval_client.py --model /models/Qwen3-Coder-480B-A35B-Instruct-int8  --test_jsonl /workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl --batch_size 64 --random_seed 0 --random_num 50"
             }
         },
         {

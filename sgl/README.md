@@ -249,7 +249,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
                 ]
             },
             "benchmark": {
-                "command_base": "python3 run_ceval_client.py --model /models/DeepSeek-R1-W8A8-0528/vllm_quant_model  --test_jsonl /models/acc/ceval/ceval_val_cmcc.jsonl --batch_size 64 --random_seed 0 --random_num 50",
+                "command_base": "python3 run_ceval_client.py --model /models/DeepSeek-R1-W8A8-0528/vllm_quant_model  --test_jsonl /workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl --batch_size 64 --random_seed 0 --random_num 50",
             }
         }
     ]

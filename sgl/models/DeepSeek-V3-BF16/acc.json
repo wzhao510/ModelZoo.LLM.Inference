@@ -51,7 +51,7 @@
                 "mtp": [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-V3-BF16-NextN --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3"]
             },
             "benchmark": {
-                "command_base": "python3 run_ceval_client.py --model /models/DeepSeek-V3-BF16 --test_jsonl /models/acc/ceval/ceval_val_cmcc.jsonl --batch_size 64"
+                "command_base": "python3 run_ceval_client.py --model /models/DeepSeek-V3-BF16 --test_jsonl /workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl --batch_size 64"
             }
         }
     ]

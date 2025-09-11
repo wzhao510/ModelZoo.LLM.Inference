@@ -51,7 +51,7 @@
                 "shared_expert_fusion": [""]
             },
             "benchmark": {
-                "command_base": "python3 run_ceval_client.py --model /models/unsloth_Kimi-K2-Instruct-W8A8  --test_jsonl /models/acc/ceval/ceval_val_cmcc.jsonl --batch_size 64"
+                "command_base": "python3 run_ceval_client.py --model /models/unsloth_Kimi-K2-Instruct-W8A8  --test_jsonl /workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl --batch_size 64"
             }
         }
     ]
