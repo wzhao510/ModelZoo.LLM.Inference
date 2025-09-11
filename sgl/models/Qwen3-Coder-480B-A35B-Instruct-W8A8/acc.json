@@ -7,10 +7,6 @@
             "world_size": "16",
             "server_port": "9000",
             "environment": {
-                "MACA_SMALL_PAGESIZE_ENABLE": "1",
-                "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP": "1",
-                "TRITON_ENABLE_MACA_CHAIN_DOT_OPT": "1",
-                "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM": "1"
             },
             "launch_server": {
                 "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
@@ -23,14 +19,11 @@
                 "chunked_prefill_size": [""],
                 "attention_backend": ["--attention-backend flashinfer"],
                 "enable_parallel": ["--tp 16 --dp 4 --enable-dp-attention"],
-                "mem_fraction_static": [""],
+                "mem_fraction_static": ["--mem-fraction-static 0.89"],
                 "embedding_tp_size": [""]
             },
             "benchmark": {
-                "command_base": "python3  run_ceval_client.py --model /models/Qwen3-Coder-480B-A35B-Instruct-int8  --test_jsonl /models/acc/ceval/ceval_val_cmcc.jsonl",
-                "variations": {
-                    "args": [" --batch_size 64 --random_seed 0 --random_num 50"]
-                }
+                "command_base": "python3  run_ceval_client.py --model /models/Qwen3-Coder-480B-A35B-Instruct-int8  --test_jsonl /models/acc/ceval/ceval_val_cmcc.jsonl --batch_size 64 --random_seed 0 --random_num 50"
             }
         },
         {
@@ -40,10 +33,6 @@
             "world_size": "16",
             "server_port": "9000",
             "environment": {
-                "MACA_SMALL_PAGESIZE_ENABLE": "1",
-                "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP": "1",
-                "TRITON_ENABLE_MACA_CHAIN_DOT_OPT": "1",
-                "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM": "1"
             },
             "launch_server": {
                 "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
@@ -56,14 +45,11 @@
                 "chunked_prefill_size": [""],
                 "attention_backend": ["--attention-backend flashinfer"],
                 "enable_parallel": ["--tp 16 --dp 4 --enable-dp-attention"],
-                "mem_fraction_static": [""],
+                "mem_fraction_static": ["--mem-fraction-static 0.89"],
                 "embedding_tp_size": [""]
             },
             "benchmark": {
-                "command_base": "python3  bench_sglang.py --data_dir /models/acc/mmlu/data --nsub 60  ",
-                "variations": {
-                    "args": [" "]
-                }
+                "command_base": "python3  bench_sglang.py --data_dir /models/acc/mmlu/data --nsub 60  "
             }
         } 
     ]

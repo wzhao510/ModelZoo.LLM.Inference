@@ -12,6 +12,7 @@ import psutil
 import signal
 import logging
 import re
+import time
 
 SLAVE_GET_IOF = 'init_output_file'
 SLAVE_GET_GIU = 'gpu_in_use'
@@ -36,19 +37,53 @@ def write_txt(filename, data):
     with open(filename, "w", encoding="utf-8") as f:
         f.write(data)
 
+class HandlerFilter(logging.Filter):
+    def __init__(self, handler_names):
+        super().__init__()
+        self.handler_names = handler_names
+    
+    def filter(self, record):
+        if hasattr(record, 'exclude_handler_names'):
+            return record.exclude_handler_names not in self.handler_names
+        return True
 
-logger = logging.getLogger(__name__)
 
-def configure_logger(prefix: str = "",log_file = None):
-    format = f"[%(asctime)s{prefix}] %(message)s"
-    # format = f"[%(asctime)s.%(msecs)03d{prefix}] %(message)s"
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format=format,
-        datefmt="%Y-%m-%d %H:%M:%S",
-        force=True,
-        filename = log_file
-    )
+def get_logger(log_path, log_name):
+    try:
+        if not os.path.exists(log_path):
+            os.makedirs(log_path)
+    except Exception as e:
+        print(f'error occurred {e}')
+    logger = logging.getLogger(os.path.join(log_path, log_name))
+    if len(logger.handlers) > 0:
+        return logger
+    logger.setLevel(logging.DEBUG)
+
+    log_file_name = os.path.join(log_path, log_name)
+    fh = logging.FileHandler(log_file_name, encoding='utf-8', mode='a')
+    fh.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('[%(asctime)s] %(message)s')
+    fh.setFormatter(formatter)
+    fh.flush = lambda: fh.stream.flush()
+    fh.addFilter(HandlerFilter(['file', 'all']))
+    logger.addHandler(fh)
+
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(message)s')
+    ch.setFormatter(formatter)
+    ch.addFilter(HandlerFilter(['console', 'all']))
+    logger.addHandler(ch)
+
+    return logger
+
+
+def log_msg_level(msg, logger = None, level = logging.INFO):
+    if logger:
+        logger.info(msg)
+    else:
+        print(msg, flush=True)
+
 
 def create_file(filename):
     directory = os.path.dirname(filename)
@@ -68,7 +103,7 @@ def read_json(json_file):
     config = json.loads(json_str)
     return config
 
-def kill_process_all(process):
+def kill_process_all(process, logger = None):
     """ kill all process  """
     try:
         cur_process = psutil.Process(process.pid)
@@ -76,55 +111,12 @@ def kill_process_all(process):
         for child in child_pid:
             os.kill(child.pid, signal.SIGTERM)
     except Exception as e:
-        print(f"kill child process exception {e}")
+        log_msg_level(f"kill child process exception {e}", logger)
     try:
         process.terminate()
     except Exception as e:
-        print(f"kill process exception {e}")
+        log_msg_level(f"kill process exception {e}", logger)
 
-def kill_process_by_pid(pid):
-    try:
-        process = psutil.Process(pid)
-        process.terminate()
-        process.wait(timeout=3)  # 等待进程终止
-        print(f"已杀死 PID 为 {pid} 的进程")
-        logger.debug(f"已杀死 PID 为 {pid} 的进程")
-
-    except psutil.NoSuchProcess:
-        print(f"PID 为 {pid} 的进程不存在")
-        logger.debug(f"PID 为 {pid} 的进程不存在")
-    except psutil.TimeoutExpired:
-        print(f"PID 为 {pid} 的进程无法在规定时间内终止")
-        logger.debug(f"PID 为 {pid} 的进程无法在规定时间内终止")
-    except Exception as e:
-        print(f"发生错误：{e}")
-        logger.error(f"kill_process_by_pid error: {e}")
-
-def kill_all(kill_list):
-    try:
-        logger.info(f"kill all list {kill_list}")
-        current_pid = os.getpid()
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-            if not proc.info['cmdline']:
-                continue
-            try:
-                cmdline = ' '.join(proc.info['cmdline'])
-                print(cmdline)
-                pass
-                for kill in kill_list:
-                    if kill in cmdline and proc.pid != current_pid:
-                        try:
-                            kill_process_by_pid(proc.pid)
-                            proc.terminate()
-                            proc.kill()   
-                            print(f"has killed {proc.pid}")
-                        except (psutil.NoSuchProcess, psutil.AccessDenied):
-                            continue
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-        logger.info(f"kill all finish")
-    except Exception as e:
-        logger.error(f"kill all error: {e}")
 
 def get_ip() -> str:
     host_ip = os.getenv("SGLANG_HOST_IP", "") or os.getenv("HOST_IP", "")
@@ -133,23 +125,18 @@ def get_ip() -> str:
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("8.8.8.8", 80))  # Doesn't need to be reachable
-        inference_name = ""
-        for name, addrs in psutil.net_if_addrs().items():
-            for addr in addrs:
-                if addr.family == socket.AF_INET and s.getsockname()[0] == addr.address:
-                    inference_name = name
-        return s.getsockname()[0], inference_name
+        return s.getsockname()[0]
     except Exception:
         pass
     return "0.0.0.0"
 
 
-def get_all_local_ip() -> str:
+def get_all_local_ip(logger = None) -> str:
     addr_list = []
     host_ip = os.getenv("SGLANG_HOST_IP", "") or os.getenv("HOST_IP", "")
     if host_ip:
         addr_list.append(host_ip)
-        print(addr_list)
+        log_msg_level(f'found ip list: {addr_list}', logger)
         return addr_list
 
     addrs = psutil.net_if_addrs()
@@ -161,7 +148,7 @@ def get_all_local_ip() -> str:
             if address.address == '127.0.0.1' or address.address == '172.17.0.1':
                 continue
             addr_list.append(address.address)
-    print(addr_list)
+    log_msg_level(f'found ip list: {addr_list}', logger)
     return addr_list
 
 def task_type_to_string(type):
@@ -229,7 +216,7 @@ class OperationContent:
                                  # 包含 task_info:dict[str, str]传输给从节点时的task信息，用于合成日志目录
                                  #       ['model_name','task_id','task_type','task_launch_mode','task_full_name']
     printenv: Optional[bool] = False    # 是否在执行run_sys_cmd 期间打印环境信息
-    # ....
+    special_logger: Optional[None] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)
@@ -246,73 +233,54 @@ class OperationContent:
         return cls.from_dict(json.loads(json_str))
     
 
-def run_sys_cmd(op_content: OperationContent):
+def run_sys_cmd(op_content: OperationContent, logger = None):
     """Run |cmd| and return its output."""
-    if op_content.is_master:
-        logger.info(op_content.cmd)
-
     custom_env = os.environ.copy()
     if op_content.envs is not None:
         for env, vaule in op_content.envs.items():
             custom_env[env] = vaule
-            print(f'ENV: {env}={vaule}')
-    print(f'## Run Cmd: {op_content.cmd}')
+            log_msg_level(f'ENV: {env}={vaule}', logger)
+    log_msg_level(f'## Run Cmd: {op_content.cmd}', logger)
+    if op_content.special_logger is not None:
+        op_content.special_logger.info(f'## Run Cmd: {op_content.cmd}', extra={'exclude_handler_names': 'console'})
     op_content.handle = subprocess.Popen(op_content.cmd, shell=True, bufsize=1, text=True, encoding='utf-8',
                                          env=custom_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     while True:
         line = op_content.handle.stdout.readline()
         if not line and op_content.handle.poll() is not None:
-            # logger.info(f"[{op_content.cmd}] exit")
-            if op_content.is_master:
-                logger.info(f"master launch: [{op_content.cmd}] exit")
-            else:
-                logger.info(f"[{op_content.cmd}] exit")
+            log_msg_level(f"[{op_content.cmd}] exit", logger)
             op_content.status = op_content.handle.poll()
             break
 
+        line_striped = line.strip()
         # store output to memory or not
         if op_content.store_output:
             if op_content.output:
-                op_content.output.append(line.strip())
+                op_content.output.append(line_striped)
             else:
-                op_content.output = [line.strip()]
+                op_content.output = [line_striped]
 
-            if line and not line.isspace():    # 有些行为产生空行，比如Loading safetensors时
-                if not op_content.is_benching:
-                    logger.info(f'run sys cmd log : {line.strip()}')
-                else:
-                    logger.info(line.strip())
+        if line and not line.isspace():    # 有些行为产生空行，比如Loading safetensors时
+            log_msg_level(line_striped, logger)
+            if op_content.special_logger is not None:
+                op_content.special_logger.info(line_striped, extra={'exclude_handler_names': 'console'})
 
-        if op_content.print_output: # 不确定salve 是否需要判断 by ydm.
-            print(line.strip())
+        if not op_content.is_ready and op_content.ready_flag:
+            for flag in op_content.ready_flag:
+                if flag in line:
+                    op_content.is_ready = True
+                    break
 
-        if not op_content.is_benching:
-            # check process ready
-            if not op_content.is_ready and op_content.ready_flag:
-                for flag in op_content.ready_flag:
-                    if flag in line:
-                        op_content.is_ready = True
-                        break
-        else:
-            # from original run_bench_cmd, but not realized yet.
-            # if master_launch_server_abnormal():
-            if False:
-                try:
-                    op_content.handle.terminate()
-                except Exception as e:
-                    logger.error(f"kill child process exception {e}")
-                pass
 
-def get_gpu_mem_used(envs) -> str:
+def get_gpu_mem_used(logger = None) -> str:
     mem_use = OperationContent(
         id=get_next_op_id(),
         type=OperationType.RUN,
-        envs=envs,
         cmd="mx-smi",
         store_output=True,
         is_master=True,
     )
-    run_sys_cmd(mem_use)
+    run_sys_cmd(mem_use, logger)
     mem_pos = 0
     percent_pos = 0
     used_percent = '0'
@@ -336,20 +304,19 @@ def get_gpu_mem_used(envs) -> str:
             continue
     return ','.join(mem_list)
 
-def get_python_proc(envs):
+def get_python_proc(logger):
     op_content = OperationContent(
         id=get_next_op_id(),
         type=OperationType.RUN,
-        envs=envs,
         cmd="ps -ef | grep python",
         store_output=True,
         is_master=True,
     )
-    run_sys_cmd(op_content)
+    run_sys_cmd(op_content, logger)
 
-def check_gpu_in_use(envs) -> str:
-    get_python_proc(envs)
-    mem_used = get_gpu_mem_used(envs)
+def check_gpu_in_use(logger) -> str:
+    get_python_proc(logger)
+    mem_used = get_gpu_mem_used(logger)
     gpu_mem_used = mem_used.split(',')
     used_flag = False
     used_info = ''
@@ -365,7 +332,7 @@ def check_gpu_in_use(envs) -> str:
     
     return 'All GPUs are free'
 
-def printenv(envs):
+def printenv(logger):
     """
     主进程start_server期间调用(会每个任务log都加)
     """
@@ -373,13 +340,26 @@ def printenv(envs):
     op_content = OperationContent(
         id=get_next_op_id(),
         type=OperationType.RUN,
-        envs=envs,
         cmd='printenv',
         store_output=True,
         is_master=True,
     )
-    run_sys_cmd(op_content)
+    run_sys_cmd(op_content, logger)
 
+
+def kill_local_defunct_process(logger = None):
+    kill_cmds = ["pkill -9 -f sglang", "pkill -9 -f multiprocessing"]
+    for kill_cmd in kill_cmds:
+        time.sleep(1)
+        op_content = OperationContent(
+                id=get_next_op_id(),
+                type=OperationType.RUN,
+                cmd=kill_cmd,
+                store_output=True,
+                is_ready=True
+        )
+        run_sys_cmd(op_content, logger)
+    time.sleep(1)
 
 class BenchmarkCmds:
     def __init__(self, id, cmd) -> None:

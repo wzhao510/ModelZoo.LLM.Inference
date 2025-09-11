@@ -1,19 +1,15 @@
 {
     "tasks": [
         {
-            "task_name": "DeepSeek-R1-BF16",
+            "task_name": "DeepSeek-V3-BF16",
             "launch_mode": "online",
             "world_size": "32",
             "server_port": "5005",
             "environment": {
-                "MACA_SMALL_PAGESIZE_ENABLE": "1",
-                "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP": "1",
-                "TRITON_ENABLE_MACA_CHAIN_DOT_OPT": "1",
-                "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM": "1"
             },
             "launch_server": {
                 "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
-                "model_path": ["--model-path /models/DeepSeek-R1-BF16"],
+                "model_path": ["--model-path /models/DeepSeek-V3-BF16"],
                 "cuda_graph": [""],
                 "torch_compile": [""],
                 "dtype": [""],
@@ -22,9 +18,9 @@
                 "chunked_prefill_size": [""],
                 "attention_backend": ["--attention-backend flashinfer"],
                 "enable_parallel": ["--tp 32 --dp 8 --enable-dp-attention"],
-                "mem_fraction_static": ["--mem-fraction-static 0.85"],
+                "mem_fraction_static": [""],
                 "embedding_tp_size": [""],
-                "mtp": [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-R1-BF16-NextN --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3"]
+                "mtp": [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-V3-BF16-NextN --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3"]
             },
             "benchmark": {
                 "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json ",

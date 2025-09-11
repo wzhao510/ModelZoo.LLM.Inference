@@ -46,6 +46,7 @@ class RealProgressManager:
 
         self.online_task_content = {}
         self.offline_task_content = {}
+        self.now_time_path = os.path.join(self.args.output_path, NOW_TIME)
 
     def init(self, task):
         self.task = task
@@ -56,13 +57,13 @@ class RealProgressManager:
                                     "type": t_type,
                                     "simple_param": self.task_full_name,
                                     "server_id": f"{self.task.task_id}",
-                                    "cmd": self.task.server_cmd,
+                                    "cmd": self.task.server_full_cmd,
                                     "client_test": list()}
         self.offline_task_content = {"launch_mode": "offline",
                                      "type": t_type,
                                      "simple_param": self.task_full_name,
                                      "server_id": f"{self.task.task_id}",
-                                     "cmd": self.task.server_cmd,
+                                     "cmd": self.task.server_full_cmd,
                                      "status": "",
                                      "times": 0}
         self.create_real_progress_file()
@@ -92,25 +93,25 @@ class RealProgressManager:
             #   1.已被添加的情况下, 则不添加同样的一条记录
             #   2.未被添加的情况下, 则添加
             is_have_task = False
-            if self.args.specify_task or self.args.incremental_mode:
-                for task in self.total_real_progress_data['tasks']:
-                    if task["server_id"] == f"{self.task.task_id}":
-                        is_have_task = True
-                        break
+            # if self.args.specify_task or self.args.incremental_mode:
+            #     for task in self.total_real_progress_data['tasks']:
+            #         if task["server_id"] == f"{self.task.task_id}":
+            #             is_have_task = True
+            #             break
             if not is_have_task:
                 self.total_real_progress_data['tasks'].append(self.online_task_content)
         elif self.task.launch_mode == TaskLaunchMode.offline:
             self.real_progress_data['tasks'].append(copy.deepcopy(self.offline_task_content))
 
             # 此处的处理逻辑同在线模式
-            if not self.args.incremental_mode:
-                is_same = False
-                for cur_task in self.total_real_progress_data['tasks']:
-                    if cur_task["server_id"] == f"{self.task.task_id}":
-                        is_same = True
-                        break
-                if not is_same:
-                    self.total_real_progress_data['tasks'].append(self.offline_task_content)
+            # if not self.args.incremental_mode:
+            is_same = False
+            for cur_task in self.total_real_progress_data['tasks']:
+                if cur_task["server_id"] == f"{self.task.task_id}":
+                    is_same = True
+                    break
+            if not is_same:
+                self.total_real_progress_data['tasks'].append(self.offline_task_content)
 
             self.real_progress_data['to_run'] = "%s,%s" % (f"{self.task.task_id+1}", "0")
             self.total_real_progress_data['to_run'] = "%s,%s" % (f"{self.task.task_id+1}", "0")
@@ -260,12 +261,11 @@ class PathManager:
         self.task_full_name = f'{task.task_name.replace("-", "_")}_server{task.task_id}'
 
         self.log_file_common = os.path.join(self.common_path,
-                                          LOGS_SUBPATH,
-                                          task.launch_mode.value)
-        self.log_file_path = os.path.join(self.log_file_common,
-                                          f"{self.task_full_name}_node{self.node_id}.log")
+                                          LOGS_SUBPATH)
+        self.log_file_name = f"{self.task_full_name}_node{self.node_id}.log"
+        self.log_file_path = os.path.join(self.log_file_common, self.log_file_name)
         
-        self.result_common = os.path.join(self.common_path, RESULT_SUBPATH, task.launch_mode.value)
+        self.result_common = os.path.join(self.common_path, RESULT_SUBPATH)
         self.result_csv_file_path = os.path.join(self.result_common, f"{NOW_TIME}_result.csv")
         acc_path = '' if task.task_type != TaskType.acc else task.acc_type.value
         self.result_file_path = os.path.join(self.result_common,
@@ -318,7 +318,7 @@ class OutputManager:
     TASK_TYPE_UNK = TASK_TYPE_UNK
     
     @staticmethod
-    def get_running_server_args(log=''):
+    def get_running_server_args(log='', logger = None):
         if log == '':
             return None,None
         # log = """
@@ -330,7 +330,7 @@ class OutputManager:
             args_str = match.group(1)
             raw_args_str = match.group(0)
         else:
-            logger.debug("未找到 server_args=ServerArgs(...) 这一行")
+            log_msg_level("未找到 server_args=ServerArgs(...) 这一行", logger)
             return None,None
 
 
@@ -358,8 +358,8 @@ class OutputManager:
                 #             pass
                 args_dict[key] = value
 
-        print(f"##get running server args {args_dict}")
-        logger.debug(f"##get running server args {args_dict}")
+        # print(f"##get running server args {args_dict}")
+        # logger.debug(f"##get running server args {args_dict}")
         return raw_args_str,args_dict
 
     @staticmethod
@@ -763,6 +763,7 @@ class OutputManager:
         self.task_type = ''
         self.server_args = {}
         self.path_manager = PathManager()
+        self.logger = None
 
     def init_output_file(self) -> None:
         """
@@ -780,7 +781,8 @@ class OutputManager:
         self.task_type = OutputManager._task_type_safe(self.task.task_type)
 
         create_file(self.path_manager.get_log_path())
-        configure_logger(log_file=self.path_manager.get_log_path())
+        # configure_logger(log_file=self.path_manager.get_log_path())
+        self.logger = get_logger(self.path_manager.log_file_common, self.path_manager.log_file_name)
 
     def get_info_for_slave(self) -> dict:
         """
@@ -790,7 +792,6 @@ class OutputManager:
             'task_id': self.task.task_id,
             'model_name': self.task.model_name,
             'task_type': self.task_type,
-            'task_launch_mode': self.task.launch_mode.value,
             'task_full_name': self.path_manager.get_task_full_name(),
         }
         info = {
@@ -816,7 +817,7 @@ class OutputManager:
 
             # with G_MASTER_LOCK:
             oc:OperationContent = self.task.server_cmd_ops[0]
-            running_server_args_str,running_server_args_dict = OutputManager.get_running_server_args(log="\n".join(oc.output))
+            running_server_args_str,running_server_args_dict = OutputManager.get_running_server_args(log="\n".join(oc.output), logger=self.logger)
             if running_server_args_dict:
                 server_args['mem_frac'][0] = running_server_args_dict['mem_fraction_static']
             
@@ -844,30 +845,26 @@ class OutputManager:
             csv_file_name = f'{self.task_type}_result.csv'
             with open(csv_file_name,'w',encoding='utf-8') as csv_file:
                 result_df.to_csv(csv_file, index=False)
-                logger.debug(f"result_csv store in {csv_file_name}")
+                self.logger.debug(f"result_csv store in {csv_file_name}")
         finally:
             os.chdir(original_dir)
 
-    def merge_result(self, task_type:TaskType) -> None:
-        try:
-            result_path = self.path_manager.get_result_common_path()
-            all_data = pd.DataFrame()
-            for subdir, dirs, files in os.walk(result_path):
-                if subdir == result_path:
-                    continue
-                # dir_name = os.path.basename(subdir)
-                for file in files:
-                    if file.endswith('.csv'):
-                        file_path = os.path.join(subdir,file)
-                        data = pd.read_csv(file_path)
-                        all_data = pd.concat([all_data, data], ignore_index=True)
-
-            output_path = self.path_manager.get_result_csv_file_path()
-            with open(output_path, 'w', encoding='utf-8') as csv_file:
-                all_data.to_csv(csv_file, index=False)
-            logger.info(f"{OutputManager._task_type_safe(task_type)} result_csv store in {output_path}")
-        except Exception as e:
-            logger.info(f"merge_result {OutputManager._task_type_safe(task_type)} exception {e}")
+    def merge_result(self, path_merged, logger):
+        result_path = self.path_manager.get_result_common_path()
+        if result_path in path_merged:
+            return
+        path_merged.append(result_path)
+        output_data = pd.DataFrame()
+        for subdir, dirs, files in os.walk(result_path):
+            if subdir == result_path:
+                continue
+            for file in files:
+                if file.endswith('.csv'):
+                    file_path = os.path.join(subdir,file)
+                    data = pd.read_csv(file_path)
+                    logger.info(f'merge result {file_path}, len={len(data)}')
+                    output_data = pd.concat([output_data, data], ignore_index=True)
+        return output_data
 
     def write_log_file(self):
         """ dump logs from server_cmd_ops[0].output to file """
@@ -910,9 +907,12 @@ class BenchmarkOutputManager(OutputManager):
                 print(f"Command: {command_with_result}", file=result_file)
 
     def append_result_file_param(self, command) -> str:
-        _, result_file_jsonl = self.path_manager.get_offline_result_file_txt_jsonl(self.task)
         if self.task.launch_mode is TaskLaunchMode.offline:
+            _, result_file_jsonl = self.path_manager.get_offline_result_file_txt_jsonl(self.task)
             return f"{command} --result-filename {result_file_jsonl}"
+        
+        bench_serving_args_str = OutputManager.get_bench_serving_args_str(command)
+        _, result_file_jsonl = self.path_manager.get_other_result_file_txt_jsonl(bench_serving_args_str)
         return f"{command} --output-file {result_file_jsonl}"
 
     def write_client_result(self, command, result, is_pass= True) -> None:
@@ -931,7 +931,7 @@ class BenchmarkOutputManager(OutputManager):
                 try:
                     print("\n".join(result), file=result_file)
                 except Exception as e:
-                    print(f"write_client_result exception {e}")
+                    self.logger.error(f"write_client_result exception {e}")
                 pass
 
 
@@ -993,7 +993,7 @@ class AccOutputManager(OutputManager):
                 try:
                     print("\n".join(result), file=result_file)
                 except Exception as e:
-                    print(f"write_client_result exception {e}")
+                    self.logger.error(f"write_client_result exception {e}")
                 pass
 
     def _get_acc_mmlu_metrics(self, file_path):
@@ -1002,11 +1002,13 @@ class AccOutputManager(OutputManager):
         try:
             data = json.loads(content)
             accuracy = data.get("accuracy")
+            nsub = data.get("other").get("nsub")
             if accuracy is not None:
                 accuracy = float(accuracy)
         except json.JSONDecodeError:
             accuracy = None
-        metrics = {'dataset':'mmlu','Accuracy': [accuracy],}
+            nsub = None
+        metrics = {'batch_size':None, 'random_seed':None, 'random_num':None, 'dataset':'mmlu', 'nsub': nsub, 'Accuracy': [accuracy],}
         return metrics
 
     def _get_acc_ceval_metrics(self, file_path):
@@ -1015,8 +1017,13 @@ class AccOutputManager(OutputManager):
 
         matches = re.findall(r'Accuracy\s*:\s+(\d+\.\d+|\d+)', content)
         last_accuracy = matches[-1] if matches else None
+        pattern = r'bs(\d+)_seed(\d+)_num(\d+)'
+        match = re.search(pattern, file_path)
+        bs = int(match.group(1)) if match else None
+        seed = int(match.group(2)) if match else None
+        num = int(match.group(3)) if match else None
 
-        metrics = {'dataset': 'ceval', 'Accuracy': [float(last_accuracy) if last_accuracy else None]}
+        metrics = {'batch_size':bs, 'random_seed':seed, 'random_num':num, 'dataset':'ceval', 'nsub': None, 'Accuracy': [float(last_accuracy) if last_accuracy else None]}
         return metrics
 
     def _extract_acc_metrics_from_file(self, file_path, acc_type: TaskAccType):
@@ -1048,7 +1055,7 @@ class AccOutputManager(OutputManager):
 
             # with G_MASTER_LOCK:
             oc:OperationContent = self.task.server_cmd_ops[0]
-            running_server_args_str,running_server_args_dict = OutputManager.get_running_server_args(log="\n".join(oc.output))
+            running_server_args_str,running_server_args_dict = OutputManager.get_running_server_args(log="\n".join(oc.output), logger=self.logger)
             if running_server_args_dict:
                 server_args['mem_frac'][0] = running_server_args_dict['mem_fraction_static']
             
@@ -1096,7 +1103,7 @@ class AccOutputManager(OutputManager):
                 csv_file_name = 'acc_ceval_result.csv'
             with open(csv_file_name,'w',encoding='utf-8') as csv_file:
                 result_df.to_csv(csv_file, index=False)
-                logger.debug(f"result_csv store in {csv_file_name}")
+                self.logger.debug(f"result_csv store in {csv_file_name}")
         finally:
             os.chdir(original_dir)
 
@@ -1141,7 +1148,7 @@ class RampupOutputManager(OutputManager):
                 try:
                     print("\n".join(result), file=result_file)
                 except Exception as e:
-                    print(f"write_client_result exception {e}")
+                    self.logger.error(f"write_client_result exception {e}")
                 pass
 
 
@@ -1185,13 +1192,13 @@ class SearchOutputManager(OutputManager):
                 try:
                     print("\n".join(result), file=result_file)
                 except Exception as e:
-                    print(f"write_client_result exception {e}")
+                    self.logger.error(f"write_client_result exception {e}")
                 pass
 
     def parser_single_search_data(self):
         result_files_path = self.path_manager.get_result_path()
         csv_file_name = f'{self.task_type}_result.csv'
-        logger.debug(f"result_files_path: {result_files_path}")
+        self.logger.debug(f"result_files_path: {result_files_path}")
         file_path = f"{result_files_path}/{csv_file_name}"
 
         df = pd.read_csv(file_path)
@@ -1203,15 +1210,15 @@ class SearchOutputManager(OutputManager):
         optimal_bs = 0
         if dp.is_filter:
             file_dir = f"{result_files_path}/ttft_{dp.max_ttft}_tpot_{dp.max_tpot}"
-            logger.debug(f"file_dir: {file_dir}")
+            self.logger.debug(f"file_dir: {file_dir}")
             if os.path.isdir(file_dir) == False:
                 try:
                     os.mkdir(file_dir)
-                    logger.debug(f"folder '{file_dir}' creation successful")
+                    self.logger.debug(f"folder '{file_dir}' creation successful")
                 except FileExistsError:
-                    logger.debug(f"folder '{file_dir}' already exist")
+                    self.logger.debug(f"folder '{file_dir}' already exist")
                 except OSError as e:
-                    logger.debug(f"creation failed:{e}") 
+                    self.logger.debug(f"creation failed:{e}") 
             result = dp.parser_ttft_tpot_data(df,file_dir)
             optimal_bs = result[1]
             if import_draw_lib_success:
@@ -1238,14 +1245,14 @@ class SearchOutputManager(OutputManager):
             output_path = self.path_manager.get_result_csv_file_path()
             with open(output_path,'w',encoding='utf-8') as csv_file:
                 all_data.to_csv(csv_file, index=False)
-            logger.debug(f"{OutputManager._task_type_safe(task_type)} result_csv store in {output_path}")
+            self.logger.debug(f"{OutputManager._task_type_safe(task_type)} result_csv store in {output_path}")
             self.parser_total_search_data(result_path, max_ttft, max_tpot)
                 
         except Exception as e:
-            logger.info(f"merge_search_result exception {e}")
+            self.logger.info(f"merge_search_result exception {e}")
 
     def parser_total_search_data(self, result_files_path, max_ttft, max_tpot):
-        logger.debug(f"result_files_path: {result_files_path}")
+        self.logger.debug(f"result_files_path: {result_files_path}")
         file_path = self.path_manager.get_result_csv_file_path()
 
         df = pd.read_csv(file_path)
@@ -1257,15 +1264,15 @@ class SearchOutputManager(OutputManager):
         optimal_bs = 0
         if dp.is_filter:
             file_dir = f"{result_files_path}/total_ttft_{dp.max_ttft}_tpot_{dp.max_tpot}"
-            logger.debug(f"file_dir: {file_dir}")
+            self.logger.debug(f"file_dir: {file_dir}")
             if os.path.isdir(file_dir) == False:
                 try:
                     os.mkdir(file_dir)
-                    logger.debug(f"folder '{file_dir}' creation successful")
+                    self.logger.debug(f"folder '{file_dir}' creation successful")
                 except FileExistsError:
-                    logger.debug(f"folder '{file_dir}' already exist")
+                    self.logger.debug(f"folder '{file_dir}' already exist")
                 except OSError as e:
-                    logger.debug(f"creation failed:{e}") 
+                    self.logger.debug(f"creation failed:{e}") 
             result = dp.parser_ttft_tpot_data(df,file_dir)
             optimal_bs = result[1]
             if import_draw_lib_success:
@@ -1288,12 +1295,12 @@ class SearchDataParser():
     def parser_ttft_tpot_data(self,df, target_file_path="."):
         if self.is_filter == False:
             return (df, None)
-        logger.debug("start parser ttft tpot data")
+        self.logger.debug("start parser ttft tpot data")
         if df is None or df.empty:
-            logger.debug("parser ttft tpot data: df is null or empty")
+            self.logger.debug("parser ttft tpot data: df is null or empty")
             return (None, None)
         if not target_file_path.strip():
-            logger.debug("target file path is null !!!")
+            self.logger.debug("target file path is null !!!")
             return (None, None)
         optimal_bs = 0
         try:
@@ -1301,7 +1308,7 @@ class SearchDataParser():
             optimal_data = target_data[target_data["batch-size"] == target_data["batch-size"].max()]
             optimal_bs = optimal_data["batch-size"].max()
             output_file = f"{target_file_path}/ttft_{self.max_ttft}_tpot_{self.max_tpot}_result.csv"
-            logger.debug(f"output_file:{output_file}")
+            self.logger.debug(f"output_file:{output_file}")
             with open(output_file,'w+',encoding='utf-8') as csv_file:
                 target_data.to_csv(csv_file, index=False, encoding="utf-8")
 
@@ -1309,14 +1316,14 @@ class SearchDataParser():
             optimal_data.to_csv(optimal_data_file, index=False, encoding="utf-8")
 
         except Exception as e:
-            logger.debug(f"parser ttft tpot data: exception {e}")
+            self.logger.debug(f"parser ttft tpot data: exception {e}")
             return (None, None)
-        logger.debug(f"ttft_tpot_csv store in {output_file}")
+        self.logger.debug(f"ttft_tpot_csv store in {output_file}")
         return (target_data, optimal_bs)
   
     def plot_specified_data(self,df,file_path="."):
         if df is None or df.empty:
-            logger.debug("plot specified data: df is null or empty")
+            self.logger.debug("plot specified data: df is null or empty")
         else:
             bs = df["batch-size"].values
             ttft_key = "Mean TTFT (ms)"
@@ -1342,9 +1349,9 @@ class SearchDataParser():
             
 
     def draw_image(self,x, y, title="", legend_label="", image_path="",is_ttft=False, is_tpot=False):
-        logger.debug(f"start draw image {title}")
+        self.logger.debug(f"start draw image {title}")
         if not image_path.strip():
-            logger.debug("image path is null !!!")
+            self.logger.debug("image path is null !!!")
         else:
             plt.cla()         # 清除当前坐标轴
             plt.clf()         # 清除当前图形
@@ -1418,6 +1425,6 @@ class SearchDataParser():
             if os.path.exists(img_pt):
                 try:
                     os.remove(img_pt)
-                    logger.debug("remove image done")
+                    print("remove image done")
                 except OSError as e:
-                    logger.debug(e)
+                    print(e)

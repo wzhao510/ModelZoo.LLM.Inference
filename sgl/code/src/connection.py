@@ -18,14 +18,17 @@ class NodeInfo:
 
 
 class Connection:
-    def __init__(self, nodes_config: List[Dict], slave_port: int) -> None:
+    def __init__(self, nodes_config: List[Dict], slave_port: int, logger = None) -> None:
         self.nodes_config = nodes_config
         self.nodes_info = []
         self.slave_port = slave_port
-        self.sock_timeout = 5000 # 5s
+        self.sock_timeout = 10000 # 10s
+        self.logger = logger
+        self.task_logger = None
+        self.send_recv_lock = threading.Lock()
 
     def connect(self) -> None:
-        local_ip = get_all_local_ip()
+        local_ip = get_all_local_ip(self.logger)
 
         # todo check local gpu in used
 
@@ -40,7 +43,7 @@ class Connection:
                 continue
             node_info.is_local = False
 
-            print(f"IP: {node_info.ip}")
+            self.logger.info(f"Connect IP: {node_info.ip}")
             socket = context.socket(zmq.REQ)
             socket.RCVTIMEO = self.sock_timeout
             socket.connect(f"tcp://{node_info.ip}:{self.slave_port}")
@@ -55,15 +58,16 @@ class Connection:
             socket.send_string(f'{op_content.to_json()}')
             try:
                 output_op = OperationContent.from_json(socket.recv_string())
-                print(f"connect to {node_info.ip} successfully!")
+                self.logger.info(f"connect to {node_info.ip} successfully!")
 
                 # todo check slave gpu in used
                 node_info.socket = socket
                 self.nodes_info.append(node_info)
             except zmq.Again:
-                print(f"## connect to {node_info.ip} failed, exit!")
+                self.logger.info(f"## connect to {node_info.ip} failed, exit!")
+                context.destroy(linger=0)
                 exit(1)
-        print(self.nodes_info)
+        self.logger.info(self.nodes_info)
             
     def clean(self) -> None:
         op_content = OperationContent(type=OperationType.EXIT)
@@ -76,21 +80,21 @@ class Connection:
     def run_cmd(self, node: NodeInfo, op_content: OperationContent) -> None:
         if node.is_local:
             if op_content.is_async:
-                op_content.thread = threading.Thread(target=run_sys_cmd, args=(op_content,))
+                op_content.thread = threading.Thread(target=run_sys_cmd, args=(op_content,self.task_logger,))
                 op_content.thread.start()
                 time.sleep(2)
             else:
-                run_sys_cmd(op_content)
+                run_sys_cmd(op_content, self.task_logger)
         else:
             self._run_slave_cmd(node, op_content)
 
     def stop_cmd(self, node: NodeInfo, op_content: OperationContent) -> None:
         if node.is_local:
             if op_content.handle is not None:
-                print(f'stop master launch server kill {op_content.cmd}')
-                kill_process_all(op_content.handle)
+                self.task_logger.info(f'Stop [{op_content.cmd}]')
+                kill_process_all(op_content.handle, self.task_logger)
             else:
-                print(f'{op_content.cmd} proc not exist!')
+                self.task_logger.info(f'{op_content.cmd} proc not exist!')
         else:
             self._stop_slave_cmd(node, op_content)
 
@@ -108,7 +112,7 @@ class Connection:
         node.socket.send_string(op_content.to_json())
         output_op = OperationContent.from_json(node.socket.recv_string())
         slave_output_file = output_op.info[SLAVE_GET_IOF]
-        logger.info(f'## Recv {node.ip} output_file: {slave_output_file}')
+        self.task_logger.info(f'## Recv {node.ip} output_file: {slave_output_file}')
 
     def check_slave_gpu_in_use(self, node: NodeInfo) -> None:
         op_content = OperationContent(
@@ -119,7 +123,7 @@ class Connection:
         node.socket.send_string(op_content.to_json())
         output_op = OperationContent.from_json(node.socket.recv_string())
         slave_gpu_in_use = output_op.info[SLAVE_GET_GIU]
-        logger.info(f'## Recv {node.ip} gpu: {slave_gpu_in_use}')
+        self.task_logger.info(f'## Recv {node.ip} gpu: {slave_gpu_in_use}')
 
     def _run_slave_cmd(self, node: NodeInfo, op_content: OperationContent) -> None:
         self._send_slave_msg(node.socket, op_content)
@@ -129,7 +133,8 @@ class Connection:
         self._send_slave_msg(node.socket, op_content)
 
     def _send_slave_msg(self, sock: zmq.sugar.socket.Socket, op_content: OperationContent) -> None:
-        sock.send_string(op_content.to_json())
-        message = sock.recv_string()
-        print(f'## Recv {message}')
+        with self.send_recv_lock:
+            sock.send_string(op_content.to_json())
+            message = sock.recv_string()
+            self.task_logger.info(f'## Recv {message}')
 

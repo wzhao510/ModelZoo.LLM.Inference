@@ -10,5 +10,12 @@
         "ifname":"bond0",
         "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3"
     }
-  ]
+  ],
+  "common_envs": {
+    "MACA_SMALL_PAGESIZE_ENABLE": "1",
+    "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP": "1",
+    "TRITON_ENABLE_MACA_CHAIN_DOT_OPT": "1",
+    "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM": "1",
+    "MACA_QUEUE_SCHEDULE_POLICY": "1"
+  }
 }

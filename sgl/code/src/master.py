@@ -17,16 +17,16 @@ from src.output import BenchmarkOutputManager, AccOutputManager, SearchOutputMan
 from utils.utils import *
 from itertools import product
 from collections import defaultdict
+import pandas as pd
 
 
 server_id_global = -1
-server_pass_list = defaultdict(list) 
-real_progress_manager = None
+server_pass_list = defaultdict(list)
 
 
 class ConfigParser:
     @staticmethod
-    def online_server(server):
+    def online_server(server, logger = None):
         # generate launch server's command list
         launch_server_commands = []
         for combo in product(*(server.values())):
@@ -35,9 +35,8 @@ class ConfigParser:
                 full_command += f" {param.strip()}" if full_command != "" else f"{param.strip()}"
             full_command = full_command.strip()
 
-            print(full_command)
+            log_msg_level(full_command, logger)
             launch_server_commands.append(full_command)
-        print("============================server command end=============================")
         return launch_server_commands
 
     @staticmethod
@@ -84,15 +83,16 @@ class ConfigParser:
 
 class BenmchmarkParser(ConfigParser):
     @staticmethod
-    def from_config(config, connection, task_type, incremental_mode, args):
+    def from_config(config, connection, task_type, incremental_mode, args, common_envs, logger = None):
         task_list = []
         global server_id_global
 
         for task in config['tasks']:
-            server_list = ConfigParser.online_server(task['launch_server'])
+            server_list = ConfigParser.online_server(task['launch_server'], logger=logger)
             launch_mode = ConfigParser.get_config_default(task, 'launch_mode', 'online')
             benchmark_list = ConfigParser.parse_benchmark(task['benchmark'], task_type, launch_mode)
-            envs = ConfigParser.get_config_default(task, 'environment', [])
+            envs = common_envs.copy()
+            envs.update(ConfigParser.get_config_default(task, 'environment', {}))
             envs['GLOO_SOCKET_IFNAME'] = connection.nodes_info[0].interface
             envs['MCCL_IB_HCA'] = connection.nodes_info[0].ib_hcas
             max_ttft = None
@@ -119,6 +119,7 @@ class BenmchmarkParser(ConfigParser):
                         _task.set_output_manager(SearchOutputManager(args, _task))
                     else:
                         _task.set_output_manager(BenchmarkOutputManager(args, _task))
+                    _task.global_logger = logger
                     task_list.append(_task)
                 else:
                     for benchmark in benchmark_list:
@@ -133,8 +134,9 @@ class BenmchmarkParser(ConfigParser):
                             _task.set_output_manager(SearchOutputManager(args, _task))
                         else:
                             _task.set_output_manager(BenchmarkOutputManager(args, _task))
+                        _task.global_logger = logger
                         task_list.append(_task)
-
+        log_msg_level(f'Benmchmark task list len={len(task_list)}', logger)
         return task_list
 
 
@@ -231,15 +233,16 @@ class RampupParser(ConfigParser):
 
 class AccParser(ConfigParser):
     @staticmethod
-    def from_config(config, connection, incremental_mode, args):
+    def from_config(config, connection, incremental_mode, args, common_envs, logger = None):
         global server_id_global
         task_list = []
 
         for task_id, task in enumerate(config['tasks']):
-            server_cmds = ConfigParser.online_server(task['launch_server'])
+            server_cmds = ConfigParser.online_server(task['launch_server'], logger=logger)
             acc_type = TaskAccType(ConfigParser.get_config_default(task, 'acc_type', TaskAccType.mmlu.value))
             benchmark_cmds = AccParser.get_acc_benchmark_cmds(acc_type, task['benchmark'])
-            envs = ConfigParser.get_config_default(task, 'environment', {})
+            envs = common_envs.copy()
+            envs.update(ConfigParser.get_config_default(task, 'environment', {}))
             envs['GLOO_SOCKET_IFNAME'] = connection.nodes_info[0].interface
             envs['MCCL_IB_HCA'] = connection.nodes_info[0].ib_hcas
 
@@ -255,8 +258,9 @@ class AccParser(ConfigParser):
                 _task.model_name = config['model_name']
 
                 _task.set_output_manager(AccOutputManager(args, _task))
+                _task.global_logger = logger
                 task_list.append(_task)
-
+        log_msg_level(f'Acc task list len={len(task_list)}', logger)
         return task_list
 
     @staticmethod
@@ -292,6 +296,9 @@ class TaskScheduler:
         self.finish_flag = False
         self.connection:Optional[Connection] = None
         self.is_stopped = False
+        self.real_progress_manager = RealProgressManager(self.args)
+        self.now_path = self.real_progress_manager.now_time_path
+        self.global_logger = get_logger(self.now_path, 'bench_record.log')
 
     def parse_task_type(self, config) -> TaskType:
         if config.endswith("benchmark.json"):
@@ -302,12 +309,6 @@ class TaskScheduler:
             return TaskType.acc
         elif config.endswith("search.json"):
             return TaskType.search
-        elif config.endswith("benchmark_daily.json"):
-            return TaskType.benchmark
-        elif config.endswith("benchmark_weekly.json"):
-            return TaskType.benchmark
-        elif config.endswith("acc_weekly.json"):
-            return TaskType.acc
         
     def extract_task_model_name(self, config_path) -> str:
         # 默认认为倒数第一个路径是模型名
@@ -317,18 +318,17 @@ class TaskScheduler:
         # 1.获取 total_real_progress_file 文件数据
         # 2.解析出服务正常和bench PASS的任务
         # 3.放入全局变量 server_pass_list, 以备后续过滤使用
-        global real_progress_manager
-        if not os.path.exists(real_progress_manager.total_real_progress_path):
-            logger.info(f'current total file is not exists..return')
+        if not os.path.exists(self.real_progress_manager.total_real_progress_path):
+            self.global_logger.info(f'current total file is not exists..return')
             return
 
         total_data = {}
-        with open(real_progress_manager.total_real_progress_path, "r") as f:
+        with open(self.real_progress_manager.total_real_progress_path, "r") as f:
             total_data = json.load(f)
 
         task_list = total_data['tasks']
         if len(task_list) == 0:
-            logger.info(f'The current task list is not empty, follow the normal production task process')
+            self.global_logger.info(f'The current task list is not empty, follow the normal production task process')
             return
 
         global server_pass_list
@@ -343,71 +343,72 @@ class TaskScheduler:
                     continue
                 server_pass_list[task['server_id']] = []
             else:
-                logger.error(f'launch_mode is unknown type...' + task["launch_mode"] + " server id: " + task["server_id"])
-        print("current server_pass_list after filter:")
-        print(server_pass_list)
+                self.global_logger.error(f'launch_mode is unknown type...' + task["launch_mode"] + " server id: " + task["server_id"])
+        self.global_logger.info("current server_pass_list after filter:")
+        self.global_logger.info(server_pass_list)
 
     def generate_task(self) -> None:
-        global real_progress_manager
-        real_progress_manager = RealProgressManager(self.args)
-
         # 跑非PASS测试, 需要设置此参数
         # 此处将pass的测试id添加到全局变量 server_pass_list, 后续筛选使用
-        if self.args.incremental_mode:
-            self.pass_id_filter()
-
-        machines = {'machine_info':[{"ip": "0.0.0.0",
-                                     "ifname":"",
-                                     "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3"}]}
-        if self.args.machine_config == "":
-            machines['machine_info'][0]["ip"], machines['machine_info'][0]["ifname"] = get_ip()
-        else:
-            machines = read_json(self.args.machine_config)
-        if self.args.machine_config == "":
-            machines['machine_info'][0]["ip"], machines['machine_info'][0]["ifname"] = get_ip()
-        else:
-            machines = read_json(self.args.machine_config)
-        self.connection = Connection(machines['machine_info'], self.args.port)
+        # if self.args.incremental_mode:
+        #     self.pass_id_filter()
+        incremental_mode = False
+        machines = read_json(self.args.machine_config)
+        self.connection = Connection(machines['machine_info'], self.args.port, logger=self.global_logger)
         self.connection.connect()
+        common_envs = ConfigParser.get_config_default(machines, 'common_envs', {})
 
         for config_path in self.args.tasks_config:
             config = read_json(config_path)
             task_type = self.parse_task_type(config_path)
             config['model_name'] = self.extract_task_model_name(config_path)
-            if task_type == TaskType.rampup:
-                self.task_list.extend(RampupParser.from_config(config, self.connection, self.args.incremental_mode, self.args))
-            elif task_type == TaskType.benchmark or task_type == TaskType.search:
-                self.task_list.extend(BenmchmarkParser.from_config(config, self.connection, task_type, self.args.incremental_mode, self.args))
+            # if task_type == TaskType.rampup:
+            #     self.task_list.extend(RampupParser.from_config(config, self.connection, self.args.incremental_mode, self.args))
+            if task_type == TaskType.benchmark: # or task_type == TaskType.search:
+                self.task_list.extend(BenmchmarkParser.from_config(
+                    config, self.connection, task_type, incremental_mode, self.args, common_envs, logger=self.global_logger))
             elif task_type == TaskType.acc:
-                self.task_list.extend(AccParser.from_config(config, self.connection, self.args.incremental_mode, self.args))
+                self.task_list.extend(AccParser.from_config(
+                    config, self.connection, incremental_mode, self.args, common_envs, logger=self.global_logger))
+                
 
     def merge_result(self):
         task_types = [task.task_type for task in self.task_list]
         task_types = list(dict.fromkeys(task_types))    # 去重
+        
         for task_type in task_types:
-            if task_type == TaskType.search:
-                search_tasks = [task for task in self.task_list if task.task_type == TaskType.search]
-                search_task = search_tasks[0]
-                search_task.output_manager.merge_online_search_result(task_type,search_task.max_ttft, search_task.max_tpot)
-            else:
-                for task in self.task_list:
-                    if task.task_type == task_type:
-                        task.output_manager.merge_result(task_type)
-                        break
+            try:
+                if task_type == TaskType.search:
+                    search_tasks = [task for task in self.task_list if task.task_type == TaskType.search]
+                    search_task = search_tasks[0]
+                    search_task.output_manager.merge_online_search_result(task_type,search_task.max_ttft, search_task.max_tpot)
+                else:
+                    path_merged = []
+                    all_data = pd.DataFrame()
+                    for task in self.task_list:
+                        if task.task_type == task_type:
+                            data = task.output_manager.merge_result(path_merged, self.global_logger)
+                            all_data = pd.concat([all_data, data], ignore_index=True)
+                    output_path = os.path.join(self.now_path, f'{task_type.value}.csv')
+                    with open(output_path, 'w', encoding='utf-8') as csv_file:
+                        all_data.to_csv(csv_file, index=False)
+                    self.global_logger.info(f"{task_type.value} result_csv store in {output_path}, len={len(all_data)}")
+            except Exception as e:
+                self.global_logger.info(f"merge_result {task_type.value} exception {e}")
 
     def run(self):
         # 注册信号处理
         signal.signal(signal.SIGINT, self.handle_termination)   # 处理Ctrl+C
         signal.signal(signal.SIGTERM, self.handle_termination)  # 处理kill命令
         try:
-            global real_progress_manager
             to_run_task_id = "0"
             client_id = "0"
-            if self.args.specify_task:
-                to_run_task_id, client_id = real_progress_manager.get_total_real_progress_to_run()
+            # if self.args.specify_task:
+            #     to_run_task_id, client_id = real_progress_manager.get_total_real_progress_to_run()
 
             is_task_skip = True
             for index, task in enumerate(self.task_list):
+                self.global_logger.info(f"==================== Task ({index + 1}/{len(self.task_list)}) {task.task_name} ====================")
                 if self.finish_flag or self.is_stopped:
                     break
 
@@ -420,47 +421,50 @@ class TaskScheduler:
                 # 1.默认0,0  从第0个server第0个bench开始run
                 # 2.后续x,y  从第x个server第y个bench开始run
                 if is_task_skip:
-                    logger.info("current task need skip task id " + to_run_task_id + " current id " + str(task.task_id))
+                    self.global_logger.info("current task need skip task id " + to_run_task_id + " current id " + str(task.task_id))
                     if task.task_id < int(to_run_task_id):
                         continue
                     is_task_skip = False
-                    logger.info("current task need skip done.." )
+                    self.global_logger.info("current task need skip done.." )
                 task.output_manager.init()
-                real_progress_manager.init(task)
-                task.set_real_progress_manager(real_progress_manager)
+                # real_progress_manager.init(task)
+                task.set_real_progress_manager(self.real_progress_manager)
                 self.current_task = task
                 task.run(int(client_id))
                 # 此处需要再次初始化,防止跳过其他task的bench
                 client_id = "0"
                 self.current_task = None
-            # 从这里开始已经和某个任务无关，但是暂时不想创建单独的文件来存放logger
-            # 所以请到最后一个任务里面去看后续的log吧 by ydm.
+
             if len(self.task_list) != 0:
-                real_progress_manager.write_to_run_args()
+                self.real_progress_manager.write_to_run_args()
                 self.merge_result()
             self.connection.clean()
         except Exception as e:
-            logging.exception(f'{e}')
+            if self.current_task is not None:
+                self.current_task.logger.exception(f'{e}')
+            else:
+                self.global_logger.exception(f'{e}')
 
     def handle_termination(self, signal_num, frame):
-        """处理终止信号的通用回调函数（支持SIGINT、SIGTERM）"""
         signal_name = signal.Signals(signal_num).name
-        logger.info(f"收到{signal_name}终止信号,正在安全退出...")
+        if self.is_stopped:
+            sys.exit(0)
+        self.global_logger.info(f"Recv SIG {signal_name}, Stop...")
         self.is_stopped = True
         try:
             # 停止当前任务
             if isinstance(self.current_task, BaseTask):
                 try:
-                    self.current_task.stop_all()
-                    logger.info(f"任务  ({type(self.current_task).__name__}) 已停止")
+                    self.current_task.stop_all(False)
+                    self.global_logger.info(f"Stop ({type(self.current_task).__name__}) success")
                 except Exception as e:
-                    logger.info(f"任务({type(self.current_task).__name__}) 停止失败: {e}")
+                    self.global_logger.info(f"Stop ({type(self.current_task).__name__}) failed: {e}")
                 
             # 清理连接
             self.connection.clean()
             
         except Exception as e:
-            logging.exception(f"退出过程中发生错误: {str(e)}")
+            self.global_logger.exception(f"退出过程中发生错误: {str(e)}")
             sys.exit(1)  # 异常退出
         sys.exit(0) 
 
@@ -468,10 +472,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-path", type=str, default="output", help="Path for storing results")
     parser.add_argument("--tasks-config", type=str, nargs='*', help="JSON file describing the task list")
-    parser.add_argument("--machine-config", type=str, default="", help="JSON file describing the machine list")
+    parser.add_argument("--machine-config", type=str, help="JSON file describing the machine list")
     parser.add_argument("--image-tag", type=str, default=" ",help="docker image tag")
-    parser.add_argument("--incremental-mode", action="store_true", help="only run case not in pass file")
-    parser.add_argument("--specify-task", action="store_true", help="Starting from the designated task")
+    # parser.add_argument("--incremental-mode", action="store_true", help="only run case not in pass file")
+    # parser.add_argument("--specify-task", action="store_true", help="Starting from the designated task")
     parser.add_argument("--port",type=int,default=20000,help="client port bind to recv msg")
     Args = parser.parse_args(sys.argv[1:])
 

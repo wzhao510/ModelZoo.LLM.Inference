@@ -6,10 +6,6 @@
             "world_size": "8",
             "server_port": "9000",
             "environment": {
-                "MACA_SMALL_PAGESIZE_ENABLE": "1",
-                "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP": "1",
-                "TRITON_ENABLE_MACA_CHAIN_DOT_OPT": "1",
-                "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM": "1"
             },
             "launch_server": {
                 "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
