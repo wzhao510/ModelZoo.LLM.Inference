@@ -30,6 +30,7 @@
             "task_name": "Qwen3-30B-TP4-ceval",
             "launch_mode": "online",
             "world_size": "4",
+            "acc_type":"ceval",
             "server_port": "9000",
             "environment": {
             },
