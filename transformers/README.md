@@ -152,6 +152,15 @@ python code/bench_test.py --model ./models/xxxx --num-prompts 1024 --input-len 5
 - `output-len`: 测试输出长度 (默认 1024)
 - `tensor-parallel-size`: tensor-parallel-size (默认为配置中的设置)
 
+### # bge_vl_large测试脚本
+```bash
+python code/src/bge_vl_large.py --model /pde_ai/models/llm/BAAI/BGE-VL-large/ --image-path ./data/demo.jpg
+# 参数列表
+--model-dir MODEL_DIR               model path
+--num-iterations NUM_ITERATIONS     test rounds
+--input-text INPUT_TEXT             input text
+--image-path IMAGE_PATH             path to image
+```
 
 ## 大语言模型推理
 - 需要根据使用模型实际路径修改模型所在的绝对路径
