@@ -156,20 +156,24 @@ class BaseTask:
 
     def check_other_abnormal(self):
         last_log_folrder_size = 0
-        abnormal_flag_str = ["Gracefully exiting... remaining number of requests",
-                             "Watchdog timeout (self.watchdog_timeout=300)",
-                             "torch.OutOfMemoryError: CUDA out of memory.",
-                             "Forcing disable 'CUTLASS' backend as it is not supported in maca platform.",
-                             "TypeError: launcher() got an unexpected keyword argument 'scenario'",
-                             "Exception: Capture cuda graph failed:",
-                             "RuntimeError: CUDA error: out of memory",
-                             "RuntimeError: Not enough memory. Please try to increase --mem-fraction-static.",
-                             "ModuleNotFoundError: No module named 'flashinfer'",
-                             "CUDA error: an illegal memory access was encountered",
-                             "RuntimeError: NCCL error: internal error",
-                             "CUDA error: invalid device ordinal",
-                             "ImportError: cannot import name 'layer_type_validation'",
-                            ]
+        abnormal_flag_str = [
+            "Gracefully exiting... remaining number of requests",
+            "Watchdog timeout (self.watchdog_timeout=300)",
+            "torch.OutOfMemoryError: CUDA out of memory.",
+            "Forcing disable 'CUTLASS' backend as it is not supported in maca platform.",
+            "TypeError: launcher() got an unexpected keyword argument 'scenario'",
+            "Exception: Capture cuda graph failed:",
+            "RuntimeError: CUDA error: out of memory",
+            "RuntimeError: Not enough memory. Please try to increase --mem-fraction-static.",
+            "ModuleNotFoundError: No module named 'flashinfer'",
+            "CUDA error: an illegal memory access was encountered",
+            "RuntimeError: NCCL error: internal error",
+            "CUDA error: invalid device ordinal",
+            "ImportError: cannot import name 'layer_type_validation'",
+            "RuntimeError: The server socket has failed to listen on any local network address",
+            "huggingface_hub.errors.HFValidationError: Repo id must be in the form",
+            "OSError: Can't load the configuration of",
+        ]
 
         last_log_update_time = time.time()
         while len(self.server_cmd_ops) == 0:
@@ -189,6 +193,29 @@ class BaseTask:
                     self.logger.error(f"****************************{abnormal_str}****************************")
                     self.real_progress_manager.set_fail_reason(abnormal_str)
                     break
+            if abnormal_flag:
+                break
+
+            for index in range(1, min(len(self.nodes_used), len(self.server_cmd_ops))):
+                node = self.nodes_used[index]
+                server_cmd = self.server_cmd_ops[index].cmd
+                op_content = OperationContent(
+                    id=get_next_op_id(),
+                    type=OperationType.CHECK_ABNORMAL,
+                    cmd=server_cmd,
+                    abnormal_flags=abnormal_flag_str
+                )
+                message = self.connection.run_cmd(node, op_content)
+                output = OperationContent.from_json(message)
+                if output.abnormal_flags is None:
+                    continue
+                abnormal_str = output.abnormal_flags[0]
+                abnormal_flag = True
+                self.logger.error(f"********************************{node.ip} abnormal********************************")
+                self.logger.error(f"****************************{node.ip} {abnormal_str}****************************")
+                self.real_progress_manager.set_fail_reason(abnormal_str)
+                break
+
             if abnormal_flag:
                 break
 

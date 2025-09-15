@@ -83,7 +83,7 @@ class Connection:
                 node.socket.close()
         self.nodes_info.clear()
 
-    def run_cmd(self, node: NodeInfo, op_content: OperationContent) -> None:
+    def run_cmd(self, node: NodeInfo, op_content: OperationContent) -> str:
         if node.is_local:
             if op_content.is_async:
                 op_content.thread = threading.Thread(target=run_sys_cmd, args=(op_content,self.task_logger,))
@@ -91,8 +91,9 @@ class Connection:
                 time.sleep(2)
             else:
                 run_sys_cmd(op_content, self.task_logger)
+            return ""
         else:
-            self._run_slave_cmd(node, op_content)
+            return self._run_slave_cmd(node, op_content)
 
     def stop_cmd(self, node: NodeInfo, op_content: OperationContent) -> None:
         if node.is_local:
@@ -131,16 +132,18 @@ class Connection:
         slave_gpu_in_use = output_op.info[SLAVE_GET_GIU]
         self.task_logger.info(f'## Recv {node.ip} gpu: {slave_gpu_in_use}')
 
-    def _run_slave_cmd(self, node: NodeInfo, op_content: OperationContent) -> None:
-        self._send_slave_msg(node.socket, op_content)
+    def _run_slave_cmd(self, node: NodeInfo, op_content: OperationContent) -> str:
+        return self._send_slave_msg(node.socket, op_content)
 
     def _stop_slave_cmd(self, node: NodeInfo, op_content: OperationContent) -> None:
         op_content.type = OperationType.STOP
         self._send_slave_msg(node.socket, op_content)
 
-    def _send_slave_msg(self, sock: zmq.sugar.socket.Socket, op_content: OperationContent) -> None:
+    def _send_slave_msg(self, sock: zmq.sugar.socket.Socket, op_content: OperationContent) -> str:
         with self.send_recv_lock:
             sock.send_string(op_content.to_json())
             message = sock.recv_string()
-            self.task_logger.info(f'## Recv {message}')
+            if op_content.type != OperationType.CHECK_ABNORMAL:
+                self.task_logger.info(f'## Recv {message}')
+            return message
 

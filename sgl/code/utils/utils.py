@@ -192,6 +192,7 @@ class OperationType(IntEnum):
     GET = auto()
     RUN = auto()
     STOP = auto()
+    CHECK_ABNORMAL = auto()
     EXIT = auto()
 
 
@@ -217,6 +218,7 @@ class OperationContent:
                                  #       ['model_name','task_id','task_type','task_launch_mode','task_full_name']
     printenv: Optional[bool] = False    # 是否在执行run_sys_cmd 期间打印环境信息
     special_logger: Optional[None] = None
+    abnormal_flags: Optional[List[str]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)
@@ -308,13 +310,20 @@ def get_python_proc(logger):
     op_content = OperationContent(
         id=get_next_op_id(),
         type=OperationType.RUN,
-        cmd="ps -ef | grep python",
+        cmd="ps -ef",
         store_output=True,
         is_master=True,
     )
     run_sys_cmd(op_content, logger)
 
+def check_port_in_use(logger):
+    log_msg_level(f'## LISTEN PORT LISTS:', logger)
+    for conn in psutil.net_connections(kind='inet'):
+        if conn.status == 'LISTEN':
+            log_msg_level(f'{conn.laddr.ip}:{conn.laddr.port} pid={conn.pid}', logger)
+
 def check_gpu_in_use(logger) -> str:
+    check_port_in_use(logger)
     get_python_proc(logger)
     mem_used = get_gpu_mem_used(logger)
     gpu_mem_used = mem_used.split(',')
@@ -324,11 +333,11 @@ def check_gpu_in_use(logger) -> str:
         used_mem, used_per = mem_info.split('_')
         if int(used_mem) >= 1000 or int(used_per) > 0:
             used_flag = True
-            logger.error(f'GPU {gpu_id} are in used({used_mem}, {used_per}), please check process!!')
+            log_msg_level(f'GPU {gpu_id} are in used({used_mem}, {used_per}), please check process!!', logger)
             used_info += f'GPU {gpu_id} are in used({used_mem}, {used_per}), please check process!!\n'
     if used_flag:
         return used_info
-    logger.info(f'check gpu in use: All GPUs are free')
+    log_msg_level(f'check gpu in use: All GPUs are free', logger)
     
     return 'All GPUs are free'
 
@@ -336,7 +345,7 @@ def printenv(logger):
     """
     主进程start_server期间调用(会每个任务log都加)
     """
-    logger.info(f"environment:\n")
+    log_msg_level(f"environment:", logger)
     op_content = OperationContent(
         id=get_next_op_id(),
         type=OperationType.RUN,

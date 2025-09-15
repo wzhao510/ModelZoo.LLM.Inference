@@ -73,17 +73,28 @@ while True:
         zmq_socket.send_string(f'{op_content.to_json()}')
     elif op_content.type == OperationType.RUN:
         run_content = run_slave_launch_server(op_content, g_logger)
-        g_opcontent_map[op_content.cmd] = run_content.handle
+        g_opcontent_map[op_content.cmd] = run_content
         zmq_socket.send_string(f"run [{op_content.cmd}] success")
-
     elif op_content.type == OperationType.STOP:
         if op_content.cmd in g_opcontent_map.keys():
-            log_msg_level(f'Stop [{g_opcontent_map[op_content.cmd]}]', g_logger)
-            kill_process_all(g_opcontent_map[op_content.cmd], g_logger)
+            log_msg_level(f'Stop [{op_content.cmd}]', g_logger)
+            kill_process_all(g_opcontent_map[op_content.cmd].handle, g_logger)
             zmq_socket.send_string(f"stop [{op_content.cmd}] success")
             kill_local_defunct_process(g_logger)
         else:
             zmq_socket.send_string(f'[{op_content.cmd}] proc not exist!')
+    elif op_content.type == OperationType.CHECK_ABNORMAL:
+        abnormal_flags = op_content.abnormal_flags
+        op_content.abnormal_flags = None
+        if op_content.cmd in g_opcontent_map.keys():
+             output = "".join(g_opcontent_map[op_content.cmd].output)
+             for abnormal_str in abnormal_flags:
+                if abnormal_str in output:
+                    op_content.abnormal_flags = [abnormal_str]
+                    log_msg_level(f"********************************abnormal********************************")
+                    log_msg_level(f"********************************{abnormal_str}********************************")
+                    break
+        zmq_socket.send_string(f'{op_content.to_json()}')
     elif op_content.type == OperationType.EXIT:
         log_msg_level(f'EXIT kill', g_logger)
         zmq_socket.send_string(f"exit success")

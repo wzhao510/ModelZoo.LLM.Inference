@@ -18,6 +18,8 @@ sgl
 │   ├── __init__.py
 │   ├── bench_sglang.py
 │   ├── run_ceval_client.py
+├── dataset/
+│   └── ceval_val_cmcc.jsonl
 ├── models/
 │   ├── 模型名称
 │   │   ├── benchmark.json
@@ -159,7 +161,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
                         ]
             },
             "benchmark": {
-                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json ",
+                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json "
                 "input_output_len": ["3072/1024"],
                 "num_prompt": ["1", "16", "128", "256", "32", "64"]
             }
@@ -277,7 +279,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 **层级2**: 每轮测试目录包含该轮测试所指定的各个项目，如DeepSeek-R1-BF16-W8A8，Qwen3_32B等。
 
 ```markdown
-└── outputs/                                   # --output-path
+└── {输出目录}/                                   # --output-path
 　　├── {时间戳}                                # 本轮测试的目录
 　　│    ├──  {模型名}                          # 本轮测试的模型名称1
 　　│    └──  {模型名}                          # 本轮测试的模型名称2
@@ -304,22 +306,21 @@ acc/
 　├── logs/
 　│　 └── {任务名}_server{任务编号}_node{节点}.log    # 实时日志
 　└── result/
-　　　├── ceval|mmlu/                                # 精度任务子类型
-　　　│　　└── {任务名}-server{任务编号}/              # 单次精度结果
-　　　│　　　　├── *_result.jsonl                     # 结果
-　　　│　　　　├── *{_result}.txt                     # 过程输出
-　　　│　　　　└── *_result.csv                       # 指标提取
-　　　└── {时间戳}_result.csv                         # 所有精度指标汇总
+　　　└── ceval|mmlu/                                # 精度任务子类型
+　　　 　　└── {任务名}-server{任务编号}/              # 单次精度结果
+　　　 　　　　├── *_result.json                      # 结果
+　　　 　　　　├── *_result.txt                       # 过程输出
+　　　 　　　　└── *_result.csv                       # 指标提取
+　　　 　　　　└── *.txt                              # ceval测试会多出的一个结果文件
 
 benchmark
 　├── logs/
 　│　 └── {任务名}_server{任务编号}_node{节点}.log    # 实时日志
 　└── result/
-　　　├── {任务名}-server{任务编号}/                   # 单任务结果
-　　　│　　├── *_result.jsonl                         # 结果
-　　　│　　├── *_result.txt                           # 过程输出
-　　　│　　└── *_result.csv                           # 指标提取
-　　　└── {时间戳}_result.csv                         # 各类指标汇总
+　　　└── {任务名}-server{任务编号}/                   # 单任务结果
+　　　 　　├── *_result.jsonl                         # 结果
+　　　 　　├── *_result.txt                           # 过程输出
+　　　 　　└── *_result.csv                           # 指标提取
 ```
 
 # 4 启动测试
