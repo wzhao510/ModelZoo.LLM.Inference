@@ -54,8 +54,9 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 | MACA_SMALL_PAGESIZE_ENABLE                        | 页面大小优化                              |
 | TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP | Triton 编译器优化                         |
 | TRITON_ENABLE_MACA_CHAIN_DOT_OPT                  | Triton 编译器的链式 Dot 操作优化          |
-| PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM            | PyTorch 的优先级流（Priority Stream）优化 |
-| MACA_QUEUE_SCHEDULE_POLICY                        | MACA 队列调度策略设置                     |
+| MACA_DIRECT_DISPATCH                              | 开启 direct dispatch 功能                     |
+| MCDBG_GRAPH_LAUNCH_QUEUE_POLICY                   | 设置 graph 内部创建的 stream/queue 的优先级为high                     |
+| MACA_GRAPH_LAUNCH_QUEUE_POLICY                    | 设置 graph 内部创建的 stream/queue 的优先级为high                     |
 
 已有配置默认路径在sgl/models/mechines.json：
 
@@ -77,8 +78,9 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
     "MACA_SMALL_PAGESIZE_ENABLE": "1",
     "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP": "1",
     "TRITON_ENABLE_MACA_CHAIN_DOT_OPT": "1",
-    "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM": "1",
-    "MACA_QUEUE_SCHEDULE_POLICY": "1"
+    "MACA_DIRECT_DISPATCH": "1",
+    "MCDBG_GRAPH_LAUNCH_QUEUE_POLICY":"3",
+    "MACA_GRAPH_LAUNCH_QUEUE_POLICY":"3"
   }
 }
 ```
