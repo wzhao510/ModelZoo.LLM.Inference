@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""
-vLLM Inference Script for BGE-Large-ZH Model
-Support reading texts from file with input length control and TPS calculation
-"""
-
 import argparse
 from vllm import LLM
 import torch
@@ -12,7 +6,6 @@ from typing import List, Tuple
 import time
 import os
 from transformers import AutoTokenizer
-import torch
 
 def setup_args():
     """Setup command line arguments"""
@@ -28,67 +21,49 @@ def setup_args():
     parser.add_argument('--dtype', type=str, default='auto',
                        choices=['auto', 'half', 'float16', 'bfloat16', 'float', 'float32'],
                        help='Model data type')
+    parser.add_argument('--max-num-seqs', type=int, default=256,
+                       help='Maximum number of sequences to process simultaneously')
+    parser.add_argument('--max-num-batched-tokens', type=int, default=2048,
+                       help='Maximum number of tokens to process in one batch step')
+    parser.add_argument('--batch-size', type=int, default=32,
+                       help='Batch size for processing (number of texts to read and process per batch)')
 
-    # File input parameters
     parser.add_argument('--text-file', type=str, required=True,
                        help='Read texts from file, one text per line')
-    parser.add_argument('--input-len', type=int, default=-1,
-                       help='Number of texts to read, -1 means read all texts')
-    
     parser.add_argument('--profile', action='store_true',
                        help='Enable torch.profiler to capture GPU profiling data')
     
     return parser.parse_args()
 
-def load_texts_from_file(file_path: str, max_chars: int = -1) -> List[str]:
+def load_texts_from_file(file_path: str, batch_size: int = 32) -> List[str]:
     """
-    Load texts from file with total character length limitation
+    Load texts from file, reading exactly batch_size number of non-empty lines
     
     Args:
         file_path: Path to text file
-        max_chars: Maximum total characters to read from file, -1 means read all
+        batch_size: Number of non-empty lines to read from file
         
     Returns:
-        List[str]: List of texts within the character limit
+        List[str]: List of non-empty texts (exactly batch_size lines)
     """
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
     
     texts = []
-    total_chars_read = 0
     print(f"Loading texts from file: {file_path}")
     
     with open(file_path, 'r', encoding='utf-8') as f:
         for line in f:
-            if max_chars != -1 and total_chars_read >= max_chars:
+            if len(texts) >= batch_size:
                 break
-                
             line = line.strip()
-            if line:  # Skip empty lines
-                # Calculate how many characters we can take from this line
-                if max_chars == -1:
-                    # No limit, take the whole line
-                    texts.append(line)
-                    total_chars_read += len(line)
-                else:
-                    chars_remaining = max_chars - total_chars_read
-                    if chars_remaining > 0:
-                        if len(line) <= chars_remaining:
-                            # Whole line fits within the limit
-                            texts.append(line)
-                            total_chars_read += len(line)
-                        else:
-                            # Only take part of the line
-                            partial_line = line[:chars_remaining]
-                            texts.append(partial_line)
-                            total_chars_read += len(partial_line)
-                            break  # Reached the character limit
-    
-    print(f"Loaded {len(texts)} texts from file")
-    print(f"text:{texts}")
-    print(f"Total characters read: {total_chars_read}")
-    if max_chars != -1:
-        print(f"Character limit: {max_chars} characters")
+            if line:  
+                texts.append(line)
+
+    if len(texts) < batch_size:
+        print(f"Warning: Texts in file ({len(texts)}) is less than batch_size ({batch_size})")
+        print(f"will Fill the {batch_size} rows with the character 'a' ")
+        texts.extend(['a'] * (batch_size - len(texts)))
     
     return texts
 
@@ -114,6 +89,23 @@ def calculate_tokens(texts: List[str], tokenizer) -> Tuple[int, List[int]]:
     
     return total_tokens, tokens_per_text
 
+def batch_texts(texts: List[str], batch_size: int) -> List[List[str]]:
+    """
+    Split texts into batches
+    
+    Args:
+        texts: List of texts to batch
+        batch_size: Number of texts per batch
+        
+    Returns:
+        List[List[str]]: List of batches
+    """
+    batches = []
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i:i + batch_size]
+        batches.append(batch)
+    return batches
+
 class BGEEmbedder:
     def __init__(self, args):
         """Initialize vLLM model"""
@@ -121,6 +113,8 @@ class BGEEmbedder:
         print(f"Model path: {args.model}")
         print(f"GPU memory utilization: {args.gpu_memory_utilization}")
         print(f"Maximum model length: {args.max_model_len}")
+        print(f"Max num sequences: {args.max_num_seqs}")
+        print(f"Max num batched tokens: {args.max_num_batched_tokens}")
         
         start_time = time.time()
         
@@ -132,6 +126,8 @@ class BGEEmbedder:
             dtype=args.dtype,
             enforce_eager=True,
             disable_log_stats=True,
+            max_num_seqs=args.max_num_seqs,
+            max_num_batched_tokens=args.max_num_batched_tokens,
         )
         
         # Load tokenizer for token counting
@@ -154,17 +150,21 @@ class BGEEmbedder:
             print("No texts to process")
             return np.array([]), 0.0, 0.0
             
-        print(f"Starting to process {len(prompts)} texts...")
+        batch_size = len(prompts)
+        print(f"Starting to process {batch_size} texts...")
         
         # Calculate total tokens
         total_tokens, tokens_per_text = calculate_tokens(prompts, self.tokenizer)
         print(f"Total tokens: {total_tokens}")
-        print(f"Average tokens per text: {total_tokens/len(prompts):.1f}")
+        print(f"Average tokens per text: {total_tokens/batch_size:.1f}")
         
         all_embeddings = []
-         
-        # Record start time
-        start_time = time.time()
+        total_process_time_ms = 0
+        
+        # 由于已经按批次大小读取，直接处理整个批次
+        print(f"Processing batch of size: {batch_size}")
+        
+        batch_start_time = time.time()
         
         try:
             if args.profile:
@@ -188,37 +188,34 @@ class BGEEmbedder:
             
             # Handle different return types from llm.embed()
             if isinstance(embeddings_output, torch.Tensor):
-                # If it's a tensor, convert to numpy
                 batch_embeddings = embeddings_output.cpu().numpy()
             elif isinstance(embeddings_output, list):
-                # If it's a list, convert to numpy array
                 batch_embeddings = np.array(embeddings_output)
             elif hasattr(embeddings_output, 'cpu'):
-                # If it has .cpu() method (like torch Tensor)
                 batch_embeddings = embeddings_output.cpu().numpy()
             else:
-                # Fallback: try to convert to numpy array
                 try:
                     batch_embeddings = np.array(embeddings_output)
                 except:
                     # If all else fails, create zero embeddings
-                    embedding_dim = 1024  # BGE-large-zh typically has 1024-dim embeddings
-                    batch_embeddings = np.zeros((len(prompts), embedding_dim))
+                    embedding_dim = 1024
+                    batch_embeddings = np.zeros((batch_size, embedding_dim))
             
-            all_embeddings.append(batch_embeddings)           
+            all_embeddings.append(batch_embeddings)
+            
         except Exception as e:
             print(f"Error processing batch: {e}")
             # Add zero vectors for failed batch
-            embedding_dim = 1024  # BGE-large-zh typically has 1024-dim embeddings
-            zero_embeddings = np.zeros((len(prompts), embedding_dim))
+            embedding_dim = 1024
+            zero_embeddings = np.zeros((batch_size, embedding_dim))
             all_embeddings.append(zero_embeddings)
         
-        # Record end time
-        end_time = time.time()
+        batch_end_time = time.time()
+        batch_process_time_ms = (batch_end_time - batch_start_time) * 1000
+        total_process_time_ms += batch_process_time_ms
         
-        # Calculate total processing time
-        process_time_ms = (end_time - start_time) * 1000
-        
+        print(f"Batch processed in {batch_process_time_ms:.2f} ms")
+
         # Concatenate all embeddings
         if all_embeddings:
             try:
@@ -227,18 +224,17 @@ class BGEEmbedder:
                 print(f"Error concatenating embeddings: {e}")
                 print("Creating zero embeddings as fallback")
                 embedding_dim = 1024
-                embeddings = np.zeros((len(prompts), embedding_dim))
+                embeddings = np.zeros((batch_size, embedding_dim))
         else:
             embeddings = np.array([])
         
-        # Calculate TPS
-        tps = total_tokens / (process_time_ms / 1000) if process_time_ms > 0 else 0
+        tps = total_tokens / (total_process_time_ms / 1000) if total_process_time_ms > 0 else 0
         
         print(f"Embedding generation completed")
-        print(f"Total processing time: {process_time_ms:.2f} ms")
+        print(f"Total processing time: {total_process_time_ms:.2f} ms")
         print(f"Tokens per Second (TPS): {tps:.2f}")
         
-        return embeddings, tps, process_time_ms
+        return embeddings, tps, total_process_time_ms
 
 def main():
     """Main function"""
@@ -248,12 +244,14 @@ def main():
     print("BGE-Large-ZH vLLM Inference Script")
     print("=" * 60)
     print(f"Input file: {args.text_file}")
-    print(f"Number of texts to read: {'All' if args.input_len == -1 else args.input_len}")
+    print(f"Batch size: {args.batch_size}")
+    print(f"Max sequences: {args.max_num_seqs}")
+    print(f"Max batched tokens: {args.max_num_batched_tokens}")
     print("=" * 60)
     
     # Load texts
     try:
-        prompts = load_texts_from_file(args.text_file, args.input_len)
+        prompts = load_texts_from_file(args.text_file, args.batch_size)
     except Exception as e:
         print(f"Error loading texts: {e}")
         return
