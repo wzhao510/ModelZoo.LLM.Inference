@@ -51,14 +51,14 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 
 - **common_envs：通用环境变量配置**
 
-| 参数                                              | 说明                                      |
-| ------------------------------------------------- | ----------------------------------------- |
-| MACA_SMALL_PAGESIZE_ENABLE                        | 页面大小优化                              |
-| TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP | Triton 编译器优化                         |
-| TRITON_ENABLE_MACA_CHAIN_DOT_OPT                  | Triton 编译器的链式 Dot 操作优化          |
-| MACA_DIRECT_DISPATCH                              | 开启 direct dispatch 功能                     |
-| MCDBG_GRAPH_LAUNCH_QUEUE_POLICY                   | 设置 graph 内部创建的 stream/queue 的优先级为high                     |
-| MACA_GRAPH_LAUNCH_QUEUE_POLICY                    | 设置 graph 内部创建的 stream/queue 的优先级为high                     |
+| 参数                                              | 说明                                            |
+| ------------------------------------------------- | -----------------------------------------------|
+| MACA_SMALL_PAGESIZE_ENABLE                        | 页面大小优化                                    |
+| TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP | Triton 编译器优化                               |
+| TRITON_ENABLE_MACA_CHAIN_DOT_OPT                  | Triton 编译器的链式 Dot 操作优化                 |
+| MACA_DIRECT_DISPATCH                              | 开启 direct dispatch 功能                       |
+| MCDBG_GRAPH_LAUNCH_QUEUE_POLICY                   | 设置 graph 内部创建的 stream/queue 的优先级为high |
+| MACA_GRAPH_LAUNCH_QUEUE_POLICY                    | 设置 graph 内部创建的 stream/queue 的优先级为high |
 
 已有配置默认路径在sgl/models/mechines.json：
 
@@ -154,16 +154,16 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
                 "quantization": [""],
                 "chunked_prefill_size": [""],
                 "attention_backend": ["--attention-backend flashinfer"],
-                "enable_parallel": ["--tp 16 --dp 4DeepSeek-R1-W8A8-0528"],
+                "enable_parallel": ["--tp 16 --dp 4 --enable-dp-attention"],
                 "mem_fraction_static": [""],
                 "embedding_tp_size": [""],
-                "mtp": [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8",""
+                "mtp": [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"
                         ]
             },
             "benchmark": {
-                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json "
+                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json",
                 "input_output_len": ["3072/1024"],
-                "num_prompt": ["1", "16", "128", "256", "32", "64"]
+                "num_prompt": ["1", "16", "32", "64", "128"]
             }
         }
     ]
@@ -198,7 +198,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 | 参数           | 说明                                                         |
 | -------------- | ------------------------------------------------------------ |
 | random\[可选\] | 随机抽样设置，由下面两个参数构成。<br>random_seed 随机种子\[必选\]<br>random_num 抽样数\[必选\]<br>如：--random_seed 0 --random_num 50<br>如果不设置此项，则为全量测试。 |
-| test_jsonl     | /workspace/ModelZoo.LLM.Inference/dataset下提供了ceval_val_cmcc.jsonl |
+| test_jsonl     | /workspace/ModelZoo.LLM.Inference/dataset下提供了默认的ceval_val_cmcc.jsonl |
 | timeout        | 超时设置，默认1200s |
 
 ```json
@@ -215,14 +215,11 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
             "launch_server": {
                 "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
                 "model_path": ["--model-path /models/DeepSeek-R1-W8A8-0528/vllm_quant_model"],
-                "cache": ["--disable-radix-cache"],
+                "cache": ["--disable-radix-cache --disable-chunked-prefix-cache"],
                 "attention_backend": ["--attention-backend flashinfer"],
                 "enable_parallel": ["--tp 16 --dp 4 --enable-dp-attention"],
                 "mtp": [
-                    "--speculative-algo NEXTN --speculative-draft /models/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8",
-                    ""
-                ],
-                "cuda_graph":[
+                    "--speculative-algo NEXTN --speculative-draft /models/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"
                 ]
             },
             "benchmark": {
@@ -240,20 +237,15 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
             "launch_server": {
                 "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
                 "model_path": ["--model-path /models/DeepSeek-R1-W8A8-0528/vllm_quant_model"],
-                "cache": ["--disable-radix-cache"],
+                "cache": ["--disable-radix-cache --disable-chunked-prefix-cache"],
                 "attention_backend": ["--attention-backend flashinfer"],
                 "enable_parallel": ["--tp 16 --dp 4 --enable-dp-attention"],
                 "mtp": [
-                    "--speculative-algo NEXTN --speculative-draft /models/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8",
-                    ""
-                ],
-                "cuda_graph":[
-                    "--cuda-graph-max-bs 64 --chunked-prefill-size 2048",
-                    ""
+                    "--speculative-algo NEXTN --speculative-draft /models/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"
                 ]
             },
             "benchmark": {
-                "command_base": "python3 run_ceval_client.py --model /models/DeepSeek-R1-W8A8-0528/vllm_quant_model  --test_jsonl /workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl --batch_size 64 --random_seed 0 --random_num 50",
+                "command_base": "python3 run_ceval_client.py --model /models/DeepSeek-R1-W8A8-0528/vllm_quant_model  --test_jsonl /workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl --batch_size 64 --random_seed 0 --random_num 50"
             }
         }
     ]
@@ -394,7 +386,7 @@ docker run -it --device=/dev/dri --device=/dev/mxcd --device=/dev/infiniband --p
                 "mtp": [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"]
             },
             "benchmark": {
-                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json ",
+                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json",
                 "input_output_len": ["3072/1024"],
                 "num_prompt": ["1", "16", "32", "64", "128"]
             }
