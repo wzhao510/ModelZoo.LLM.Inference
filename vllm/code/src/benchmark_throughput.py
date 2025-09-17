@@ -644,6 +644,7 @@ def main(args: argparse.Namespace):
     tokenizer = AutoTokenizer.from_pretrained(
         args.tokenizer, trust_remote_code=args.trust_remote_code
     )
+    sync_profile = False
     if args.enable_profile:
         print("[INFO] Seems that you turn on PROFILE. It will slower than normal.")   
 
@@ -653,6 +654,7 @@ def main(args: argparse.Namespace):
         os.environ["VLLM_TORCH_PROFILER_DIR"] = MX_PROFILE_DIR
         if not os.path.exists(MX_PROFILE_DIR):
             os.makedirs(MX_PROFILE_DIR)
+        sync_profile = True
     request_outputs: Optional[list[RequestOutput]] = None
     if args.backend == "vllm":
         if args.async_engine:
@@ -674,6 +676,7 @@ def main(args: argparse.Namespace):
             llm = LLM(**dataclasses.asdict(engine_args))
             # Sample the requests.
             print("Start warm up....")
+            args.enable_profile = False
             for idx in range(args.warmup_loops):
                 print(f"warm up {idx}...")
                 requests = get_requests(
@@ -698,6 +701,8 @@ def main(args: argparse.Namespace):
                     elapsed_time=elapsed_time,
                     request_outputs=request_outputs
                     )
+            
+            args.enable_profile = sync_profile
             if args.batched_test:
                 print("Start batched test....")
                 for batch in [1,8,16,32,64]:
