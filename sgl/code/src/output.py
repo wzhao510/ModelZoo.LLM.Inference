@@ -554,10 +554,12 @@ class OutputManager:
                 tp_size_match = re.search(r"--(tp|tp-size)\s+(\d+)",command)
                 ep_size_match = re.search(r"--(ep|ep-size)\s+(\d+)",command)
                 dp_size_match = re.search(r"--(dp|dp-size)\s+(\d+)",command)
+                pp_size_match = re.search(r"--(pp|pp-size)\s+(\d+)",command)
 
                 tp_str = ''
                 dp_str = ''
                 ep_str = ''
+                pp_str = ''
 
                 assert tp_size_match
                 tp_size = tp_size_match.group(2)
@@ -570,13 +572,17 @@ class OutputManager:
                     dp_str = f"DP{dp_size}" 
                     if re.search(r"--enable-dp-attention", command):
                         tp_str = f"TP{int(int(tp_size)/int(dp_size))}" 
+  
+                if pp_size_match:
+                    pp_size = pp_size_match.group(2)
+                    pp_str = f"PP{pp_size}"
 
                 if ep_size_match:
                     ep_str = f"EP{ep_size_match.group(2)}"
                 elif re.search(r"--enable-ep-moe", command):
                     ep_str = f"EP{tp_size}"
 
-                value.append(f'{tp_str}{dp_str}{ep_str}')
+                value.append(f'{tp_str}{dp_str}{pp_str}{ep_str}')
 
         # output_string = ""
         # for key, value in server_args.items():
