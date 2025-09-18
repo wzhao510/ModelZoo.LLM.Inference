@@ -19,7 +19,7 @@
                 "chunked_prefill_size": [""],
                 "attention_backend": ["--attention-backend flashinfer"],
                 "enable_parallel": ["--tp 16 --dp 4 --enable-dp-attention"],
-                "mem_fraction_static": ["--mem-fraction-static 0.88"],
+                "mem_fraction_static": ["--mem-fraction-static 0.86"],
                 "embedding_tp_size": [""]
             },
             "benchmark": {
@@ -45,7 +45,7 @@
                 "chunked_prefill_size": [""],
                 "attention_backend": ["--attention-backend flashinfer"],
                 "enable_parallel": ["--tp 16 --dp 4 --enable-dp-attention"],
-                "mem_fraction_static": ["--mem-fraction-static 0.88"],
+                "mem_fraction_static": ["--mem-fraction-static 0.86"],
                 "embedding_tp_size": [""]
             },
             "benchmark": {
