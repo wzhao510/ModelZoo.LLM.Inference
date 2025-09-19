@@ -68,6 +68,7 @@ class RealProgressManager:
                                      "times": 0}
         self.create_real_progress_file()
         self.write_real_progress_start()
+        self.fail_reason = "Unknown Error"
 
     def create_real_progress_file(self) -> None:
         self.real_progress_path = os.path.join(self.args.output_path,

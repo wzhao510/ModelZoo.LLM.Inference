@@ -194,6 +194,7 @@ class BaseTask:
                 break
 
             if self.is_stopped:
+                self.logger.info(f"********************************server stopped, break********************************")
                 break
 
             for index in range(1, min(len(self.nodes_used), len(self.server_cmd_ops))):
