@@ -181,9 +181,6 @@ class BaseTask:
             continue
 
         while True:
-            if self.is_stopped:
-                break
-
             abnormal_flag = False
             output = "".join(self.server_cmd_ops[0].output)
             for abnormal_str in abnormal_flag_str:
@@ -194,6 +191,9 @@ class BaseTask:
                     self.real_progress_manager.set_fail_reason(abnormal_str)
                     break
             if abnormal_flag:
+                break
+
+            if self.is_stopped:
                 break
 
             for index in range(1, min(len(self.nodes_used), len(self.server_cmd_ops))):
