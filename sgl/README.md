@@ -420,7 +420,7 @@ docker run -it --device=/dev/dri --device=/dev/mxcd --device=/dev/infiniband --p
 
 配置里面默认带的是本版本最佳性能参数，需要用户手动手改model_path，mtp model_path，ShareGPT_V3_unfiltered_cleaned_split.json（如有使用）的路径为镜像内部可以访问的路径，
 
-如果想测试其他参数组合，可以在launch_server里面加，会自动组合生成测试结果，且json支持添加多个任务
+如果想测试其他参数组合，可以在launch_server里面加，会自动组合生成测试结果，且json支持添加多个任务；需要注意的是，如果测试其他组合出现**out of memory**，需自行调小**mem-frac**的配置，查看当前使用mem-frac的大小方法：如果参数中有设置就是设置的值，如果参数中没设置，就在服务启动日志中搜索**mem_fraction_static**即可。
 
 ## 4.4 启动benchmark
 
