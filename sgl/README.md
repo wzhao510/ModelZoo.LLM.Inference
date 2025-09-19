@@ -49,7 +49,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 | ifname  | 网络接口名，填写与ip匹配的网卡的名。可以在host机器上使用命令ifconfig，然后查看ip对应的网卡名称|
 | ib_hcas | 主机通道适配器<br>在host机器上使用ibstat命令来获取，ibstat 输出类似如下结果<pre style="font-size: 12px; line-height: 1.2;">root@****:~# ibstat<br>CA 'mlx5_0'<br>        CA type: ****<br>        Number of ports: 1<br>        ...<br>        Port 1:<br>                State: Active<br>                Physical state: LinkUp<br>                Rate: 200<br>                Base lid: 0<br>                ...<br>CA 'mlx5_1'<br>        CA type: ****<br>        Number of ports: 1<br>        ...<br>        Port 1:<br>                State: Active<br>                Physical state: LinkUp<br>                Rate: 200<br>                ...<br>CA 'mlx5_bond_0'<br>        CA type: ****<br>        Number of ports: 1<br>        ...<br>        Port 1:<br>                State: Active<br>                Physical state: LinkUp<br>                Rate: 100<br>                ...<br>...</pre>请收集所有名称符合 mlx5_\[数字\]，并且State为Active的结果。<br>如上面，则应设置为 "ib_hcas":"mlx5_0,mlx5_1"， bond_0不需要带上。 |
 
-- **common_envs：通用环境变量配置**
+- **environments：公共环境变量配置**
 
 | 参数                                              | 说明                                            |
 | ------------------------------------------------- | -----------------------------------------------|
@@ -59,6 +59,8 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 | MACA_DIRECT_DISPATCH                              | 开启 direct dispatch 功能                       |
 | MCDBG_GRAPH_LAUNCH_QUEUE_POLICY                   | 设置 graph 内部创建的 stream/queue 的优先级为high |
 | MACA_GRAPH_LAUNCH_QUEUE_POLICY                    | 设置 graph 内部创建的 stream/queue 的优先级为high |
+| PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM            | PyTorch 的优先级流（Priority Stream）优化         |
+| MACA_QUEUE_SCHEDULE_POLICY                        | MACA 队列调度策略设置                             |
 
 已有配置默认路径在sgl/models/mechines.json：
 
@@ -76,16 +78,27 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
         "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3"
     }
   ],
-  "common_envs": {
-    "MACA_SMALL_PAGESIZE_ENABLE": "1",
-    "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP": "1",
-    "TRITON_ENABLE_MACA_CHAIN_DOT_OPT": "1",
-    "MACA_DIRECT_DISPATCH": "1",
-    "MCDBG_GRAPH_LAUNCH_QUEUE_POLICY":"3",
-    "MACA_GRAPH_LAUNCH_QUEUE_POLICY":"3"
+  "environments": {
+    "default_envs": {
+      "MACA_SMALL_PAGESIZE_ENABLE": "1",
+      "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP": "1",
+      "TRITON_ENABLE_MACA_CHAIN_DOT_OPT": "1",
+      "MACA_DIRECT_DISPATCH": "1",
+      "MCDBG_GRAPH_LAUNCH_QUEUE_POLICY": "3",
+      "MACA_GRAPH_LAUNCH_QUEUE_POLICY": "3"
+    },
+    "qwen3_envs": {
+      "MACA_SMALL_PAGESIZE_ENABLE": "1",
+      "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP": "1",
+      "TRITON_ENABLE_MACA_CHAIN_DOT_OPT": "1",
+      "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM": "1",
+      "MACA_QUEUE_SCHEDULE_POLICY": "1"
+    }
   }
 }
 ```
+这里可以配置多组环境变量，以组名区分，如default_envs、qwen3_envs，不同的任务可以通过在task配置中的**environment**字段添加组名（如qwen3_envs）来直接引用对应的环境变量。
+
 
 ## 2.2 测试通用配置说明
 
@@ -103,7 +116,17 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 | 参数                                              | 说明                                      |
 | ------------------------------------------------- | ----------------------------------------- |
 
-默认为空，可添加此任务的独有环境变量
+如果为空，则此任务使用**mechines.json**中的**default_envs**环境变量配置
+可以添加独有环境变量；也可以直接添加**mechines.json**中的环境变量组名来直接引用已有的环境变量，如：
+```json
+    ......
+    "environment": {
+        "qwen3_envs":"1"
+    },
+    ......
+```
+上述这个任务配置就会直接使用**mechines.json**中的**qwen3_envs**的环境变量配置；需要注意的是当使用已有组名时，后面的配置的value(如上为"1")目前没有作用，仅仅是为了对其json的字段格式。
+
 
 - **launch_server：服务配置**
 
@@ -345,7 +368,7 @@ docker run -it --device=/dev/dri --device=/dev/mxcd --device=/dev/infiniband --p
             "ib_hcas": "****"
         }
     ],
-    "common_envs": {
+    "environments": {
         ......
   }
 }
