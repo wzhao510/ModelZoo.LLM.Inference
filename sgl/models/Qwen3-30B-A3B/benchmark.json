@@ -6,6 +6,7 @@
             "world_size": "2",
             "server_port": "9000",
             "environment": {
+                "qwen3_envs":"1"
             },
             "launch_server": {
                 "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
@@ -33,6 +34,7 @@
             "world_size": "4",
             "server_port": "9000",
             "environment": {
+                "qwen3_envs":"1"
             },
             "launch_server": {
                 "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],

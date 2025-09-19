@@ -79,11 +79,24 @@ class ConfigParser:
                 benchmark_list_filter.append(item)
             return benchmark_list_filter
         return benchmark_list
-        
+    
+    @staticmethod
+    def merge_task_envs(environments, task_envs):
+        default_envs = ConfigParser.get_config_default(environments, 'default_envs', {})
+        if len(task_envs) == 0:
+            return default_envs.copy()
+        new_env = {}
+        for env_key, env_value in task_envs.items():
+            if env_key in environments.keys():
+                new_env.update(environments[env_key])
+                continue
+            new_env[env_key] = env_value
+        return new_env
+
 
 class BenmchmarkParser(ConfigParser):
     @staticmethod
-    def from_config(config, connection, task_type, incremental_mode, args, common_envs, logger = None):
+    def from_config(config, connection, task_type, incremental_mode, args, environments, logger = None):
         task_list = []
         global server_id_global
 
@@ -91,8 +104,7 @@ class BenmchmarkParser(ConfigParser):
             server_list = ConfigParser.online_server(task['launch_server'], logger=logger)
             launch_mode = ConfigParser.get_config_default(task, 'launch_mode', 'online')
             benchmark_list = ConfigParser.parse_benchmark(task['benchmark'], task_type, launch_mode)
-            envs = common_envs.copy()
-            envs.update(ConfigParser.get_config_default(task, 'environment', {}))
+            envs = ConfigParser.merge_task_envs(environments, ConfigParser.get_config_default(task, 'environment', {}))
             envs['GLOO_SOCKET_IFNAME'] = connection.nodes_info[0].interface
             envs['MCCL_IB_HCA'] = connection.nodes_info[0].ib_hcas
             max_ttft = None
@@ -233,7 +245,7 @@ class RampupParser(ConfigParser):
 
 class AccParser(ConfigParser):
     @staticmethod
-    def from_config(config, connection, incremental_mode, args, common_envs, logger = None):
+    def from_config(config, connection, incremental_mode, args, environments, logger = None):
         global server_id_global
         task_list = []
 
@@ -241,8 +253,7 @@ class AccParser(ConfigParser):
             server_cmds = ConfigParser.online_server(task['launch_server'], logger=logger)
             acc_type = TaskAccType(ConfigParser.get_config_default(task, 'acc_type', TaskAccType.mmlu.value))
             benchmark_cmds = AccParser.get_acc_benchmark_cmds(acc_type, task['benchmark'])
-            envs = common_envs.copy()
-            envs.update(ConfigParser.get_config_default(task, 'environment', {}))
+            envs = ConfigParser.merge_task_envs(environments, ConfigParser.get_config_default(task, 'environment', {}))
             envs['GLOO_SOCKET_IFNAME'] = connection.nodes_info[0].interface
             envs['MCCL_IB_HCA'] = connection.nodes_info[0].ib_hcas
 
@@ -359,7 +370,7 @@ class TaskScheduler:
         self.connection = Connection(
             machines['machine_info'], gpu_num_per_node, self.args.port, logger=self.global_logger)
         self.connection.connect()
-        common_envs = ConfigParser.get_config_default(machines, 'common_envs', {})
+        environments = ConfigParser.get_config_default(machines, 'environments', {})
 
         for config_path in self.args.tasks_config:
             config = read_json(config_path)
@@ -369,10 +380,10 @@ class TaskScheduler:
             #     self.task_list.extend(RampupParser.from_config(config, self.connection, self.args.incremental_mode, self.args))
             if task_type == TaskType.benchmark: # or task_type == TaskType.search:
                 self.task_list.extend(BenmchmarkParser.from_config(
-                    config, self.connection, task_type, incremental_mode, self.args, common_envs, logger=self.global_logger))
+                    config, self.connection, task_type, incremental_mode, self.args, environments, logger=self.global_logger))
             elif task_type == TaskType.acc:
                 self.task_list.extend(AccParser.from_config(
-                    config, self.connection, incremental_mode, self.args, common_envs, logger=self.global_logger))
+                    config, self.connection, incremental_mode, self.args, environments, logger=self.global_logger))
                 
 
     def merge_result(self):
