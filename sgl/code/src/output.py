@@ -94,11 +94,10 @@ class RealProgressManager:
             #   1.已被添加的情况下, 则不添加同样的一条记录
             #   2.未被添加的情况下, 则添加
             is_have_task = False
-            # if self.args.specify_task or self.args.incremental_mode:
-            #     for task in self.total_real_progress_data['tasks']:
-            #         if task["server_id"] == f"{self.task.task_id}":
-            #             is_have_task = True
-            #             break
+            for task in self.total_real_progress_data['tasks']:
+                if task["server_id"] == f"{self.task.task_id}":
+                    is_have_task = True
+                    break
             if not is_have_task:
                 self.total_real_progress_data['tasks'].append(self.online_task_content)
         elif self.task.launch_mode == TaskLaunchMode.offline:
