@@ -158,11 +158,14 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 
 ## 2.3 Benchmark 测试 (benchmark.json)
 
-| 参数             | 说明                        |
-| ---------------- | --------------------------- |
-| input_output_len | 输入token长度/输出token长度 |
-| num_prompt       | 并发请求数                  |
+| 参数             | 说明                                              |
+| ---------------- | ------------------------------------------------- |
+| input_output_len | 输入token长度/输出token长度                        |
+| num_prompt       | 并发请求数，为列表                                         |
+| max_concurrency  | 最大并发数，为列表，如果不设置，则并发数和num_prompt相等，必须和num_prompt_times一起使用，且不需要配置num_prompt参数|
+| num_prompt_times | 发送的请求数是最大并发数的多少倍，如果是单个数字，则会以max_concurrency里面的所有并发数乘上这个倍数作为num_prompts，如果是个列表，则会将这个列表与max_concurrency列表对应，只有存在对应关系的max_concurrency会乘上这个列表的值作为num_prompts|
 
+- 传统方式，不带max_concurrency参数的如下：
 ```json
 {
     "tasks": [
@@ -199,6 +202,47 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 }
 
 ```
+- max_concurrency方式，且num_prompt_times为单个数字：
+```json
+{
+    "tasks": [
+        {
+            ......
+            "benchmark": {
+                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json",
+                "input_output_len": ["3072/1024"],
+                "max_concurrency": ["1", "16", "32", "64", "128"],
+                "num_prompt_times": 5
+            }
+        }
+    ]
+}
+
+```
+这是对所有并发都跑5倍prompts的测试配置，比如bs=1组成的测试命令是 **--random-input-len 3072 --random-output-len 1024 --num-prompts 5 --max-concurrency 1**
+
+- max_concurrency方式，且num_prompt_times为列表，这种方式可对不同并发设置不同倍数的prompts：
+```json
+{
+    "tasks": [
+        {
+            ......
+            "benchmark": {
+                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json",
+                "input_output_len": ["3072/1024"],
+                "max_concurrency": ["1", "16", "32", "64", "128"],
+                "num_prompt_times": [2, 3]
+            }
+        }
+    ]
+}
+
+```
+如上，对于bs=1则跑2倍并发：**--random-input-len 3072 --random-output-len 1024 --num-prompts 5 --max-concurrency 1**
+
+对于bs=16,则跑3倍并发：**--random-input-len 3072 --random-output-len 1024 --num-prompts 48 --max-concurrency 3**
+
+对于其他的bs，没有配置prompts倍数，则不添加prompts和max_concurrency相等，比如bs=32：**--random-input-len 3072 --random-output-len 1024 --num-prompts 32 --max-concurrency 32**
 
 其中model path和 benchmark的 ShareGPT_V3_unfiltered_cleaned_split.json需要修改为镜像内可访问的路径
 

@@ -48,13 +48,47 @@ class ConfigParser:
         command_base = ConfigParser.get_config_default(benchmark_config, 'command_base', '') if launch_mode == 'online' else ''
         client_id = -1
         benchmark_list = []
+        max_concurrency = ConfigParser.get_config_default(benchmark_config, 'max_concurrency', None)
+        num_prompt_times = ConfigParser.get_config_default(benchmark_config, 'num_prompt_times', None)
         for input_output in benchmark_config['input_output_len']:
             input_len, output_len = input_output.split('/')
             if task_type in [TaskType.benchmark]:
-                for bs in benchmark_config['num_prompt']:
+                if max_concurrency is None or num_prompt_times is None:
+                    for index, num_prompt in enumerate(benchmark_config['num_prompt']):
+                        client_id += 1
+                        benchmark_list.append(
+                            BenchmarkCmds(
+                                client_id, f" {command_base} --random-input-len {input_len} --random-output-len {output_len} --num-prompts {num_prompt}"
+                            )
+                        )
+                    continue
+                
+                assert (
+                    isinstance(max_concurrency, list), f'invalid max_concurrency, must be list'
+                )
+                for index, concurrency in enumerate(benchmark_config['max_concurrency']):
                     client_id += 1
+                    cur_num_prompt = None
+                    if isinstance(num_prompt_times, list):
+                        if index < len(num_prompt_times):
+                            cur_num_prompt = int(num_prompt_times[index])
+                        else:
+                            cur_num_prompt = 1
+                    else:
+                        cur_num_prompt = int(num_prompt_times)
+
+                    if cur_num_prompt is None or cur_num_prompt <= 0:
+                        benchmark_list.append(
+                            BenchmarkCmds(
+                                client_id, f" {command_base} --random-input-len {input_len} --random-output-len {output_len} --num-prompts {concurrency}"
+                            )
+                        )
+                        continue
+                    cur_num_prompt = cur_num_prompt * int(concurrency)
                     benchmark_list.append(
-                        BenchmarkCmds(client_id, f" {command_base} --random-input-len {input_len} --random-output-len {output_len} --num-prompts {bs}")
+                        BenchmarkCmds(
+                            client_id, f" {command_base} --random-input-len {input_len} --random-output-len {output_len} --num-prompts {cur_num_prompt} --max-concurrency {concurrency}"
+                        )
                     )
             elif task_type == TaskType.search:
                 batch_size_config = benchmark_config["batch_size_config"]

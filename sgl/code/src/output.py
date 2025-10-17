@@ -596,21 +596,25 @@ class OutputManager:
         input_len_match = re.search(r"--random-input-len\s+(\d+)", command)
         output_len_match = re.search(r"--random-output-len\s+(\d+)", command)
         num_prompt_match = re.search(r"--num-prompts?\s+(\d+)", command)
+        max_con_match = re.search(r"--max-concurrency?\s+(\d+)", command)
         rampup_mode_match = re.search(r"rampup-mode\s", command)
         rampup_period_match = re.search(r"--ramp-up-period\s+(\d+\.\d+|\d+)", command)
 
         input_len = input_len_match.group(1) if input_len_match else "0"
         output_len = output_len_match.group(1) if output_len_match else "0"
         num_prompt = num_prompt_match.group(1) if num_prompt_match else "0"
+        max_con = max_con_match.group(1) if max_con_match else "0"
         rampup_mode = 'ON' if rampup_mode_match else 'OFF'
         rampup_period = rampup_period_match.group(1) if rampup_mode_match else "0"
 
-        return input_len,output_len,num_prompt,rampup_mode,rampup_period
+        return input_len,output_len,num_prompt,max_con,rampup_mode,rampup_period
 
     @staticmethod
     def get_bench_serving_args_str(command):
-        input_len,output_len,num_prompt,rampup_mode,rampup_period = OutputManager._get_bench_serving_args(command)
+        input_len,output_len,num_prompt,max_con,rampup_mode,rampup_period = OutputManager._get_bench_serving_args(command)
         bench_args_str = f"In{input_len}-out{output_len}-bs{num_prompt}"
+        if max_con != '0':
+            bench_args_str += f'-maxcon{max_con}'
         if rampup_mode == 'ON':
             bench_args_str += f'-rp{rampup_period}'
         print(bench_args_str)
@@ -638,7 +642,7 @@ class OutputManager:
             command = command_match.group(1)
         else:
             command = ' '
-        input_len,output_len,num_prompt,rampup_mode,rampup_period = OutputManager._get_bench_serving_args(command)
+        input_len,output_len,num_prompt,max_con,rampup_mode,rampup_period = OutputManager._get_bench_serving_args(command)
         bench_args['in-out'].append(f'{input_len}-{output_len}')
         bench_args['batch-size'].append(f'{num_prompt}')
         bench_args['rampup_mode'].append(f'{rampup_mode}')
@@ -704,7 +708,7 @@ class OutputManager:
             command = command_match.group(1)
         else:
             command = ' '
-        input_len,output_len,num_prompt,rampup_mode,rampup_period = OutputManager._get_bench_serving_args(command)
+        input_len,output_len,num_prompt,max_con,rampup_mode,rampup_period = OutputManager._get_bench_serving_args(command)
         bench_args['in-out'].append(f'{input_len}-{output_len}')
         bench_args['batch-size'].append(f'{num_prompt}')
         # bench_args['rampup_mode'].append(f'{rampup_mode}')
