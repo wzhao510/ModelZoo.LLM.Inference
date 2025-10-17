@@ -86,7 +86,7 @@ while True:
     elif op_content.type == OperationType.CHECK_ABNORMAL:
         abnormal_flags = op_content.abnormal_flags
         op_content.abnormal_flags = None
-        if op_content.cmd in g_opcontent_map.keys():
+        if op_content.cmd in g_opcontent_map.keys() and g_opcontent_map[op_content.cmd].output is not None:
              output = "".join(g_opcontent_map[op_content.cmd].output)
              for abnormal_str in abnormal_flags:
                 if abnormal_str in output:
