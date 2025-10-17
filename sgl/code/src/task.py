@@ -176,7 +176,7 @@ class BaseTask:
         ]
 
         last_log_update_time = time.time()
-        while len(self.server_cmd_ops) == 0:
+        while len(self.server_cmd_ops) == 0 or self.server_cmd_ops[0].output is None:
             time.sleep(10)
             continue
 
