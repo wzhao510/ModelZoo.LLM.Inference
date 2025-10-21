@@ -42,7 +42,7 @@ class ConfigParser:
     @staticmethod
     def get_config_default(config, key, default_value):
         return config[key] if key in config.keys() else default_value
-    
+
     @staticmethod
     def extract_task_model_name(server_cmd) -> str:
         unknown_model_name = 'UNKNOWN'
@@ -360,15 +360,9 @@ class TaskScheduler:
         self.now_path = self.real_progress_manager.now_time_path
         self.global_logger = get_logger(self.now_path, 'bench_record.log')
 
-    def parse_task_type(self, config) -> TaskType:
-        if config.endswith("benchmark.json"):
-            return TaskType.benchmark
-        elif config.endswith("rampup_bench.json"):
-            return TaskType.rampup
-        elif config.endswith('acc.json'):
-            return TaskType.acc
-        elif config.endswith("search.json"):
-            return TaskType.search
+  
+
+
 
     def pass_id_filter(self):
         # 1.获取 total_real_progress_file 文件数据
@@ -402,6 +396,46 @@ class TaskScheduler:
                 self.global_logger.error(f'launch_mode is unknown type...' + task["launch_mode"] + " server id: " + task["server_id"])
         self.global_logger.info("current server_pass_list after filter:")
         self.global_logger.info(server_pass_list)
+    
+    def is_valid_task_config(self, config_path):
+        """
+        检查是否为有效的task配置文件
+        条件：1. 是有效的JSON文件 2. 包含'tasks'字段
+        """
+        try:
+            config = read_json(config_path)
+            # 检查是否包含必要的tasks字段
+            if 'tasks' in config and isinstance(config['tasks'], list):
+                return True,config
+            else:
+                self.global_logger.warning(f"Skip invalid task config: {config_path} - Missing or invalid 'tasks' field")
+                return False,0
+        except Exception as e:
+            self.global_logger.warning(f"Skip invalid JSON file: {config_path} - Error: {str(e)}")
+            return False,0
+
+    def get_task_type_from_config(self, task_config) -> TaskType:
+        """
+        根据规则获取任务类型：
+        1. 存在acc_type字段 -> TaskType.acc
+        2. 存在task_type字段 -> 检查合法性并返回对应类型
+        3. 都不存在 -> 默认TaskType.benchmark
+        """
+        # 规则1：存在acc_type字段，返回acc类型
+        if 'acc_type' in task_config:
+            return TaskType.acc
+        
+        # 规则2：存在task_type字段
+        if 'task_type' in task_config:
+            task_type_str = task_config['task_type']
+            try:
+                return TaskType(task_type_str)
+            except ValueError:
+                self.global_logger.warning(f"Unknown task type: {task_type_str}, using benchmark as default")
+                return TaskType.benchmark
+        
+        # 规则3：都不存在，默认benchmark
+        return TaskType.benchmark
 
     def generate_task(self) -> None:
         # 跑非PASS测试, 需要设置此参数
@@ -417,17 +451,51 @@ class TaskScheduler:
         self.connection.connect()
         environments = ConfigParser.get_config_default(machines, 'environments', {})
 
+        # 新增：处理目录和文件混合的情况
+        expanded_config_paths = []
         for config_path in self.args.tasks_config:
-            config = read_json(config_path)
-            task_type = self.parse_task_type(config_path)
-            # if task_type == TaskType.rampup:
-            #     self.task_list.extend(RampupParser.from_config(config, self.connection, self.args.incremental_mode, self.args))
-            if task_type == TaskType.benchmark: # or task_type == TaskType.search:
-                self.task_list.extend(BenmchmarkParser.from_config(
-                    config, self.connection, task_type, incremental_mode, self.args, environments, logger=self.global_logger))
-            elif task_type == TaskType.acc:
-                self.task_list.extend(AccParser.from_config(
-                    config, self.connection, incremental_mode, self.args, environments, logger=self.global_logger))
+            if os.path.isdir(config_path):
+                # 如果是目录，遍历目录下的所有JSON文件,用了if判断是否是json文件
+                for root, dirs, files in os.walk(config_path):
+                    for file in files:
+                        if file.lower().endswith(('.json')):
+                            expanded_config_paths.append(os.path.join(root, file))
+            else:
+                # 如果是文件，直接添加
+                expanded_config_paths.append(config_path)
+
+        for config_path in expanded_config_paths:
+            #验证文件格式
+            is_valid_task_config,config=self.is_valid_task_config(config_path)
+            if not is_valid_task_config:
+                continue
+            #read_json去掉了注释,直接从验证文件格式那里获得config
+            
+            
+            # 为每个任务创建只包含该任务的配置对象
+            for task_config in config['tasks']:
+                # 创建只包含当前任务的配置,直接用task_config，不再新创建single_task_config
+                single_task_config = {
+                    # 'model_name': config['model_name'],不在这里获得modelname，在benchmarkparse获得
+                    'tasks': [task_config]  # 只包含当前任务
+                }
+                
+                # 从任务配置中获取task_type，可以换成一个函数处理 get_task_type_from_config,#这里已经是task type类型了，不需要再转化
+                task_type = self.get_task_type_from_config(task_config)
+                
+                # 使用现有的from_config方法，删除了爬坡的if，暂时不支持
+                if task_type == TaskType.benchmark or task_type == TaskType.search:
+                    tasks = BenmchmarkParser.from_config(
+                        single_task_config, self.connection, task_type, incremental_mode, 
+                        self.args, environments, logger=self.global_logger)
+                    self.task_list.extend(tasks)
+                elif task_type == TaskType.acc:
+                    tasks = AccParser.from_config(
+                        single_task_config, self.connection, incremental_mode, 
+                        self.args, environments, logger=self.global_logger)
+                    self.task_list.extend(tasks)
+
+        
                 
 
     def merge_result(self):
