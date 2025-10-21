@@ -42,6 +42,21 @@ class ConfigParser:
     @staticmethod
     def get_config_default(config, key, default_value):
         return config[key] if key in config.keys() else default_value
+    
+    @staticmethod
+    def extract_task_model_name(server_cmd) -> str:
+        unknown_model_name = 'UNKNOWN'
+        model_path = re.search(r"--model-path\s+(\S+)", server_cmd)
+        if model_path is None:
+            return unknown_model_name
+        path = Path(model_path.group(1))
+        parts = path.parts
+        model_str = ['Qwen', 'DeepSeek', 'kimi']
+        for part in enumerate(parts[::-1]):
+            for model in model_str:
+                if model.lower() in part[1].lower():
+                    return part[1]
+        return parts[-1][1]
 
     @staticmethod
     def parse_benchmark(benchmark_config, task_type, launch_mode):
@@ -158,7 +173,7 @@ class BenmchmarkParser(ConfigParser):
                     _task = TaskOnline(connection, server_cmd, benchmark_list_filter, server_id_global, envs, task['server_port'])
                     _task.task_name = ConfigParser.get_config_default(task, 'task_name', f' ')
                     _task.task_type = task_type
-                    _task.model_name = config['model_name']
+                    _task.model_name = ConfigParser.extract_task_model_name(server_cmd)
                     _task.max_ttft = max_ttft
                     _task.max_tpot = max_tpot
                     if task_type == TaskType.search:
@@ -175,7 +190,7 @@ class BenmchmarkParser(ConfigParser):
                         _task = TaskOffline(connection, server_cmd+" "+benchmark.get_cmd(), server_id_global, envs, task['server_port'])
                         _task.task_name = task['task_name']
                         _task.task_type = task_type
-                        _task.model_name = config['model_name']
+                        _task.model_name = ConfigParser.extract_task_model_name(server_cmd)
                         if task_type == TaskType.search:
                             _task.set_output_manager(SearchOutputManager(args, _task))
                         else:
@@ -208,7 +223,7 @@ class RampupParser(ConfigParser):
                 _task = TaskOnline(connection, server_cmd, benchmark_list_filter, server_id_global, envs, task['server_port'])
                 _task.task_name = ConfigParser.get_config_default(task, 'task_name', f'task{task_id}_{cmd_id}')
                 _task.task_type = TaskType.rampup
-                _task.model_name = config['model_name']
+                _task.model_name = ConfigParser.extract_task_model_name(server_cmd)
 
                 _task.set_output_manager(RampupOutputManager(args, _task))
                 task_list.append(_task)
@@ -300,7 +315,7 @@ class AccParser(ConfigParser):
                 _task.task_name = ConfigParser.get_config_default(task, 'task_name', f'task{task_id}_{cmd_id}')
                 _task.task_type = TaskType.acc
                 _task.acc_type = acc_type
-                _task.model_name = config['model_name']
+                _task.model_name = ConfigParser.extract_task_model_name(server_cmd)
 
                 _task.set_output_manager(AccOutputManager(args, _task))
                 _task.global_logger = logger
@@ -354,10 +369,6 @@ class TaskScheduler:
             return TaskType.acc
         elif config.endswith("search.json"):
             return TaskType.search
-        
-    def extract_task_model_name(self, config_path) -> str:
-        # 默认认为倒数第一个路径是模型名
-        return config_path.split('/')[-2]
 
     def pass_id_filter(self):
         # 1.获取 total_real_progress_file 文件数据
@@ -409,7 +420,6 @@ class TaskScheduler:
         for config_path in self.args.tasks_config:
             config = read_json(config_path)
             task_type = self.parse_task_type(config_path)
-            config['model_name'] = self.extract_task_model_name(config_path)
             # if task_type == TaskType.rampup:
             #     self.task_list.extend(RampupParser.from_config(config, self.connection, self.args.incremental_mode, self.args))
             if task_type == TaskType.benchmark: # or task_type == TaskType.search:

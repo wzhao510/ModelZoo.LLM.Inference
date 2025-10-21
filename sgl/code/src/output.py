@@ -458,19 +458,6 @@ class OutputManager:
                         'tp_size': []
                     }
         for key, value in server_args.items():
-            if key == 'Model':
-                if re.search(r"--model-path\s+(\S+)", command):
-                    model_str = ''
-                    if "DeepSeek-R1-BF16_W8A8" in re.search(r"--model-path\s+(\S+)", command).group(1):
-                        model_str += 'DS-R1-BF16_W8A8'
-                    elif "DeepSeek-R1-BF16" in re.search(r"--model-path\s+(\S+)", command).group(1):
-                        model_str += 'DS-R1-BF16'
-                    elif "DeepSeek-R1-W8A8" in re.search(r"--model-path\s+(\S+)", command).group(1):
-                        model_str += 'DS-R1-W8A8'
-                    elif "DeepSeek-R1-awq" in re.search(r"--model-path\s+(\S+)", command).group(1):
-                        model_str += 'DS-R1-AWQ'
-
-                value.append(model_str)
             if key == 'Cache':
                 if re.search(r"--disable-radix-cache+", command):
                     value.append(None)
@@ -785,8 +772,7 @@ class OutputManager:
         self.task.set_file_log_subfile(self.path_manager.get_log_subpath())
 
         self.server_args, _ = OutputManager.get_launch_server_args(self.task.task_id, self.task.server_cmd)
-        if not self.server_args['Model'][0] or self.server_args['Model'][0].isspace():
-            self.server_args['Model'][0] = self.task.model_name.replace("DeepSeek", "DS")
+        self.server_args['Model'][0] = self.task.model_name
 
         self.task_type = OutputManager._task_type_safe(self.task.task_type)
 
