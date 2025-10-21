@@ -80,20 +80,9 @@ python code/bench_test.py --model ./models/${Model_name} --batched-test
 
 # 如果需要方便的提取TPS，TTFT等数据，将命令修改成如下形式
 Log_Name=Anything_u_want && \
-CUDA_VISIBLE_DEVICES=${0~7} MX_VLLM_ENABLE_PROFILE=1 python ./code/bench_test.py --model ./models/Qwen2.5_72b_int4_awq --batched-test --num-scheduler-steps 8  \
+CUDA_VISIBLE_DEVICES=${0~7} python ./code/bench_test.py --model ./models/Qwen2.5_72b_int4_awq --batched-test --num-scheduler-steps 8  \
 2>&1 |tee ${Log_Name}.log && awk 'BEGIN {print "case,TPS,TTFT"} /Throughput/ {printf "%s,%f,%f\n", $(NF-14), $(NF-10), $(NF-6)}' ${Log_Name}.log  > TPS_${Log_Name}.csv
 ```
-
-----  2024.07.31  ----
-### 新增环境变量 `MX_VLLM_ENABLE_PROFILE`
-*   使能 `MX_VLLM_ENABLE_PROFILE` 环境变量后将会在 `./mx_profile/` 文件夹通过torch_profiler 工具生成csv原始文件（如果跑35个case的话，目前只统计 input_len=256,output_len=128 以及 input_len=1024,output_len=1024 数据）
-
-    > 生成的对应文件夹路径下的csv 可以通过 以下脚本完成 kernel 汇总（注：需要 安装openxl包： `pip install openxl`）  
-    > **请在 `vllm` 目录下执行脚本**
-    > ```shell
-    > python ./code/tools/statistics_csv.py ./mx_profiler/
-    > ```
-
 
 
 ## LoRA 特性支持 （Released版本大于等于 2.23）benchmark 
@@ -135,12 +124,16 @@ python code/src/offline_inference.py --model /external/ai/models/llm/quantize_mo
 ```
 
 多模态模型使用benchmark_serving进行在线性能测试：
-起模型服务vllm serve ...
+
+    起模型服务 vllm serve ...(具体参考benchmark_serving章节)
+
     cd ModelZoo.LLM.Inference/vllm/code/src目录下执行以下命令
+
     ```shell
-    python benchmark_serving.py --model {model_name} --dataset-name custom_multiModal --dataset-path {picture_dir}  --trust-remote-code --ignore-eos --backend openai-chat --endpoint /v1/chat/completions  --request-rate 2 --max-concurrency 32 --num-prompts 128 --custom-input-len 512 --custom-output-len 256 --resize {x,y}
+    python benchmark_serving.py --model {model_name} --dataset-name custom_multiModal --dataset-path {picture_dir}  --trust-remote-code --ignore-eos --backend openai-chat --endpoint /v1/chat/completions  --max-concurrency 32 --num-prompts 128 --custom-input-len 512 --custom-output-len 256 --resize {x,y}
     ```
-    其中picture_dir为存放图片的目录，resize为设置图片尺寸默认为1920,1080
+    
+    其中picture_dir为存放图片的目录，resize为设置图片尺寸若不配置默认为1920,1080
 
 
 ## 本地推理demo
@@ -179,13 +172,21 @@ python code/src/offline_inference.py --model /external/ai/models/llm/quantize_mo
         ```
 
     > 这里仅说明常用的命令参数，具体的参数意义或者有哪些命令参数可以使用，请执行 `--help/-h` 查看
+
     > `--input-len` 输入参数的长度
+
     > `--output-len` 输出参数的长度
+
     > `--num-prompts` 即batch-size (由于进行的测试只有一个batch，在该脚本中可以简单理解成样本量)
+
     > `--max-model-len` 允许的 (input + output) 的最大值
+
     > `--batched-test` 可以用来测试35个case，**目前还需要提供--input-len和--output-len *未来会进行改进***
+
     > `--num-scheduler-steps` 通常设置为8，默认值为1，可以提升模型推理的性能
+
     > `--enable-profile` 开启torch profile，抓取kernel信息
+
     > `--task` 选择任务类型，目前支持`generate`, `auto`, `embed`和`embedding`，默认值为`auto`
 
 
@@ -198,11 +199,10 @@ python code/src/offline_inference.py --model /external/ai/models/llm/quantize_mo
     执行online benchmark前需要有对应服务启动，简易启动命令: 
 
     ```shell
-    CUDA_VISIBLE_DEVICES=${0~7} vllm serve /external/ai/models/llm/DeepSeek/DeepSeek-V2-Lite/ -pp 1 -tp 1  --trust-remote-code --dtype bfloat16 --max-model-len 2048 --max-num-batched-tokens 2048 --swap-space 16 --gpu-memory-utilization 0.95 --distributed-executor-backend ray
+    CUDA_VISIBLE_DEVICES=${0~7} vllm serve /external/ai/models/llm/DeepSeek/DeepSeek-V2-Lite/ -pp 1 -tp 1  --trust-remote-code --dtype bfloat16 --max-model-len 2048 --max-num-batched-tokens 2048 --swap-space 16 --gpu-memory-utilization 0.95 --distributed-executor-backend ray -O {"full_cuda_graph": true}
     ```
 
-    > 1. 请根据需要自行设置 `-pp` 和 `-tp` 参数
-    > 2. 必要时请设置 `VLLM_PP_LAYER_PARTITION` 环境变量
+    > 1. 请根据需要自行设置 `-pp`，`-tp`，`-dp` 参数
     > 3. `--max-num-batched-tokens` 在 GPU 内存足够时，推荐将其设置成与 `--max-model-len` 相同的值，否则测试时的 `--input-len` 为 `min(max_num_batched_tokens, max_model_len)`
 
 3.  接着启动客户端的测试脚本，默认客户端与服务端处于同一网卡的设备中
@@ -212,14 +212,12 @@ python code/src/offline_inference.py --model /external/ai/models/llm/quantize_mo
         
         > 2. 需要了解脚本使用详情，请使用 `--help/-h`
 
-        如果需要模拟不同的随机状况下，测试服务器的负载及其他详情，这里推荐一个命令，**其中命令参数值，请根据需要进行更改**
+        如果需要模拟不同的随机状况下，测试服务器的负载及其他详情，这里推荐一个命令，**其中命令参数值，请根据需要进行更改**, 这里建议num_prompts 配置为 max_concurrency的10倍。
 
-        ```shell
-        python code/src/benchmark_serving_new.py --model /external/ai/models/llm/DeepSeek/DeepSeek-V2-Lite/ --dataset_name random --random_input_len 1024 --random_output_len 1024 --num-prompts 500 --trust-remote-code --ignore-eos --max-concurrency 50 --request-rate 0.6
-        ```
+    ```shell
+    python code/src/benchmark_serving.py --model /external/ai/models/llm/DeepSeek/DeepSeek-V2-Lite/ --dataset_name random --random_input_len 1024 --random_output_len 1024 --num-prompts 320 --trust-remote-code --ignore-eos --max-concurrency 32
+    ```
     
-
-
 
 ## 启动openai_api服务端 
 1.  确保安装了 eval-type-backport 包
@@ -230,7 +228,7 @@ python code/src/offline_inference.py --model /external/ai/models/llm/quantize_mo
 2.  简易启动命令:
     1.  启动在线服务
         ```shell
-        vllm serve /external/ai/models/llm/Llama/Llama-2-7b-hf/ -pp 1 -tp 1  --trust-remote-code --distributed-executor-backend ray --max-model-len 4096 --swap-space 16 --gpu-memory-utilization 0.95
+        vllm serve /external/ai/models/llm/Llama/Llama-2-7b-hf/ -pp 1 -tp 1  --trust-remote-code --distributed-executor-backend ray --max-model-len 4096 --swap-space 16 --gpu-memory-utilization 0.95 -O {"full_cuda_graph": true}
         ```
     
     2.  执行客户端测试，`/workspace/ModelZoo.LLM.Inference/vllm/code`目录下包含completion和chatcompletion两个客户端sample
@@ -239,30 +237,6 @@ python code/src/offline_inference.py --model /external/ai/models/llm/quantize_mo
 
         python openai_completion_client.py
         ```
-
-## 测试vllm 0.6.6 APC （Automatic Prefix Caching）
-
-> **参数说明**
-> 1. `--model`
->    模型路径
-
-使用pytext 启动 APC 命令
-```shell
-python code/test_prefix_caching.py --model /external/ai/models/llm/Llama/Meta-Llama-3-8B-Instruct/
-```
-
-
-
-## 测试vllm 0.6.6 Chunked Prefill 
-
-* 默认max_num_batched_tokens=512
-  
-    ```
-    # 注意：--model 指的是 模型名称，如果在镜像中运行请确认模型路径是否正确，模型路径配置在：./models/Llama_7b/config.json 中的 model_path 字段。
-    python ./code/bench_test.py --model models/Llama_7b  --enable-chunked-prefill
-    ```
-
-
 
 ## Speculative Decoding
 

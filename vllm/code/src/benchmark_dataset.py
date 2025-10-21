@@ -494,6 +494,7 @@ class CustomMultiModalDataset(BenchmarkDataset):
             output_len: Optional[int] = None,
             enable_multimodal_chat: bool = False,
             skip_chat_template: bool = False,
+            range_ratio: float = 0.0,
             **kwargs,
         ) -> list:
         sampled_requests = []
@@ -513,7 +514,6 @@ class CustomMultiModalDataset(BenchmarkDataset):
         num_special_tokens = tokenizer.num_special_tokens_to_add()
         real_input_len = input_len - num_special_tokens
         
-        range_ratio = 0
         # New sampling logic: [X * (1 - b), X * (1 + b)]
         input_low = int(real_input_len * (1 - range_ratio))
         input_high = int(real_input_len * (1 + range_ratio))

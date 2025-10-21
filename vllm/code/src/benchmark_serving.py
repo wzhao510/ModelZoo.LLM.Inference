@@ -653,6 +653,7 @@ def main(args: argparse.Namespace):
             input_len=args.custom_input_len,
             output_len=args.custom_output_len,
             skip_chat_template=args.custom_skip_chat_template,
+            range_ratio=args.random_range_ratio,
         )
 
     elif args.dataset_name == "sonnet":

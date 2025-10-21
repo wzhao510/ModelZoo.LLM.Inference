@@ -1,0 +1,10 @@
+{
+    "model_type": "glm4_moe",
+    "model_path": "/external/ai/models/llm/ChatGLM/GLM-4.5-Air.w8a8/",
+    "model_param": {
+        "dtype": "bfloat16",
+        "tensor_parallel_size": 4,
+        "gpu_memory_utilization": 0.95,
+        "batch_size": 1
+    }
+}
