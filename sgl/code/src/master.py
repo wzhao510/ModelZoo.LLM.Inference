@@ -450,12 +450,13 @@ class TaskScheduler:
         expanded_config_paths = []
         for config_path in self.args.tasks_config:
             if not os.path.isdir(config_path):
-                 expanded_config_paths.append(config_path)
+                 expanded_config_paths.append(config_path) if config_path not in expanded_config_paths else None
                  continue
             with os.scandir(config_path) as entries:
                 for entry in entries:
-                    if entry.is_file():
-                        expanded_config_paths.append(os.path.join(config_path, entry.name))
+                    full_path = os.path.join(config_path, entry.name)
+                    if entry.is_file() and full_path not in expanded_config_paths:
+                        expanded_config_paths.append(full_path)
 
         for config_path in expanded_config_paths:
             is_valid_task_config,config=self.is_valid_task_config(config_path)
