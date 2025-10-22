@@ -238,9 +238,9 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 }
 
 ```
-如上，对于bs=1则跑2倍并发：**--random-input-len 3072 --random-output-len 1024 --num-prompts 5 --max-concurrency 1**
+如上，对于bs=1则跑2倍并发：**--random-input-len 3072 --random-output-len 1024 --num-prompts 2 --max-concurrency 1**
 
-对于bs=16,则跑3倍并发：**--random-input-len 3072 --random-output-len 1024 --num-prompts 48 --max-concurrency 3**
+对于bs=16,则跑3倍并发：**--random-input-len 3072 --random-output-len 1024 --num-prompts 48 --max-concurrency 16**
 
 对于其他的bs，没有配置prompts倍数，则不添加prompts和max_concurrency相等，比如bs=32：**--random-input-len 3072 --random-output-len 1024 --num-prompts 32 --max-concurrency 32**
 
@@ -485,12 +485,12 @@ python3 -m src.slave --local-ip 192.168.1.10 --port 20005
 --port：从节点监听的端口后，必须和主节点一致，默认是20000
 
 # 在主节点执行， port 可自定义（保持主从一致），可不配置，默认20000
-python3 -m src.master --output-path ../outputs/ --tasks ../models/DeepSeek-R1-BF16-W8A8/benchmark.json ../models/DeepSeek-R1-BF16-W8A8/acc.json --machine-config ../models/mechines.json --port 20005
+python3 -m src.master --output-path ../outputs/ --tasks-config ../models/DeepSeek-R1-BF16-W8A8/benchmark.json ../models/DeepSeek-R1-BF16-W8A8/acc.json --machine-config ../models/mechines.json --port 20005
 
 # 参数说明：
 --machine-config：本次测试需要的机器信息
 --output-path：结果输出的根目录，最好是外部挂载进容器的目录，防止容器删了结果丢失
---tasks：指定测试的配置文件，可以指定多个配置
+--tasks-config：指定测试的配置文件或者目录，可以指定多个配置
 --port：socket的端口号，默认20000
 
 ```

@@ -772,7 +772,7 @@ class OutputManager:
         self.task.set_file_log_subfile(self.path_manager.get_log_subpath())
 
         self.server_args, _ = OutputManager.get_launch_server_args(self.task.task_id, self.task.server_cmd)
-        self.server_args['Model'].append(self.task.model_name)  #吧[0]改成了.append(self.task.modelname)
+        self.server_args['Model'] = [self.task.model_name]
 
         self.task_type = OutputManager._task_type_safe(self.task.task_type)
 
