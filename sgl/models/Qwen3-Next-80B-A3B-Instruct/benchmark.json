@@ -1,0 +1,37 @@
+{
+    "tasks": [
+        {
+            "task_name": "Qwen3-Next-80B-A3B-Instruct-TP2DP2",
+            "launch_mode": "online",
+            "world_size": "4",
+            "server_port": "9000",
+            "environment": {
+                "qwen3_envs":"1"
+            },
+            "launch_server": {
+                "command_base": ["python3 -m sglang.launch_server --trust-remote-code --disable-shared-experts-fusion"],
+                "model_path": ["--model-path /models/Qwen3-Next-80B-A3B-Instruct"],
+                "cuda_graph": [""],
+                "torch_compile": [""],
+                "dtype": [""],
+                "cache": ["--disable-radix-cache --disable-chunked-prefix-cache"],
+                "quantization": [""],
+                "chunked_prefill_size": [""],
+                "attention_backend": ["--attention-backend flashinfer"],
+                "enable_parallel": ["--tp 4 --dp 2 --enable-dp-attention "],
+                "mem_fraction_static": ["--mem-fraction-static 0.70"],
+                "embedding_tp_size": [""],
+                "speculative-algorithm":["--speculative-algorithm NEXTN"],
+                "speculative-num-steps ":["--speculative-num-steps 3"],
+                "speculative-eagle-topk":["--speculative-eagle-topk 1"],
+                "speculative-num-draft-tokens":["--speculative-num-draft-tokens 4"]
+            },
+            "benchmark": {
+                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json  ",
+                "input_output_len": ["3072/1024"],
+                "max_concurrency": ["1", "16", "32", "64", "128", "256"],
+                "num_prompt_times": 5
+            }
+        }
+    ]
+}
