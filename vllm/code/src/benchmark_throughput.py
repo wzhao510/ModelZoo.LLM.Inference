@@ -28,7 +28,7 @@ from benchmark_dataset import (
     VisionArenaDataset,
 )
 from benchmark_utils import convert_to_pytorch_benchmark_format, write_to_json
-from vllm.config import CompilationConfig
+from vllm.config import CompilationConfig, CUDAGraphMode
 from vllm.engine.arg_utils import AsyncEngineArgs, EngineArgs
 from vllm.entrypoints.openai.api_server import (
     build_async_engine_client_from_engine_args,
@@ -658,8 +658,8 @@ def main(args: argparse.Namespace):
         sync_profile = True
     request_outputs: Optional[list[RequestOutput]] = None
 
-    compilation_config = CompilationConfig.from_cli('{"full_cuda_graph":true}')
-    args.compilation_config = compilation_config
+    args.compilation_config = CompilationConfig(cudagraph_mode=CUDAGraphMode.FULL_DECODE_ONLY)
+    
     if args.backend == "vllm":
         if args.async_engine:
              
