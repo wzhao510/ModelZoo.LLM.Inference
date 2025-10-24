@@ -1,6 +1,6 @@
 {
     "model_type": "Qwen",
-    "model_path": "/external/ai/models/llm/Qwen/QwQ-32B-Preview/",
+    "model_path": "/external/ai/models/llm/Qwen/QwQ-32B/",
     "model_param": {
         "dtype": "float16",
         "tensor_parallel_size": 4,
