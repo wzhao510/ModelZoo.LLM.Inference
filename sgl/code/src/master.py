@@ -447,22 +447,24 @@ class TaskScheduler:
         self.connection.connect()
         environments = ConfigParser.get_config_default(machines, 'environments', {})
 
+        # 新增：处理目录和文件混合的情况
         expanded_config_paths = []
         for config_path in self.args.tasks_config:
-            if not os.path.isdir(config_path):
-                 expanded_config_paths.append(config_path) if config_path not in expanded_config_paths else None
-                 continue
-            with os.scandir(config_path) as entries:
-                for entry in entries:
-                    full_path = os.path.join(config_path, entry.name)
-                    if entry.is_file() and full_path not in expanded_config_paths:
-                        expanded_config_paths.append(full_path)
+            if os.path.isdir(config_path):
+                # 如果是目录，遍历目录下的所有JSON文件,用了if判断是否是json文件
+                for root, dirs, files in os.walk(config_path):
+                    for file in files:
+                        if file.lower().endswith(('.json')) and os.path.join(root, file) not in expanded_config_paths:
+                            expanded_config_paths.append(os.path.join(root, file))
+            else:
+                # 如果是文件，直接添加
+                expanded_config_paths.append(config_path) if config_path not in expanded_config_paths else None
 
         for config_path in expanded_config_paths:
             is_valid_task_config,config=self.is_valid_task_config(config_path)
             if not is_valid_task_config:
                 continue
-
+            
             for task_config in config['tasks']:
                 task_type = self.get_task_type_from_config(task_config)
                 if task_type == TaskType.benchmark or task_type == TaskType.search:

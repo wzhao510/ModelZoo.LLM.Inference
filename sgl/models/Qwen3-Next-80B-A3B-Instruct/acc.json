@@ -10,7 +10,7 @@
                 "qwen3_envs":"1"
             },
             "launch_server": {
-                "command_base": ["python3 -m sglang.launch_server --trust-remote-code --disable-shared-experts-fusion"],
+                "command_base": ["python3 -m sglang.launch_server --trust-remote-code "],
                 "model_path": ["--model-path /models/Qwen3-Next-80B-A3B-Instruct"],
                 "cuda_graph": [""],
                 "torch_compile": [""],
@@ -41,7 +41,7 @@
                 "qwen3_envs":"1"
             },
             "launch_server": {
-                "command_base": ["python3 -m sglang.launch_server --trust-remote-code --disable-shared-experts-fusion"],
+                "command_base": ["python3 -m sglang.launch_server --trust-remote-code "],
                 "model_path": ["--model-path /models/Qwen3-Next-80B-A3B-Instruct"],
                 "cuda_graph": [""],
                 "torch_compile": [""],

@@ -20,7 +20,8 @@
                 "enable_parallel": ["--tp 32 --dp 8 --enable-dp-attention"],
                 "mem_fraction_static": [""],
                 "embedding_tp_size": [""],
-                "mtp": [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-V3-BF16-NextN --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3"]
+                "mtp": [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-V3-BF16-NextN --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3"],
+                "disable-shared-experts-fusion":["--disable-shared-experts-fusion"]
             },
             "benchmark": {
                 "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json ",

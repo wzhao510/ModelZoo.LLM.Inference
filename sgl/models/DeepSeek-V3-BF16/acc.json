@@ -21,7 +21,8 @@
                 "enable_parallel": ["--tp 32 --dp 8 --enable-dp-attention"],
                 "mem_fraction_static": [""],
                 "embedding_tp_size": [""],
-                "mtp": [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-V3-BF16-NextN --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3"]
+                "mtp": [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-V3-BF16-NextN --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3"],
+                "disable-shared-experts-fusion":["--disable-shared-experts-fusion"]
             },
             "benchmark": {
                 "command_base": "python3 bench_sglang.py --data_dir /models/acc/mmlu/data --nsub 60"
@@ -48,7 +49,8 @@
                 "enable_parallel": ["--tp 32 --dp 8 --enable-dp-attention"],
                 "mem_fraction_static": [""],
                 "embedding_tp_size": [""],
-                "mtp": [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-V3-BF16-NextN --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3"]
+                "mtp": [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-V3-BF16-NextN --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3"],
+                "disable-shared-experts-fusion":["--disable-shared-experts-fusion"]
             },
             "benchmark": {
                 "command_base": "python3 run_ceval_client.py --model /models/DeepSeek-V3-BF16 --test_jsonl /workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl --batch_size 64"

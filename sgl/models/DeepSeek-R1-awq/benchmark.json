@@ -9,7 +9,7 @@
 
             },
             "launch_server": {
-                "command_base": ["python3 -m sglang.launch_server --trust-remote-code --enable-dp-lm-head --disable-shared-experts-fusion "],
+                "command_base": ["python3 -m sglang.launch_server --trust-remote-code --enable-dp-lm-head  "],
                 "model_path": ["--model-path /models/DeepSeek-R1-AWQ"],
                 "cuda_graph": [""],
                 "torch_compile": [""],
@@ -21,7 +21,8 @@
                 "enable_parallel": ["--tp 8 --dp 4 --enable-dp-attention"],
                 "mem_fraction_static": ["--mem-fraction-static 0.87"],
                 "embedding_tp_size": [""],
-                "mtp": [" "]
+                "mtp": [" "],
+                "disable-shared-experts-fusion":["--disable-shared-experts-fusion"]
             },
             "benchmark": {
                 "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json ",
