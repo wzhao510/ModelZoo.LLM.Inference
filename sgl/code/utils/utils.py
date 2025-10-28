@@ -357,7 +357,12 @@ def printenv(logger):
 
 
 def kill_local_defunct_process(logger = None):
-    kill_cmds = ["pkill -9 -f sglang", "pkill -9 -f multiprocessing"]
+    kill_cmds = [
+        "pkill -9 -f sglang::",
+        "pkill -9 -f sglang.launch_server",
+        "pkill -9 -f sglang.bench_serving",
+        "pkill -9 -f multiprocessing."
+    ]
     for kill_cmd in kill_cmds:
         time.sleep(1)
         op_content = OperationContent(
