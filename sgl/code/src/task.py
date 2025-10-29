@@ -67,10 +67,13 @@ class BaseTask:
         if nodes_num == 1:
             printenv(self.logger)
             check_gpu_in_use(self.logger)
+            envs = self.envs.copy()
+            envs['GLOO_SOCKET_IFNAME'] = self.nodes_used[0].interface
+            envs['MCCL_IB_HCA'] = self.nodes_used[0].ib_hcas
             op_content = OperationContent(
                         id=get_next_op_id(),
                         type=OperationType.RUN,
-                        envs=self.envs,
+                        envs=envs,
                         cmd=self.server_cmd,
                         store_output=True,
                         is_ready=True,
@@ -95,11 +98,13 @@ class BaseTask:
                 cmd += f' --dist-init-addr {self.nodes_used[0].ip}:{self.server_port} --nnodes {nodes_num} --node-rank {index}'
                 if index == 0:
                     self.server_full_cmd = cmd
-
+                envs = self.envs.copy()
+                envs['GLOO_SOCKET_IFNAME'] = node.interface
+                envs['MCCL_IB_HCA'] = node.ib_hcas
                 op_content = OperationContent(
                     id=get_next_op_id(),
                     type=OperationType.RUN,
-                    envs=self.envs,
+                    envs=envs,
                     cmd=cmd,
                     store_output=True,
                     is_ready=True,

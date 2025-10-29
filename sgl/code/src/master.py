@@ -153,8 +153,6 @@ class BenmchmarkParser(ConfigParser):
         launch_mode = ConfigParser.get_config_default(task, 'launch_mode', 'online')
         benchmark_list = ConfigParser.parse_benchmark(task['benchmark'], task_type, launch_mode)
         envs = ConfigParser.merge_task_envs(environments, ConfigParser.get_config_default(task, 'environment', {}))
-        envs['GLOO_SOCKET_IFNAME'] = connection.nodes_info[0].interface
-        envs['MCCL_IB_HCA'] = connection.nodes_info[0].ib_hcas
         max_ttft = None
         max_tpot = None
         if task_type == TaskType.search:
@@ -211,8 +209,6 @@ class RampupParser(ConfigParser):
             server_cmds:list[str] = ConfigParser.online_server(task['launch_server'])
             benchmark_cmds = RampupParser.get_rampup_benchmark_cmds(task['benchmark'])
             envs = ConfigParser.get_config_default(task, 'environment', {})
-            envs['GLOO_SOCKET_IFNAME'] = connection.nodes_info[0].interface
-            envs['MCCL_IB_HCA'] = connection.nodes_info[0].ib_hcas
 
             for cmd_id, server_cmd in enumerate(server_cmds):
                 server_id_global += 1
