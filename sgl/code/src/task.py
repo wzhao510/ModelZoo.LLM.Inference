@@ -160,7 +160,6 @@ class BaseTask:
         self.log_file_subpath = subpath
 
     def check_other_abnormal(self):
-        last_log_folrder_size = 0
         abnormal_flag_str = [
             "Gracefully exiting... remaining number of requests",
             "Watchdog timeout (self.watchdog_timeout=300)",
@@ -180,11 +179,15 @@ class BaseTask:
             "OSError: Can't load the configuration of",
         ]
 
-        last_log_update_time = time.time()
         while len(self.server_cmd_ops) == 0 or self.server_cmd_ops[0].output is None:
             time.sleep(10)
             continue
 
+        node_num = len(self.nodes_used)
+        cur_time = time.time()
+        last_log_folder_size = [0] * node_num
+        curr_log_folder_size = [0] * node_num
+        last_log_update_time = [cur_time] * node_num
         while True:
             abnormal_flag = False
             output = "".join(self.server_cmd_ops[0].output)
@@ -213,7 +216,8 @@ class BaseTask:
                 )
                 message = self.connection.run_cmd(node, op_content)
                 output = OperationContent.from_json(message)
-                if output.abnormal_flags is None:
+                abnormal_str, curr_log_folder_size[index] = output.abnormal_flags
+                if abnormal_str is None:
                     continue
                 abnormal_str = output.abnormal_flags[0]
                 abnormal_flag = True
@@ -225,16 +229,17 @@ class BaseTask:
             if abnormal_flag:
                 break
 
-            file_size = self.get_folder_size(self.log_file_subpath) 
-            if file_size > last_log_folrder_size:
-                last_log_update_time = time.time()
-                last_log_folrder_size = file_size
+            curr_log_folder_size[0] = get_folder_size(self.log_file_subpath)
+            for node_id in range(node_num):
+                if curr_log_folder_size[node_id] is not None and curr_log_folder_size[node_id] > last_log_folder_size[node_id]:
+                    last_log_update_time[node_id] = time.time()
+                    last_log_folder_size[node_id] = curr_log_folder_size[node_id]
 
             current_time = time.time()
-            time_diff = current_time - last_log_update_time
+            time_diff = [current_time - lastime for lastime in last_log_update_time]
             print(f"## check abnormal time_diff: {time_diff}")
             time.sleep(10)
-            if time_diff >= TIMEOUT_DURATION:
+            if min(time_diff) >= TIMEOUT_DURATION:
                 self.logger.error(f"********************************abnormal********************************")
                 self.logger.error(f"****************************timeout****************************")
                 self.real_progress_manager.set_fail_reason('timeout')
@@ -242,15 +247,6 @@ class BaseTask:
 
         self.stop_all(False)
         self.logger.info(f"check_other_abnormal exit!")
-
-    def get_folder_size(self, folder_path):
-        total_size = 0
-        for dirpath, _, filenames in os.walk(folder_path):
-            for filename in filenames:
-                file_path = os.path.join(dirpath, filename)
-                if os.path.exists(file_path):
-                    total_size += os.path.getsize(file_path)
-        return total_size
 
     def set_server_port(self, port):
         self.server_port = port

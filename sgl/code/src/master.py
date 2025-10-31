@@ -27,9 +27,15 @@ GPU_NUM_PER_NODE_DEFAULT = 8
 class ConfigParser:
     @staticmethod
     def online_server(server, logger = None):
-        # generate launch server's command list
+        param_list = []
+        for one_param in server.values():
+            if isinstance(one_param, list):
+                param_list.append(one_param)
+            else:
+                param_list.append([one_param])
+
         launch_server_commands = []
-        for combo in product(*(server.values())):
+        for combo in list(product(*param_list)):
             full_command = ""
             for param in combo:
                 full_command += f" {param.strip()}" if full_command != "" else f"{param.strip()}"

@@ -34,7 +34,7 @@ def init_slave_output_file(info:dict, slave_cmd:str) -> str:
     if not os.path.exists(log_file):
         create_file(log_file)
     logger = get_logger(log_file_path, log_file_name)
-    return log_file, logger
+    return log_file_path, log_file, logger
 
 
 ip_addr = get_all_local_ip()
@@ -60,6 +60,7 @@ zmq_socket.bind(listen_info)
 print(f'bind to {listen_info}, start recving...')
 g_opcontent_map = {}
 g_logger = None
+g_log_file_path = None
 
 while True:
     message = zmq_socket.recv_string()
@@ -67,7 +68,7 @@ while True:
     if op_content.type == OperationType.GET:
         if op_content.info:
             if op_content.info.get(SLAVE_GET_IOF):
-                op_content.info[SLAVE_GET_IOF], g_logger = init_slave_output_file(op_content.info, op_content.cmd)
+                g_log_file_path, op_content.info[SLAVE_GET_IOF], g_logger = init_slave_output_file(op_content.info, op_content.cmd)
             elif op_content.info.get(SLAVE_GET_GIU):
                 op_content.info[SLAVE_GET_GIU] = check_gpu_in_use(g_logger)
         zmq_socket.send_string(f'{op_content.to_json()}')
@@ -85,15 +86,16 @@ while True:
             zmq_socket.send_string(f'[{op_content.cmd}] proc not exist!')
     elif op_content.type == OperationType.CHECK_ABNORMAL:
         abnormal_flags = op_content.abnormal_flags
-        op_content.abnormal_flags = None
+        op_content.abnormal_flags = [None, None]
         if op_content.cmd in g_opcontent_map.keys() and g_opcontent_map[op_content.cmd].output is not None:
-             output = "".join(g_opcontent_map[op_content.cmd].output)
-             for abnormal_str in abnormal_flags:
+            output = "".join(g_opcontent_map[op_content.cmd].output)
+            for abnormal_str in abnormal_flags:
                 if abnormal_str in output:
-                    op_content.abnormal_flags = [abnormal_str]
+                    op_content.abnormal_flags[0] = abnormal_str
                     log_msg_level(f"********************************abnormal********************************")
                     log_msg_level(f"********************************{abnormal_str}********************************")
                     break
+            op_content.abnormal_flags[1] = get_folder_size(g_log_file_path)
         zmq_socket.send_string(f'{op_content.to_json()}')
     elif op_content.type == OperationType.EXIT:
         log_msg_level(f'EXIT kill', g_logger)

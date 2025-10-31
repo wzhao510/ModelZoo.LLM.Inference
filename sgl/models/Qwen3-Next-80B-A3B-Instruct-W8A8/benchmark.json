@@ -14,7 +14,7 @@
                 "cuda_graph": ["--cuda-graph-max-bs 128"],
                 "torch_compile": [""],
                 "dtype": [""],
-                "mamba-ssm-dtype":"--mamba-ssm-dtype bfloat16 ",
+                "mamba-ssm-dtype":["--mamba-ssm-dtype bfloat16 "],
                 "cache": ["--disable-radix-cache --disable-chunked-prefix-cache"],
                 "quantization": ["--quantization w8a8_int8 "],
                 "chunked_prefill_size": [""],
