@@ -80,6 +80,9 @@ def run_benchmark(args):
     if args.batched_test:
         benchmark_cmd += " --batched-test"  
 
+    if args.highlight_test:
+        benchmark_cmd += " --highlight-test"  
+
     if args.quantization is not None:
         benchmark_cmd += f" --quantization {args.quantization}"  
 
@@ -129,7 +132,12 @@ if __name__ == '__main__':
                         help="Output length for each request.")
     parser.add_argument("--batched-test",
                         action="store_true",
-                        help="Test 35 case but load model once.")
+                        help="Test multiple case but load model once.")
+    parser.add_argument(
+        "--highlight-test",
+        action="store_true",
+        help="Only test highlight case."
+    )
     parser.add_argument("--enforce-eager",
                         action="store_true",
                         help="enforce eager execution")

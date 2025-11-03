@@ -1,0 +1,10 @@
+{
+    "model_type": "Qwen",
+    "model_path": "/external/ai/models/llm/Qwen/Qwen3-0.6B/",
+    "model_param": {
+        "dtype": "bfloat16",
+        "tensor_parallel_size": 1,
+        "gpu_memory_utilization": 0.9,
+        "batch_size": 1
+    }
+}

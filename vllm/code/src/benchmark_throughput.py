@@ -54,10 +54,12 @@ def str2bool(v):
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
-def is_deepseek_qwen3(model_path):
+def is_mainstream_model(model_path):
     if model_path.find('Qwen3') > 0:
         return True
     if model_path.find('DeepSeek') > 0:
+        return True
+    if model_path.find('GLM-4.5') > 0:
         return True
     return False
 
@@ -332,14 +334,21 @@ async def run_vllm_async(
             batch_list_normal = [1,8,16,32,64]
             input_len_list = [256, 512, 1024]
             output_len_list = [128, 512, 1024]
-            if is_deepseek_qwen3(args.model):
-                batch_list_normal = [1,8,16,32,64,128,256,512,1024]
+            if is_mainstream_model(args.model):
+                print("Test with mainstream model")
+                batch_list_normal = [1,8,16,32,64,128,256,512,1024]                
                 input_len_list = [128, 2048, 3072]
                 output_len_list = [128, 2048, 1024]
+                if args.highlight_test:
+                    print("Test with highlight case")
+                    batch_list_normal = [1,16,32,128,512] 
+                    input_len_list = [128, 2048, 3072]
+                    output_len_list = [128, 2048, 1024]
+            print(f"Test {batch_list_normal=}, {input_len_list=}, {output_len_list}")
             for batch in batch_list_normal:
                     for input_len in input_len_list:
                         for output_len in output_len_list:
-                            if is_deepseek_qwen3(args.model):
+                            if is_mainstream_model(args.model):
                                 if input_len == 128 and output_len != 128:
                                     continue
                                 if input_len == 2048 and output_len != 2048:
@@ -970,7 +979,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--batched-test",
         action="store_true",
-        help="Test 35 case but load model once."
+        help="Test multiple case but load model once."
+    )
+    parser.add_argument(
+        "--highlight-test",
+        action="store_true",
+        help="Only test highlight case."
     )
     parser.add_argument(
         "--dataset-name",

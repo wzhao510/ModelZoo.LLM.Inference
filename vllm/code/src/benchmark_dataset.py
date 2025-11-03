@@ -35,7 +35,7 @@ from vllm.lora.request import LoRARequest
 from vllm.lora.utils import get_adapter_absolute_path
 from vllm.multimodal import MultiModalDataDict
 from vllm.multimodal.image import convert_image_mode
-from vllm.transformers_utils.tokenizer import AnyTokenizer, get_lora_tokenizer
+from vllm.transformers_utils.tokenizer import AnyTokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -113,33 +113,27 @@ class BenchmarkDataset(ABC):
 
     def get_random_lora_request(
         self,
-        tokenizer: PreTrainedTokenizerBase,
         max_loras: Optional[int] = None,
         lora_path: Optional[str] = None,
-    ) -> tuple[Optional[LoRARequest], AnyTokenizer]:
+    ) -> Optional[LoRARequest]:
         """
-        Optionally select a random LoRA request and return its associated
-        tokenizer.
+        Optionally select a random LoRA request.
 
         This method is used when LoRA parameters are provided.  It randomly
-        selects a LoRA based on max_loras and retrieves a cached tokenizer for
-        that LoRA if available. Otherwise, it returns the base tokenizer.
+        selects a LoRA based on max_loras.
 
         Args:
-            tokenizer (PreTrainedTokenizerBase): The base tokenizer to use if no
-            LoRA is selected.  max_loras (Optional[int]): The maximum number of
-            LoRAs available. If None, LoRA is not used.  lora_path
-            (Optional[str]): Path to the LoRA parameters on disk. If None, LoRA
-            is not used.
+            max_loras (Optional[int]): The maximum number of LoRAs available.
+                If `None`, LoRA is not used.
+            lora_path (Optional[str]): Path to the LoRA parameters on disk.
+                If `None`, LoRA is not used.
 
         Returns:
-            tuple[Optional[LoRARequest], AnyTokenizer]: A tuple where the first
-            element is a LoRARequest (or None if not applicable) and the second
-            element is the tokenizer associated with the LoRA request (or the
-            base tokenizer).
+            A new [`LoRARequest`][vllm.lora.request.LoRARequest]
+            (or `None` if not applicable).
         """
         if max_loras is None or lora_path is None:
-            return None, tokenizer
+            return None
 
         # Generate a random LoRA ID in the range [1, max_loras].
         lora_id = random.randint(1, max_loras)
@@ -148,11 +142,7 @@ class BenchmarkDataset(ABC):
             lora_int_id=lora_id,
             lora_path=lora_path_on_disk(lora_path),
         )
-        if lora_id not in lora_tokenizer_cache:
-            lora_tokenizer_cache[lora_id] = get_lora_tokenizer(lora_request)
-        # Return lora_request and the cached tokenizer if available; otherwise,
-        # return the base tokenizer
-        return lora_request, lora_tokenizer_cache[lora_id] or tokenizer
+        return lora_request
 
     @abstractmethod
     def sample(
