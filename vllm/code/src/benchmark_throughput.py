@@ -27,7 +27,8 @@ from benchmark_dataset import (
     SonnetDataset,
     VisionArenaDataset,
 )
-from benchmark_utils import convert_to_pytorch_benchmark_format, write_to_json
+from vllm.benchmarks.lib.utils import (convert_to_pytorch_benchmark_format,
+                                       write_to_json)
 from vllm.config import CompilationConfig, CUDAGraphMode
 from vllm.engine.arg_utils import AsyncEngineArgs, EngineArgs
 from vllm.entrypoints.openai.api_server import (
@@ -1057,6 +1058,13 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument(
+        "--use-prefix-caching",
+        action="store_true",
+        help=(
+            "Use prefix_caching "
+        ),
+    )
+    parser.add_argument(
         '--warmup-loops',
         type=int,
         default=1,
@@ -1100,6 +1108,7 @@ if __name__ == "__main__":
         "[length * (1 - range_ratio), length * (1 + range_ratio)].",
     )
 
+
     # hf dtaset
     parser.add_argument(
         "--hf-subset", type=str, default=None, help="Subset of the HF dataset."
@@ -1112,5 +1121,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.tokenizer is None:
         args.tokenizer = args.model
+    if not args.use_prefix_caching:
+        args.enable_prefix_caching=False
     validate_args(args)
     main(args)
