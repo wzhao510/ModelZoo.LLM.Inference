@@ -395,7 +395,34 @@ vllm serve /mnt/deepseek/DeepSeek-R1-BF16/ -tp 8  -pp 4 --trust-remote-code --d
 
         opencompass ./eval_gpqa.py
 
+## lm_eval 精度评测
 
+1. lm_eval 环境准备
+
+- 安装lm_eval
+```shell
+从 https://github.com/EleutherAI/lm-evaluation-harness 获取源码
+
+cd lm-evaluation-harness/
+pip install -e .
+pip install tenacity #mmmu 最小依赖项
+```
+2. MMMU 多模态数据集精度评测
+- 使用离线数据集，配置数据集路径
+```shell
+修改安装路径 lm_eval\tasks\mmmu\_template_yaml 中 dataset_path为本地路径
+```
+- 使用在线数据集，无需上述操作，保持默认配置，会自动从互联网获取数据集
+
+3. 精度评测步骤（以Server-Client模式为例）
+- 启动vllm server
+``` shell
+vllm serve $MODEL-PATH   --trust-remote-code   --max-model-len 20480 --max_num_batched_tokens 8192 --gpu-memory-utilization 0.95   -tp $tp_size --served-model-name $your_served_name --port $port
+```
+- 另开一个终端，执行精度测试客户端命令（以MMMU为例）
+``` shell
+lm_eval --model local-chat-completions --tasks mmmu_val --model_args model=$your_served_name,base_url= http://localhost:$port/v1/completions,num_concurrent=32,max_retries=2,tokenized_requests=False,tokenizer_backend=None,max_length=16384,max_gen_toks=4096  --apply_chat_template --batch_size 1 --log_samples --output_path $your_output_log_path 
+```
 
 
 ***
