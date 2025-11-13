@@ -416,6 +416,8 @@ class RandomDataset(BenchmarkDataset):
             num_requests, range_ratio, input_len, output_len, tokenizer
         )
 
+        num_special_tokens = int(tokenizer.num_special_tokens_to_add())
+
         # Generate prefix once
         prefix_token_ids = self.get_prefix(tokenizer, prefix_len)
         vocab_size = tokenizer.vocab_size
@@ -427,7 +429,7 @@ class RandomDataset(BenchmarkDataset):
                 prefix_token_ids=prefix_token_ids,
                 prefix_len=prefix_len,
                 vocab_size=vocab_size,
-                input_len=int(input_lens[i]),
+                input_len=int(input_lens[i]) + num_special_tokens,
                 offset=int(offsets[i]),
                 index=i,
             )
