@@ -36,7 +36,7 @@ import numpy as np
 from tqdm.asyncio import tqdm
 from transformers import PreTrainedTokenizerBase
 
-from datasets import (SampleRequest, add_dataset_parser,
+from benchmark_dataset import (SampleRequest, add_dataset_parser,
                                       get_samples)
 from vllm.benchmarks.lib.endpoint_request_func import (
     ASYNC_REQUEST_FUNCS, OPENAI_COMPATIBLE_BACKENDS, RequestFuncInput,
@@ -51,6 +51,10 @@ MILLISECONDS_TO_SECONDS_CONVERSION = 1000
 TERM_PLOTLIB_AVAILABLE = ((importlib.util.find_spec("termplotlib") is not None)
                           and (shutil.which("gnuplot") is not None))
 
+try:
+    from vllm.utils import FlexibleArgumentParser
+except ImportError:
+    from argparse import ArgumentParser as FlexibleArgumentParser
 
 # TODO: Remove this in v0.11.0
 class DeprecatedEndpointTypeAction(argparse.Action):
@@ -1163,12 +1167,11 @@ def add_cli_args(parser: argparse.ArgumentParser):
 def main(args: argparse.Namespace) -> dict[str, Any]:
     return asyncio.run(main_async(args))
 
-
+# def main(args: argparse.Namespace) -> dict[str, Any]:
 async def main_async(args: argparse.Namespace) -> dict[str, Any]:
     print(args)
     random.seed(args.seed)
     np.random.seed(args.seed)
-
     # Validate ramp-up arguments
     if args.ramp_up_strategy is not None:
         if args.request_rate != float("inf"):
@@ -1194,14 +1197,12 @@ async def main_async(args: argparse.Namespace) -> dict[str, Any]:
     model_name = args.served_model_name
     tokenizer_id = args.tokenizer if args.tokenizer is not None else args.model
     tokenizer_mode = args.tokenizer_mode
-
     if args.base_url is not None:
         api_url = f"{args.base_url}{args.endpoint}"
         base_url = f"{args.base_url}"
     else:
         api_url = f"http://{args.host}:{args.port}{args.endpoint}"
         base_url = f"http://{args.host}:{args.port}"
-
     # Headers
     headers = None
     if args.header:
@@ -1356,3 +1357,12 @@ async def main_async(args: argparse.Namespace) -> dict[str, Any]:
         save_to_pytorch_benchmark_format(args, result_json, file_name)
 
     return result_json
+
+
+if __name__ == '__main__':
+    parser = FlexibleArgumentParser(
+        description="Benchmark the online serving throughput."
+    )
+    add_cli_args(parser)
+    args = parser.parse_args()
+    main(args)
