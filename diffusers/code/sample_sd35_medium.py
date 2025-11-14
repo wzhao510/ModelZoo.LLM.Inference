@@ -29,7 +29,7 @@ def infer_check_accuracy(pipe, step, images_per_prompt, prompts, output_size):
     """
     results = []
     # Run inference
-    images = pipe(prompts, num_inference_steps=step, output_type="pil", height=output_size, width=output_size, num_images_per_prompt=images_per_prompt).images
+    images = pipe(prompts, num_inference_steps=step, generator=torch.manual_seed(0), output_type="pil", height=output_size, width=output_size, num_images_per_prompt=images_per_prompt).images
 
     for idx, image in enumerate(images):
         row = {}
