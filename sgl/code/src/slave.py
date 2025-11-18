@@ -71,6 +71,8 @@ while True:
                 g_log_file_path, op_content.info[SLAVE_GET_IOF], g_logger = init_slave_output_file(op_content.info, op_content.cmd)
             elif op_content.info.get(SLAVE_GET_GIU):
                 op_content.info[SLAVE_GET_GIU] = check_gpu_in_use(g_logger)
+            elif op_content.info.get(SLAVE_GET_GC):
+                op_content.info[SLAVE_GET_GC], _ = get_gpu_mem_used(g_logger)
         zmq_socket.send_string(f'{op_content.to_json()}')
     elif op_content.type == OperationType.RUN:
         run_content = run_slave_launch_server(op_content, g_logger)

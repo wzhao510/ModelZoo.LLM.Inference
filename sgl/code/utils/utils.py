@@ -16,6 +16,7 @@ import time
 
 SLAVE_GET_IOF = 'init_output_file'
 SLAVE_GET_GIU = 'gpu_in_use'
+SLAVE_GET_GC = 'gpu_count'
 
 _model_dir = Path(__file__).parents[2].resolve(strict=True)
 
@@ -287,7 +288,11 @@ def get_gpu_mem_used(logger = None) -> str:
     percent_pos = 0
     used_percent = '0'
     mem_list = []
+    gpu_count = 0
     for line in mem_use.output:
+        if 'Attached GPUs' in line:
+            gpu_count = int(line.split()[-1].strip())
+            continue
         if 'Bus-id' in line:
             mem_pos = line.find('Bus-id')
             percent_pos = line.find('GPU-Util')
@@ -298,13 +303,13 @@ def get_gpu_mem_used(logger = None) -> str:
         if 'MetaX' in line:
             percent_end = line.find('%', percent_pos)
             used_percent = line[percent_pos:percent_end]
-        elif '65536 MiB' in line:
+        elif ' MiB' in line:
             mem_end = line.find('/', mem_pos)
             used_mem_mb = line[mem_pos:mem_end].strip()
             mem_list.append(f'{used_mem_mb}_{used_percent}')
         else:
             continue
-    return ','.join(mem_list)
+    return gpu_count, ','.join(mem_list)
 
 def get_python_proc(logger):
     op_content = OperationContent(
@@ -325,7 +330,7 @@ def check_port_in_use(logger):
 def check_gpu_in_use(logger) -> str:
     check_port_in_use(logger)
     get_python_proc(logger)
-    mem_used = get_gpu_mem_used(logger)
+    _, mem_used = get_gpu_mem_used(logger)
     gpu_mem_used = mem_used.split(',')
     used_flag = False
     used_info = ''

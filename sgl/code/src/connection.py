@@ -7,6 +7,8 @@ import dataclasses
 
 from utils.utils import *
 
+GPU_NUM_PER_NODE_DEFAULT = 8
+
 @dataclasses.dataclass
 class NodeInfo:
     ip: Optional[str] = ''
@@ -20,7 +22,6 @@ class Connection:
     def __init__(
         self,
         nodes_config: List[Dict],
-        gpu_num_per_node: int,
         slave_port: int,
         logger = None
     ) -> None:
@@ -31,7 +32,7 @@ class Connection:
         self.logger = logger
         self.task_logger = None
         self.send_recv_lock = threading.Lock()
-        self.gpu_num_per_node = gpu_num_per_node
+        self.gpu_num_per_node = GPU_NUM_PER_NODE_DEFAULT
 
     def connect(self) -> None:
         local_ip = get_all_local_ip(self.logger)
@@ -46,6 +47,7 @@ class Connection:
             if node_info.ip in local_ip:
                 node_info.is_local = True
                 self.nodes_info.append(node_info)
+                self.gpu_num_per_node, _ = get_gpu_mem_used(self.logger)
                 continue
             node_info.is_local = False
 
@@ -60,13 +62,14 @@ class Connection:
             op_content = OperationContent(
                 id=get_next_op_id(),
                 type=OperationType.GET,
+                info={SLAVE_GET_GC:True}
             )
             socket.send_string(f'{op_content.to_json()}')
             try:
                 output_op = OperationContent.from_json(socket.recv_string())
-                self.logger.info(f"connect to {node_info.ip} successfully!")
-
-                # todo check slave gpu in used
+                self.gpu_num_per_node = output_op.info[SLAVE_GET_GC]
+                self.logger.info(f"connect to {node_info.ip} ({self.gpu_num_per_node} gpus) successfully!")
+                socket.RCVTIMEO = -1
                 node_info.socket = socket
                 self.nodes_info.append(node_info)
             except zmq.Again:
