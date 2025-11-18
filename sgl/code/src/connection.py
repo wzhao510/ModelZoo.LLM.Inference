@@ -47,7 +47,7 @@ class Connection:
             if node_info.ip in local_ip:
                 node_info.is_local = True
                 self.nodes_info.append(node_info)
-                self.gpu_num_per_node, _ = get_gpu_mem_used(self.logger)
+                self.gpu_num_per_node, _ = get_gpu_mem_used()
                 continue
             node_info.is_local = False
 

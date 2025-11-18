@@ -28,8 +28,7 @@ sgl
 │   └── ceval_val_cmcc.jsonl
 ├── models/
 │   ├── 模型名称
-│   │   ├── benchmark.json
-│   │   ├── acc.json
+│   │   ├── config.json
 │   ├── mechines.json
 └── README.md
 ```
@@ -85,28 +84,55 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
     }
   ],
   "environments": {
-    "default_envs": {
-      "MACA_SMALL_PAGESIZE_ENABLE": "1",
-      "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP": "1",
-      "TRITON_ENABLE_MACA_CHAIN_DOT_OPT": "1",
-      "MACA_DIRECT_DISPATCH": "1",
-      "MCDBG_GRAPH_LAUNCH_QUEUE_POLICY": "3",
-      "MACA_GRAPH_LAUNCH_QUEUE_POLICY": "3"
-    },
-    "qwen3_envs": {
-      "MACA_SMALL_PAGESIZE_ENABLE": "1",
-      "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP": "1",
-      "TRITON_ENABLE_MACA_CHAIN_DOT_OPT": "1",
-      "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM": "1",
-      "MACA_QUEUE_SCHEDULE_POLICY": "1"
-    }
+    "default_envs": [
+      "MACA_SMALL_PAGESIZE_ENABLE=1",
+      "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP=1",
+      "TRITON_ENABLE_MACA_CHAIN_DOT_OPT=1",
+      "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM=1",
+      "MACA_QUEUE_SCHEDULE_POLICY=1"
+    ],
+    "pp_envs": [
+      "MACA_SMALL_PAGESIZE_ENABLE=1",
+      "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP=1",
+      "TRITON_ENABLE_MACA_CHAIN_DOT_OPT=1",
+      "MACA_DIRECT_DISPATCH=1",
+      "MCDBG_GRAPH_LAUNCH_QUEUE_POLICY=3",
+      "MACA_GRAPH_LAUNCH_QUEUE_POLICY=3"
+    ]
   }
 }
 ```
-这里可以配置多组环境变量，以组名区分，如default_envs、qwen3_envs，不同的任务可以通过在task配置中的**environment**字段添加组名（如qwen3_envs）来直接引用对应的环境变量。
+这里可以配置多组环境变量，以组名区分，如default_envs、pp_envs，不同的任务可以通过在task配置中的**environment**字段添加组名（如pp_envs）来直接引用对应的环境变量。
 
 
 ## 2.2 测试通用配置说明
+
+- **通用server命令**
+
+在config.json的最前面可以配置一些通用的server命令，然后各个task中的**launch_server**参数可以通过命令的名称来引用，如下：
+```json
+{
+    "server_cmd": [
+        ["python3 -m sglang.launch_server --trust-remote-code"],
+        ["--model-path /mnt/shared_data/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model"],
+        ["--disable-radix-cache"],
+        ["--attention-backend flashinfer"],
+        ["--tp 16 --dp 8 --enable-dp-attention --enable-dp-lm-head"],
+        [" --speculative-algorithm NEXTN --speculative-draft-model-path /mnt/shared_data/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"],
+        ["--disable-shared-experts-fusion"]
+    ],
+    "tasks": [
+        {
+            ......
+            "launch_server": "server_cmd",
+            ......
+        }
+    ],
+    ......
+}
+```
+如上在task中直接通过引用已经定义的server命令名称来设置当前task的启动server命令；当然task中的**launch_server**也可以不引用，直接和上面的**server_cmd**一样用list来设置自己的命令。
+
 
 - **tasks: 测试任务信息**
 
@@ -114,7 +140,6 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 | ----------- | ---------------------------- |
 | task_name   | 任务名称                     |
 | launch_mode | 模式：online、offline        |
-| world_size  | 跑本任务测试需要用到的卡数量 |
 | server_port | 端口号                       |
 
 - **environment：任务独有环境变量配置**
@@ -126,37 +151,17 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 可以添加独有环境变量；也可以直接添加**mechines.json**中的环境变量组名来直接引用已有的环境变量，如：
 ```json
     ......
-    "environment": {
-        "qwen3_envs":"1"
-    },
+    "environment": [
+        "pp_envs"
+    ],
     ......
 ```
-上述这个任务配置就会直接使用**mechines.json**中的**qwen3_envs**的环境变量配置；需要注意的是当使用已有组名时，后面的配置的value(如上为"1")目前没有作用，仅仅是为了对其json的字段格式。
+上述这个任务配置就会直接使用**mechines.json**中的**pp_envs**的环境变量配置。
 
 
-- **launch_server：服务配置**
+**所有内置的模型config.json文件都是当前版本的最佳性能参数，只需要修改模型路径和机器等信息即可**
 
-| 参数                 | 说明                                                         |
-| -------------------- | ------------------------------------------------------------ |
-| command_base         | 服务启动命令                                                 |
-| model_path           | 模型路径                                                     |
-| cache                | 缓存配置:用于配置是否启用KV缓存机制                          |
-| attention_backend    | 配置后端注意力                                               |
-| enable_parallel      | 配置分布式并行策略                                           |
-| mtp                  | MTP（Massive Text Prediction）加速推理配置                   |
-| cuda_graph           | 用于捕获 GPU 操作序列并重复执行，减少内核启动开销            |
-| mem_fraction_static  | 静态内存分配比例                                             |
-| chunked_prefill_size | 分块预填充大小（单位：token）                                |
-| dtype                | 数据类型：常见选项：float32（单精度，精度最高但内存占用大）、float16/bfloat16（半精度，内存占用减半，精度损失可控）、float8（低精度，适合高吞吐量场景） |
-| torch_compile        | PyTorch 的编译优化                                           |
-| embedding_tp_size    | 嵌入层（embedding layer）的张量并行（Tensor Parallel）尺寸：例如 embedding_tp_size=2 表示将嵌入层权重拆分到 2 张 GPU 上，每张 GPU 存储部分嵌入表，计算时通过跨卡通信协同完成 |
-| quantization         | 量化配置：指定模型参数的量化方式（将高精度权重转换为低精度，如 int8、int4），以减少内存占用并加速推理。 |
-
-注意：上述参数字段如有不使用的，需要填写值为空字符串或删掉，否则任务会直接退出
-
-**所有内置的模型json文件都是当前版本的最佳性能参数，只需要修改模型路径和机器等信息即可**
-
-## 2.3 Benchmark 测试 (benchmark.json)
+## 2.3 Benchmark 测试 (config.json)
 
 | 参数             | 说明                                              |
 | ---------------- | ------------------------------------------------- |
@@ -172,26 +177,9 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
         {
             "task_name": "sglang_bench",
             "launch_mode": "online",
-            "world_size": "16",
             "server_port": "5005",
-            "environment": {
-            },
-            "launch_server": {
-                "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
-                "model_path": ["--model-path models/DeepSeek-R1-W8A8-0528/vllm_quant_model"],
-                "cuda_graph": [""],
-                "torch_compile": [""],
-                "dtype": [""],
-                "cache": ["--disable-radix-cache --disable-chunked-prefix-cache"],
-                "quantization": [""],
-                "chunked_prefill_size": [""],
-                "attention_backend": ["--attention-backend flashinfer"],
-                "enable_parallel": ["--tp 16 --dp 4 --enable-dp-attention"],
-                "mem_fraction_static": [""],
-                "embedding_tp_size": [""],
-                "mtp": [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"
-                        ]
-            },
+            "environment": [],
+            "launch_server": "server_cmd",
             "benchmark": {
                 "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json",
                 "input_output_len": ["3072/1024"],
@@ -247,7 +235,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 其中model path和 benchmark的 ShareGPT_V3_unfiltered_cleaned_split.json需要修改为镜像内可访问的路径
 
 
-## 2.2 精度测试 (acc.json)
+## 2.2 精度测试 (config.json)
 
 目前只支持mmlu和ceval精度测试
 
@@ -276,25 +264,23 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 
 ```json
 {
+    ......
     "tasks": [
         {
             "task_name": "test_mmlu",
             "acc_type": "mmlu",
             "launch_mode": "online",
-            "world_size": "16",
             "server_port": "5005",
-            "environment": {
-            },
-            "launch_server": {
-                "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
-                "model_path": ["--model-path /models/DeepSeek-R1-W8A8-0528/vllm_quant_model"],
-                "cache": ["--disable-radix-cache --disable-chunked-prefix-cache"],
-                "attention_backend": ["--attention-backend flashinfer"],
-                "enable_parallel": ["--tp 16 --dp 4 --enable-dp-attention"],
-                "mtp": [
-                    "--speculative-algo NEXTN --speculative-draft /models/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"
-                ]
-            },
+            "environment": [],
+            "launch_server": [
+                ["python3 -m sglang.launch_server --trust-remote-code"],
+                ["--model-path /mnt/shared_data/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model"],
+                ["--disable-radix-cache"],
+                ["--attention-backend flashinfer"],
+                ["--tp 16 --dp 8 --enable-dp-attention --enable-dp-lm-head"],
+                [" --speculative-algorithm NEXTN --speculative-draft-model-path /mnt/shared_data/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"],
+                ["--disable-shared-experts-fusion"]
+            ],
             "benchmark": {
                 "command_base": "python3 bench_sglang.py --data_dir /model/acc/mmlu/data --nsub 60"
             }
@@ -303,20 +289,9 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
             "task_name": "test_ceval",
             "acc_type": "ceval",
             "launch_mode": "online",
-            "world_size": "16",
             "server_port": "5005",
-            "environment": {
-            },
-            "launch_server": {
-                "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
-                "model_path": ["--model-path /models/DeepSeek-R1-W8A8-0528/vllm_quant_model"],
-                "cache": ["--disable-radix-cache --disable-chunked-prefix-cache"],
-                "attention_backend": ["--attention-backend flashinfer"],
-                "enable_parallel": ["--tp 16 --dp 4 --enable-dp-attention"],
-                "mtp": [
-                    "--speculative-algo NEXTN --speculative-draft /models/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"
-                ]
-            },
+            "environment": [],
+            "launch_server": "server_cmd",
             "benchmark": {
                 "command_base": "python3 run_ceval_client.py --model /models/DeepSeek-R1-W8A8-0528/vllm_quant_model  --test_jsonl /workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl --batch_size 64 --random_seed 0 --random_num 50"
             }
@@ -439,25 +414,9 @@ docker run -it --device=/dev/dri --device=/dev/mxcd --device=/dev/infiniband --p
         {
             "task_name": "test",
             "launch_mode": "online",
-            "world_size": "16",
             "server_port": "5005",
-            "environment": {
-            },
-            "launch_server": {
-                "command_base": ["python3 -m sglang.launch_server --trust-remote-code"],
-                "model_path": ["--model-path /models/DeepSeek-R1-W8A8-0528/vllm_quant_model"],
-                "cuda_graph": [""],
-                "torch_compile": [""],
-                "dtype": [""],
-                "cache": ["--disable-radix-cache --disable-chunked-prefix-cache"],
-                "quantization": [""],
-                "chunked_prefill_size": [""],
-                "attention_backend": ["--attention-backend flashinfer"],
-                "enable_parallel": ["--tp 16 --dp 4 --enable-dp-attention"],
-                "mem_fraction_static": [""],
-                "embedding_tp_size": [""],
-                "mtp": [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"]
-            },
+            "environment": [],
+            "launch_server": "server_cmd",
             "benchmark": {
                 "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json",
                 "input_output_len": ["3072/1024"],
@@ -491,6 +450,8 @@ python3 -m src.master --output-path ../outputs/ --tasks-config ../models/DeepSee
 --machine-config：本次测试需要的机器信息
 --output-path：结果输出的根目录，最好是外部挂载进容器的目录，防止容器删了结果丢失
 --tasks-config：指定测试的配置文件或者目录，可以指定多个配置
+--image-tag：镜像标签，用于结果区分，默认为空
+--specify-task：从测试的配置文件中筛选出特定的任务类型执行，支持benchmark,acc,mmlu,ceval，默认是全部执行，可选择多个
 --port：socket的端口号，默认20000
 
 ```
