@@ -1,1 +1,0 @@
-python ./run_ceval_client.py --model /external/ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B --test_jsonl /pde_ai/datasets/ceval_vllm_client/ceval_val_cmcc.jsonl
