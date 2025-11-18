@@ -1,0 +1,50 @@
+{
+    "server_cmd" : [
+        ["python3 -m sglang.launch_server --trust-remote-code"],
+        ["--model-path /models/Qwen3-235B-A22B"],
+        ["--cuda-graph-max-bs 256"],
+        ["--disable-radix-cache --disable-chunked-prefix-cache"],
+        ["--attention-backend flashinfer"],
+        ["--tp 16 --dp 2 --enable-dp-attention --enable-dp-lm-head"],
+        ["--mem-fraction-static 0.86"]
+    ],
+    "tasks": [
+        {
+            "task_name": "Qwen3-235B-DP2TP8",
+            "launch_mode": "online",
+            "server_port": "9000",
+            "environment": [],
+            "launch_server": "server_cmd",
+            "benchmark": {
+                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json ",
+                "input_output_len": ["3072/1024"],
+                "max_concurrency": ["1", "16", "32", "64", "128", "256"],
+                "num_prompt_times": 5
+            }
+        }
+        ,
+        {
+            "task_name": "Qwen3-235B-DP2TP8-ceval",
+            "launch_mode": "online",
+            "acc_type":"ceval",
+            "server_port": "9000",
+            "environment": [],
+            "launch_server": "server_cmd",
+            "benchmark": {
+                "command_base": "python3  run_ceval_client.py --model /models/Qwen3-235B-A22B  --test_jsonl /workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl --batch_size 64 --random_seed 0 --random_num 50"
+            }
+        }
+        ,
+        {
+            "task_name": "Qwen3-235B-DP2TP8-mmlu",
+            "launch_mode": "online",
+            "acc_type":"mmlu",
+            "server_port": "9000",
+            "environment": [],
+            "launch_server": "server_cmd",
+            "benchmark": {
+                "command_base": "python3  bench_sglang.py --data_dir /models/acc/mmlu/data --nsub 60  "
+            }
+        }
+    ]
+}

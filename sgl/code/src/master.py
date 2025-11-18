@@ -27,7 +27,7 @@ class ConfigParser:
     @staticmethod
     def online_server(server, logger = None):
         param_list = []
-        for one_param in server.values():
+        for one_param in server:
             if isinstance(one_param, list):
                 param_list.append(one_param)
             else:
@@ -136,28 +136,50 @@ class ConfigParser:
     
     @staticmethod
     def merge_task_envs(environments, task_envs):
-        default_envs = ConfigParser.get_config_default(environments, 'default_envs', {})
+        default_envs = ConfigParser.get_config_default(environments, 'default_envs', [])
         if len(task_envs) == 0:
-            return default_envs.copy()
-        new_env = {}
-        for env_key, env_value in task_envs.items():
-            if env_key in environments.keys():
-                new_env.update(environments[env_key])
+            return ConfigParser.convert_str_to_env_dict(default_envs)
+        new_env = []
+        for env_value in task_envs:
+            if env_value in environments.keys():
+                new_env.extend(environments[env_value])
                 continue
-            new_env[env_key] = env_value
-        return new_env
+            new_env.append(env_value)
+        return ConfigParser.convert_str_to_env_dict(new_env)
+    
+    @staticmethod
+    def convert_str_to_env_dict(env_strs: List[str]):
+        if env_strs is None or len(env_strs) == 0:
+            return {}
+        env_dict = {}
+        for env_str in env_strs:
+            position = env_str.find('=')
+            if position == -1:
+                continue
+            env_dict[env_str[:position]] = env_str[position+1:]
+        return env_dict
 
 
 class BenmchmarkParser(ConfigParser):
     @staticmethod
-    def from_config(task, connection, task_type, incremental_mode, args, environments, logger = None):
+    def from_config(config, task, connection, task_type, incremental_mode, args, environments, logger = None):
         task_list = []
         global server_id_global
+        server_cmd = task['launch_server']
+        if isinstance(server_cmd, list):
+            pass
+        elif isinstance(server_cmd, str):
+            if server_cmd not in config.keys():
+                raise RuntimeError(f"Task[{task['task_name']}] launch server cmd not set!")
+            else:
+                server_cmd = config[server_cmd]
+        else:
+            raise RuntimeError(f"Task[{task['task_name']}] launch server cmd only support str or list!")
 
-        server_list = ConfigParser.online_server(task['launch_server'], logger=logger)
+        server_list = ConfigParser.online_server(server_cmd, logger=logger)
         launch_mode = ConfigParser.get_config_default(task, 'launch_mode', 'online')
         benchmark_list = ConfigParser.parse_benchmark(task['benchmark'], task_type, launch_mode)
-        envs = ConfigParser.merge_task_envs(environments, ConfigParser.get_config_default(task, 'environment', {}))
+        envs = ConfigParser.merge_task_envs(environments, ConfigParser.get_config_default(task, 'environment', []))
         max_ttft = None
         max_tpot = None
         if task_type == TaskType.search:
@@ -294,18 +316,29 @@ class RampupParser(ConfigParser):
 
 class AccParser(ConfigParser):
     @staticmethod
-    def from_config(task, connection, incremental_mode, args, environments, logger = None):
+    def from_config(config, task, connection, incremental_mode, args, environments, logger = None):
         global server_id_global
         task_list = []
 
-        server_cmds = ConfigParser.online_server(task['launch_server'], logger=logger)
+        server_cmd = task['launch_server']
+        if isinstance(server_cmd, list):
+            pass
+        elif isinstance(server_cmd, str):
+            if server_cmd not in config.keys():
+                raise RuntimeError(f"Task[{task['task_name']}] launch server cmd not set!")
+            else:
+                server_cmd = config[server_cmd]
+        else:
+            raise RuntimeError(f"Task[{task['task_name']}] launch server cmd only support str or list!")
+
+        server_list = ConfigParser.online_server(server_cmd, logger=logger)
         acc_type = TaskAccType(ConfigParser.get_config_default(task, 'acc_type', TaskAccType.mmlu.value))
         benchmark_cmds = AccParser.get_acc_benchmark_cmds(acc_type, task['benchmark'])
         envs = ConfigParser.merge_task_envs(environments, ConfigParser.get_config_default(task, 'environment', {}))
         envs['GLOO_SOCKET_IFNAME'] = connection.nodes_info[0].interface
         envs['MCCL_IB_HCA'] = connection.nodes_info[0].ib_hcas
 
-        for cmd_id, server_cmd in enumerate(server_cmds):
+        for cmd_id, server_cmd in enumerate(server_list):
             server_id_global += 1
             if str(server_id_global) in server_pass_list and len(server_pass_list[str(server_id_global)]) == len(benchmark_cmds):
                 continue
@@ -465,16 +498,19 @@ class TaskScheduler:
             
             for task_config in config['tasks']:
                 task_type = self.get_task_type_from_config(task_config)
-                if task_type == TaskType.benchmark or task_type == TaskType.search:
+                if task_type == TaskType.benchmark and task_type.value in self.args.specify_task:
                     tasks = BenmchmarkParser.from_config(
-                        task_config, self.connection, task_type, incremental_mode, 
+                        config, task_config, self.connection, task_type, incremental_mode, 
                         self.args, environments, logger=self.global_logger)
                     self.task_list.extend(tasks)
                 elif task_type == TaskType.acc:
-                    tasks = AccParser.from_config(
-                        task_config, self.connection, incremental_mode, 
-                        self.args, environments, logger=self.global_logger)
-                    self.task_list.extend(tasks)
+                    acc_type = ConfigParser.get_config_default(task_config, 'acc_type', TaskAccType.mmlu.value)
+                    if task_type.value in self.args.specify_task or acc_type in self.args.specify_task:
+                        tasks = AccParser.from_config(
+                            config, task_config, self.connection, incremental_mode, 
+                            self.args, environments, logger=self.global_logger)
+                        self.task_list.extend(tasks)
+                    
 
     def merge_result(self):
         task_types = [task.task_type for task in self.task_list]
@@ -573,14 +609,21 @@ class TaskScheduler:
         sys.exit(0) 
 
 if __name__ == "__main__":
+    task_type_list = [
+        TaskType.benchmark.value,
+        TaskType.acc.value,
+        TaskAccType.mmlu.value,
+        TaskAccType.ceval.value
+    ]
+    print(task_type_list)
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-path", type=str, default="output", help="Path for storing results")
     parser.add_argument("--tasks-config", type=str, nargs='*', help="JSON file or dir describing the task list")
     parser.add_argument("--machine-config", type=str, help="JSON file describing the machine list")
     parser.add_argument("--image-tag", type=str, default=" ",help="docker image tag")
-    # parser.add_argument("--incremental-mode", action="store_true", help="only run case not in pass file")
-    # parser.add_argument("--specify-task", action="store_true", help="Starting from the designated task")
+    parser.add_argument('--specify-task', nargs='*', choices=task_type_list, default=task_type_list, help='special task type to run, default all')
     parser.add_argument("--port",type=int,default=20000,help="client port bind to recv msg")
+    
     Args = parser.parse_args(sys.argv[1:])
 
     task_scheduler = TaskScheduler(Args)

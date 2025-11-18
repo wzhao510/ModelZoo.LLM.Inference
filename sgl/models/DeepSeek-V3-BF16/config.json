@@ -1,0 +1,50 @@
+{
+    "server_cmd": [
+        ["python3 -m sglang.launch_server --trust-remote-code"],
+        ["--model-path /models/DeepSeek-V3-BF16"],
+        ["--disable-radix-cache"],
+        ["--attention-backend flashinfer"],
+        ["--tp 32 --dp 8 --enable-dp-attention --enable-dp-lm-head"],
+        [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-V3-BF16-NextN --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3"],
+        ["--disable-shared-experts-fusion"]
+    ],
+    "tasks": [
+        {
+            "task_name": "DeepSeek-V3-BF16",
+            "launch_mode": "online",
+            "server_port": "5005",
+            "environment": [],
+            "launch_server": "server_cmd",
+            "benchmark": {
+                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json ",
+                "input_output_len": ["3072/1024"],
+                "max_concurrency": ["1", "16", "32", "64", "128"],
+                "num_prompt_times": 5
+            }
+        }
+        ,
+        {
+            "task_name": "DeepSeek-V3-BF16-mmlu",
+            "acc_type": "mmlu",
+            "launch_mode": "online",
+            "server_port": "5005",
+            "environment": [],
+            "launch_server": "server_cmd",
+            "benchmark": {
+                "command_base": "python3 bench_sglang.py --data_dir /models/acc/mmlu/data --nsub 60"
+            }
+        }
+        ,
+        {
+            "task_name": "DeepSeek-V3-BF16-ceval",
+            "acc_type": "ceval",
+            "launch_mode": "online",
+            "server_port": "5005",
+            "environment": [],
+            "launch_server": "server_cmd",
+            "benchmark": {
+                "command_base": "python3 run_ceval_client.py --model /models/DeepSeek-V3-BF16 --test_jsonl /workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl --batch_size 64"
+            }
+        }
+    ]
+}
