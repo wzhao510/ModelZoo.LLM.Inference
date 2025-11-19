@@ -4,14 +4,15 @@ echo "dp+tp 测试脚本"
 echo "=========================================================="
 
 # --- 1. 参数校验 ---
-if [ "$#" -ne 1 ]; then
-    echo "错误: 未提供模型路径。"
-    echo "用法: $0 <path_to_your_model>"
-    echo "示例: test_dp+tp.sh /data/models/Qwen1.5-32B-Chat"
+if [ "$#" -ne 2 ]; then
+    echo "错误: 未提供模型路径或最少需要的gpu数量"
+    echo "用法: $0 <path_to_your_model> <the least gpu required>"
+    echo "示例: test_dp+tp.sh /data/models/Qwen1.5-32B-Chat 2"
     exit 1
 fi
 
 MODEL_PATH="$1"
+GPUS="$2"
 HOST="localhost"
 PORT="8000"
 WAIT_TIME=1200
@@ -148,11 +149,11 @@ run_test_case() {
 }
 
 # --- 4. 运行所有测试 ---
-run_test_case 1 1 "TP=1, DP=1 (1 GPU)"
-run_test_case 2 2 "TP=2, DP=1 (2 GPU)"
-run_test_case 1 2 "TP=1, DP=2 (2 GPU)"
-run_test_case 2 4 "TP=2, DP=2 (4 GPU)"
-
+if [ "$GPUS" -eq 1 ]; then
+    run_test_case 1 2 "TP=1, DP=2 (2 GPU)"
+elif [ "$GPUS" -eq 2 ]; then
+    run_test_case 2 4 "TP=2, DP=2 (4 GPU)"
+fi
 # --- 5. 最终汇总 ---
 echo
 echo "=========================================================="

@@ -50,7 +50,7 @@ def run_eagle():
             distributed_executor_backend=args.distributed_executor_backend,
             max_model_len=1024,
             speculative_config={
-                "model": "/pde_ai/models/llm/Qwen/Qwen3-14B_eagle3",
+                "model": args.draft_model_path,
                 "draft_tensor_parallel_size": 1,
                 "num_speculative_tokens":1,
                 "method": "eagle3",
@@ -83,7 +83,7 @@ def run_draft():
             distributed_executor_backend=args.distributed_executor_backend,
             max_model_len=1024,
             speculative_config={
-                "model": "/pde_ai/models/llm/Qwen/Qwen3-14B_eagle3",
+                "model": args.draft_model_path,
                 "num_speculative_tokens": 1,
             },
         )
@@ -109,11 +109,10 @@ parser.add_argument('--model_path', type=str)
 parser.add_argument('--tensor_parallel_size', type=int,default=1)
 parser.add_argument('--distributed_executor_backend',default="ray")
 parser.add_argument('--enforce_eager', type = bool, default=True)
-
+parser.add_argument('--draft_model_path', type=str)
 
 args = parser.parse_args()
-
+print(args)
 if __name__ == "__main__":
     run_ngrams()
     run_eagle()
-    run_draft()
