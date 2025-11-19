@@ -423,7 +423,77 @@ vllm serve $MODEL-PATH   --trust-remote-code   --max-model-len 20480 --max_num_b
 ``` shell
 lm_eval --model local-chat-completions --tasks mmmu_val --model_args model=$your_served_name,base_url= http://localhost:$port/v1/completions,num_concurrent=32,max_retries=2,tokenized_requests=False,tokenizer_backend=None,max_length=16384,max_gen_toks=4096  --apply_chat_template --batch_size 1 --log_samples --output_path $your_output_log_path 
 ```
+## 测试3种mtp方式下模型的功能
 
+```
+apt install curl
+```
+```
+bash ./code/src/test_mtp.sh
+```
+```
+#参数说明
+在脚本test_mtp.sh中MODELS中进行配置 
+参数分别是：model_path  tp_size draft_model_path 
+可添加多个模型
+#示例:
+MODELS=$(cat <<EOF
+/mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B 2 /pde_ai/models/llm/Qwen/Qwen3-14B_eagle3/
+...
+EOF
+)
+```
+```
+#输出示例
+===================================================
+model: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B, tp: 2, draft: Qwen3-14B_eagle3, custom cmd:  ---> Qwen3-14B.log
+开始测试
+程序正常测试完成
+======== ngrams 测试结果 ========
+Prompt: '144的平方根是多少?请直接给出结果不用解释。', Generated text: ' 12 或 -12\n\n嗯，好的，我现在要解决的问题'
+测试成功，精度正常
+
+=================================
+======== eagle3 测试结果 ========
+Prompt: '144的平方根是多少?请直接给出结果不用解释。', Generated text: ' 12或-12\n\n好的，我现在要解决的问题是求'
+测试成功，精度正常
+
+=================================
+======== draft 测试结果 ========
+Prompt: '144的平方根是多少?请直接给出结果不用解释。', Generated text: ' 12或-12\n\n好的，我现在要解决的问题是求'
+测试成功，精度正常
+
+=================================
+```
+
+## 测试tp+dp 不同组合下模型的功能
+
+```
+apt install jq
+apt install curl
+```
+```
+bash test_tp+dp.sh /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B.w8a8/ 2
+```
+```
+#参数
+bash test_tp+dp.sh ${model_path} ${least_gpus_required}
+```
+```
+#输出示例
+
+ 最终测试汇总
+==========================================================
+配置描述              | 正确数  | 总题数  | 正确率
+----------------------------------------------------------
+TP=1, DP=1 (1 GPU)        | 5          | 5          | 100      %
+TP=2, DP=1 (2 GPU)        | 5          | 5          | 100      %
+TP=1, DP=2 (2 GPU)        | 5          | 5          | 100      %
+TP=2, DP=2 (4 GPU)        | 5          | 5          | 100      %
+==========================================================
+ 测试全部完成！
+==========================================================
+```
 
 ***
 
