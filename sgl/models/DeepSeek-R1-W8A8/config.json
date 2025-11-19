@@ -19,7 +19,7 @@
                 "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /mnt/shared_data/ShareGPT_V3_unfiltered_cleaned_split.json ",
                 "input_output_len": ["3072/1024"],
                 "max_concurrency": ["1", "16", "32", "64", "128"],
-                "num_prompt_times": 1
+                "num_prompt_times": 5
             }
         }
         ,
