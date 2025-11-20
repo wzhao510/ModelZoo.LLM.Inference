@@ -11,6 +11,7 @@ from PIL import Image
 from pathlib import Path
 from vllm import LLM, SamplingParams
 from vllm.model_executor.layers.quantization import QUANTIZATION_METHODS
+from benchmark_utils import VllmParamLibrary
 
 
 class BenchData:
@@ -40,16 +41,12 @@ class VllmBenchmark:
             gpu_memory_utilization=args.gpu_memory_utilization,
             enforce_eager=args.enforce_eager,
             kv_cache_dtype=args.kv_cache_dtype,
-            device=args.device,
             enable_prefix_caching=args.enable_prefix_caching,
             download_dir=args.download_dir,
             enable_chunked_prefill=args.enable_chunked_prefill,
             max_num_batched_tokens=args.max_num_batched_tokens,
             distributed_executor_backend=args.distributed_executor_backend,
             load_format=args.load_format,
-            num_scheduler_steps=args.num_scheduler_steps,
-            use_v2_block_manager=args.use_v2_block_manager,
-            disable_async_output_proc=args.disable_async_output_proc,
             hf_overrides=args.hf_overrides,
             show_hidden_metrics_for_version="1.0",
         )
@@ -92,25 +89,26 @@ class VllmBenchmark:
             out = self.llm.generate(prompts, params, use_tqdm=True)
             end = time.perf_counter()
 
-        
-        res = self.prase_benchmark_output(out)
+        res = self.prase_benchmark_output(in_len, out)
         res.time = end - start
         res.input_length = in_len
         res.output_length = out_len
         res.batch_size = batch_size
 
         qps = batch_size / res.time
-        tps = res.tokens_number / res.time
+        total_tps = res.tokens_number / res.time
+        out_tps = res.output_tokens_number / res.time
         if out[0].metrics is not None:
             print(
                 f"bs_{batch_size}_input_{in_len}_output_{out_len} "
-                f"Throughput: {qps:.2f} requests/s, {tps:.2f} tokens/s, "
+                f"Throughput: {qps:.2f} requests/s, {total_tps:.2f} total tokens/s, {out_tps:.2f} output tokens/s, "
                 f"TTFT is {res.ttft:.3f}ms, Decoder Latency is {res.decoder_latency:.3f}ms"
             )
         else:
+            # bs_1_input_256_output_1024 Throughput: 0.08 requests/s, 98.17 total tokens/s, 78.54 output tokens/s
             print(
                 f"bs_{batch_size}_input_{in_len}_output_{out_len} "
-                f"Throughput: {qps:.2f} requests/s, {tps:.2f} tokens/s, "
+                f"Throughput: {qps:.2f} requests/s, {total_tps:.2f} tokens/s, {out_tps:.2f} output tokens/s, "
             )
 
         # print(f"benchmark result: {res}")
@@ -124,7 +122,7 @@ class VllmBenchmark:
         out = self.llm.generate(prompt, params, use_tqdm=True)
         return out[0].outputs[0].text
 
-    def prase_benchmark_output(self, data):
+    def prase_benchmark_output(self, in_len, data):
         input_tokens_number = 0
         output_tokens_number = 0
         arrival_time = time.time()
@@ -136,7 +134,8 @@ class VllmBenchmark:
         metrics_is_none = False
         for i in data:
             # texts.append(list(map(lambda x: x.text, i.outputs)))
-            input_tokens_number += len(i.prompt_token_ids)
+            # input_tokens_number += len(i.prompt_token_ids)
+            input_tokens_number += in_len
             output_tokens_number += sum(map(lambda x: len(x.token_ids), i.outputs))
             if i.metrics is None:
                 metrics_is_none = True
@@ -230,12 +229,10 @@ def main(args: argparse.Namespace):
         yaml_files = set(find_yaml_files("."))
 
     if args.benchmark_all:
-        for batch in [1, 8, 16, 32, 64]:
-            for in_len in [256, 512, 1024]:
-                for out_len in [128, 512, 1024]:
-                    if in_len == 1024 and out_len != 1024:
-                        continue
-                    llm.run(in_len, out_len, batch)
+        vllm_test_case = VllmParamLibrary()
+        test_tuples = vllm_test_case.generates(args.model_name, args.highlight_test)
+        for batch,in_len,out_len in test_tuples: 
+            llm.run(in_len, out_len, batch)
     else:
         assert args.input_len is not None
         assert args.output_len is not None
@@ -284,6 +281,9 @@ if __name__ == "__main__":
         "output length from the dataset.",
     )
     parser.add_argument("--model", type=str, default="facebook/opt-125m")
+    parser.add_argument(
+        "--model-name", type=str, default=None, help="Name of test model"
+    )
     parser.add_argument("--tokenizer", type=str, default=None)
     parser.add_argument(
         "--quantization", "-q", choices=[*QUANTIZATION_METHODS, None], default=None
@@ -347,22 +347,7 @@ if __name__ == "__main__":
         "data type. CUDA 11.8+ supports fp8 (=fp8_e4m3) and fp8_e5m2. "
         "ROCm (AMD GPU) supports fp8 (=fp8_e4m3)",
     )
-    parser.add_argument(
-        "--device",
-        type=str,
-        default="auto",
-        choices=["cuda", "cpu", "auto"],
-        help="device type for vLLM execution",
-    )
-    parser.add_argument(
-        "--num-scheduler-steps",
-        type=int,
-        default=1,
-        help="Maximum number of forward steps per scheduler call.",
-    )
-    parser.add_argument(
-        "--use-v2-block-manager", action="store_true", help="Enable block manager v2."
-    )
+        
     parser.add_argument(
         "--enable-prefix-caching",
         action="store_true",
@@ -430,12 +415,6 @@ if __name__ == "__main__":
         "quantization.\n",
     )
     parser.add_argument(
-        "--disable-async-output-proc",
-        action="store_true",
-        default=False,
-        help="Disable async output processor for vLLM backend.",
-    )
-    parser.add_argument(
         "--async-engine",
         action="store_true",
         default=False,
@@ -451,6 +430,12 @@ if __name__ == "__main__":
         "--enable-profile",
         action="store_true",
         help="enable profile to collect kernel info.",
+    )
+
+    parser.add_argument(
+        "--highlight-test",
+        action="store_true",
+        help="Only test highlight case."
     )
 
     print(f"sys args: {sys.argv}")

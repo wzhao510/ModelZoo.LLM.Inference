@@ -40,8 +40,7 @@ from vllm.outputs import RequestOutput
 from vllm.sampling_params import BeamSearchParams
 from vllm.utils import FlexibleArgumentParser, merge_async_iterators
 
-import asyncio
-import uuid
+from benchmark_utils import VllmParamLibrary
 
 MX_PROFILE_DIR = "./mx_vllm_profile"
 
@@ -332,90 +331,66 @@ async def run_vllm_async(
 
         if args.batched_test:
             print("Start batched test....")
-            batch_list_normal = [1,8,16,32,64]
-            input_len_list = [256, 512, 1024]
-            output_len_list = [128, 512, 1024]
-            if is_mainstream_model(args.model):
-                print("Test with mainstream model")
-                batch_list_normal = [1,8,16,32,64,128,256,512,1024]                
-                input_len_list = [128, 2048, 3072]
-                output_len_list = [128, 2048, 1024]
-                if args.highlight_test:
-                    print("Test with highlight case")
-                    batch_list_normal = [1,16,32,128,512] 
-                    input_len_list = [128, 2048, 3072]
-                    output_len_list = [128, 2048, 1024]
-            print(f"Test {batch_list_normal=}, {input_len_list=}, {output_len_list}")
-            for batch in batch_list_normal:
-                    for input_len in input_len_list:
-                        for output_len in output_len_list:
-                            if is_mainstream_model(args.model):
-                                if input_len == 128 and output_len != 128:
-                                    continue
-                                if input_len == 2048 and output_len != 2048:
-                                    continue
-                                if input_len == 3072 and output_len != 1024:
-                                    continue
-                                if (input_len == 3072 or input_len == 2048) and batch > 64:
-                                    continue
-                            else:
-                                if input_len == 1024 and output_len != 1024:
-                                    continue
-                            # Add the requests to the engine.
-                            requests = get_requests(
-                                            args, 
-                                            tokenizer,
-                                            num_requests=batch,
-                                            input_len=input_len,
-                                            output_len=output_len
-                                            )
-                            assert all(
-                                    model_config.max_model_len
-                                    >= (request.prompt_len + request.expected_output_len)
-                                    for request in requests
-                                ), (
-                                    "Please ensure that max_model_len is greater than the sum of"
-                                    " prompt_len and expected_output_len for all requests."
+            
+            vllm_test_case = VllmParamLibrary()
+            test_tuples = vllm_test_case.generates(args.model_name, args.highlight_test)
+            
+            for batch,input_len,output_len in test_tuples:                
+                # Add the requests to the engine.
+                requests = get_requests(
+                                args, 
+                                tokenizer,
+                                num_requests=batch,
+                                input_len=input_len,
+                                output_len=output_len
                                 )
-                            prompts: list[Union[TextPrompt, TokensPrompt]] = []
-                            sampling_params: list[SamplingParams] = []
-                            lora_requests: list[Optional[LoRARequest]] = []
-                            for request in requests:
-                                prompts.append(
-                                    TokensPrompt(
-                                        prompt_token_ids=request.prompt["prompt_token_ids"],
-                                        multi_modal_data=request.multi_modal_data,
-                                    )
-                                    if "prompt_token_ids" in request.prompt
-                                    else TextPrompt(
-                                        prompt=request.prompt, multi_modal_data=request.multi_modal_data
-                                    )
-                                )
-                                sampling_params.append(
-                                    SamplingParams(
-                                        n=n,
-                                        temperature=1.0,
-                                        top_p=1.0,
-                                        ignore_eos=True,
-                                        max_tokens=request.expected_output_len,
-                                        detokenize=not disable_detokenize,
-                                    )
-                                )
-                                lora_requests.append(request.lora_request)
+                assert all(
+                        model_config.max_model_len
+                        >= (request.prompt_len + request.expected_output_len)
+                        for request in requests
+                    ), (
+                        "Please ensure that max_model_len is greater than the sum of"
+                        " prompt_len and expected_output_len for all requests."
+                    )
+                prompts: list[Union[TextPrompt, TokensPrompt]] = []
+                sampling_params: list[SamplingParams] = []
+                lora_requests: list[Optional[LoRARequest]] = []
+                for request in requests:
+                    prompts.append(
+                        TokensPrompt(
+                            prompt_token_ids=request.prompt["prompt_token_ids"],
+                            multi_modal_data=request.multi_modal_data,
+                        )
+                        if "prompt_token_ids" in request.prompt
+                        else TextPrompt(
+                            prompt=request.prompt, multi_modal_data=request.multi_modal_data
+                        )
+                    )
+                    sampling_params.append(
+                        SamplingParams(
+                            n=n,
+                            temperature=1.0,
+                            top_p=1.0,
+                            ignore_eos=True,
+                            max_tokens=request.expected_output_len,
+                            detokenize=not disable_detokenize,
+                        )
+                    )
+                    lora_requests.append(request.lora_request)
 
-                            generators = []
-                            start = time.perf_counter()
-                            for i, (prompt, sp, lr) in enumerate(
-                                zip(prompts, sampling_params, lora_requests)
-                            ):
-                                generator = llm.generate(prompt, sp, lora_request=lr, request_id=f"test{i}")
-                                generators.append(generator)
-                            all_gens = merge_async_iterators(*generators)
-                            results = []
-                            async for i, res in all_gens:
-                                results.append(res)
-                            end = time.perf_counter()
-                            show_result(args, requests,end - start, None)
+                generators = []
+                start = time.perf_counter()
+                for i, (prompt, sp, lr) in enumerate(
+                    zip(prompts, sampling_params, lora_requests)
+                ):
+                    generator = llm.generate(prompt, sp, lora_request=lr, request_id=f"test{i}")
+                    generators.append(generator)
+                all_gens = merge_async_iterators(*generators)
+                results = []
+                async for i, res in all_gens:
+                    results.append(res)
+                end = time.perf_counter()
+                show_result(args, requests,end - start, None)
         else:
             # Add the requests to the engine.
             requests = get_requests(
@@ -719,35 +694,32 @@ def main(args: argparse.Namespace):
             args.enable_profile = sync_profile
             if args.batched_test:
                 print("Start batched test....")
-                for batch in [1,8,16,32,64]:
-                    for input_len in [256, 512, 1024]:
-                        for output_len in [128, 512, 1024]:
-                            if input_len == 1024 and output_len != 1024:
-                                continue
-                            
-                            # Synthesize a prompt with the given input length.
-                            requests = get_requests(
-                                        args, 
-                                        tokenizer,
-                                        num_requests=batch,
-                                        input_len=input_len,
-                                        output_len=output_len
-                                        ) 
-                            
-                            elapsed_time, request_outputs = run_vllm(
-                                args,
-                                llm,
-                                requests,
-                                args.n,
-                                engine_args,
-                                args.disable_detokenize,
-                            )
-                            show_result(
-                                args=args,
-                                requests=requests,
-                                elapsed_time=elapsed_time,
-                                request_outputs=request_outputs
-                                )
+                vllm_test_case = VllmParamLibrary()
+                test_tuples = vllm_test_case.generates(args.model_name, args.highlight_test)
+                for batch,input_len,output_len in test_tuples:                 
+                    # Synthesize a prompt with the given input length.
+                    requests = get_requests(
+                                args, 
+                                tokenizer,
+                                num_requests=batch,
+                                input_len=input_len,
+                                output_len=output_len
+                                ) 
+                    
+                    elapsed_time, request_outputs = run_vllm(
+                        args,
+                        llm,
+                        requests,
+                        args.n,
+                        engine_args,
+                        args.disable_detokenize,
+                    )
+                    show_result(
+                        args=args,
+                        requests=requests,
+                        elapsed_time=elapsed_time,
+                        request_outputs=request_outputs
+                        )
             
             else:
                 
@@ -1005,6 +977,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--dataset-path", type=str, default=None, help="Path to the dataset"
+    )
+    parser.add_argument(
+        "--model-name", type=str, default=None, help="Name of test model"
     )
     parser.add_argument(
         "--input-len",

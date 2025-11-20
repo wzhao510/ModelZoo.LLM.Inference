@@ -15,8 +15,10 @@ def is_int(value):
 
 def run_benchmark_mutlimoda(args, model_config):
     script_file = "./code/src/benchmark_mutlimoda.py"
+    model_name = os.path.split(args.model)[-1]
     script_args = [
         "--model={}".format(model_config["model_path"]),
+        "--model-name={}".format(model_name),
         "--model-type={}".format(model_config["model_type"]),
         "--max-model-len=8192",
         "--num-prompts={}".format(args.num_prompts),
@@ -54,7 +56,9 @@ def run_benchmark(args):
     if model_config.get("mutlimoda", False):
         run_benchmark_mutlimoda(args, model_config)
         return
-
+    if args.model.endswith('/'):
+        args.model = args.model[:-1]
+    model_name = os.path.split(args.model)[-1]
     model_path = model_config["model_path"]
     lora_path = model_config.get("lora_path", None)
     tensor_parallel_size = model_config["model_param"]["tensor_parallel_size"]
@@ -67,11 +71,11 @@ def run_benchmark(args):
     enable_profile = os.getenv("MX_VLLM_ENABLE_PROFILE", None)
     enable_profile= False if enable_profile is None else True
     if args.speculative_model is  None:
-        benchmark_cmd = f'python ./code/src/benchmark_throughput.py  --model={model_path}  \
+        benchmark_cmd = f'python ./code/src/benchmark_throughput.py  --model={model_path} --model-name={model_name} \
                         --backend=vllm --max-model-len {max_model_len} --num-prompts {args.num_prompts} --trust-remote-code --dtype {dtype} \
                         --input-len {args.input_len} --output-len {args.output_len} --tensor-parallel-size {tensor_parallel_size} --gpu-memory-utilization {gpu_memory_utilization}'
     else:
-        benchmark_cmd = f'python ./code/src/benchmark_throughput.py  --model={model_path}  \
+        benchmark_cmd = f'python ./code/src/benchmark_throughput.py  --model={model_path} --model-name={model_name} \
                         --backend=vllm --max-model-len {max_model_len} --num-prompts {args.num_prompts} --trust-remote-code --dtype {dtype} \
                         --input-len {args.input_len} --output-len {args.output_len} --tensor-parallel-size {tensor_parallel_size} --gpu-memory-utilization {gpu_memory_utilization} \
                         --speculative-model {args.speculative_model} \
@@ -156,11 +160,6 @@ if __name__ == '__main__':
         action='store_true',
         default=False,
         help="Disable sliding window for vLLM backend.")
-    parser.add_argument(
-        "--num-scheduler-steps",
-        type=int,
-        default=1,
-        help="Deprecated config for engine v1, from this version this parameter is not recommended.")
     parser.add_argument("--enable-chunked-prefill",
                         action="store_true",
                         help="enforce chunked prefill")
