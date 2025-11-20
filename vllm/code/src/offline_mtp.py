@@ -116,3 +116,4 @@ print(args)
 if __name__ == "__main__":
     run_ngrams()
     run_eagle()
+    run_draft()
