@@ -163,20 +163,19 @@ class ConfigParser:
 class BenmchmarkParser(ConfigParser):
     @staticmethod
     def from_config(config, task, connection, task_type, incremental_mode, args, environments, logger = None):
-        task_list = []
         global server_id_global
+        task_list = []
+        server_list = []
         server_cmd = task['launch_server']
         if isinstance(server_cmd, list):
-            pass
+            server_list = ConfigParser.online_server(server_cmd, logger=logger)
         elif isinstance(server_cmd, str):
-            if server_cmd not in config.keys():
-                raise RuntimeError(f"Task[{task['task_name']}] launch server cmd not set!")
-            else:
-                server_cmd = config[server_cmd]
+            for cmd_name in server_cmd.split(';'):
+                if cmd_name.strip() not in config.keys():
+                    raise RuntimeError(f"Task[{task['task_name']}] launch server cmd{cmd_name.strip()} not set!")
+                server_list.extend(ConfigParser.online_server(config[cmd_name.strip()], logger=logger))
         else:
             raise RuntimeError(f"Task[{task['task_name']}] launch server cmd only support str or list!")
-
-        server_list = ConfigParser.online_server(server_cmd, logger=logger)
         launch_mode = ConfigParser.get_config_default(task, 'launch_mode', 'online')
         benchmark_list = ConfigParser.parse_benchmark(task['benchmark'], task_type, launch_mode)
         envs = ConfigParser.merge_task_envs(environments, ConfigParser.get_config_default(task, 'environment', []))
@@ -319,19 +318,18 @@ class AccParser(ConfigParser):
     def from_config(config, task, connection, incremental_mode, args, environments, logger = None):
         global server_id_global
         task_list = []
-
+        server_list = []
         server_cmd = task['launch_server']
         if isinstance(server_cmd, list):
-            pass
+            server_list = ConfigParser.online_server(server_cmd, logger=logger)
         elif isinstance(server_cmd, str):
-            if server_cmd not in config.keys():
-                raise RuntimeError(f"Task[{task['task_name']}] launch server cmd not set!")
-            else:
-                server_cmd = config[server_cmd]
+            for cmd_name in server_cmd.split(';'):
+                if cmd_name.strip() not in config.keys():
+                    raise RuntimeError(f"Task[{task['task_name']}] launch server cmd{cmd_name.strip()} not set!")
+                server_list.extend(ConfigParser.online_server(config[cmd_name.strip()], logger=logger))
         else:
             raise RuntimeError(f"Task[{task['task_name']}] launch server cmd only support str or list!")
 
-        server_list = ConfigParser.online_server(server_cmd, logger=logger)
         acc_type = TaskAccType(ConfigParser.get_config_default(task, 'acc_type', TaskAccType.mmlu.value))
         benchmark_cmds = AccParser.get_acc_benchmark_cmds(acc_type, task['benchmark'])
         envs = ConfigParser.merge_task_envs(environments, ConfigParser.get_config_default(task, 'environment', {}))
@@ -615,7 +613,6 @@ if __name__ == "__main__":
         TaskAccType.mmlu.value,
         TaskAccType.ceval.value
     ]
-    print(task_type_list)
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-path", type=str, default="output", help="Path for storing results")
     parser.add_argument("--tasks-config", type=str, nargs='*', help="JSON file or dir describing the task list")

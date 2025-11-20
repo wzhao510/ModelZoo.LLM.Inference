@@ -35,10 +35,13 @@ class Connection:
         self.gpu_num_per_node = GPU_NUM_PER_NODE_DEFAULT
 
     def connect(self) -> None:
+        if self.nodes_config is None or len(self.nodes_config) == 0:
+            node_info = NodeInfo(is_local = True)
+            self.nodes_info.append(node_info)
+            self.gpu_num_per_node, _ = get_gpu_mem_used()
+            return
+
         local_ip = get_all_local_ip(self.logger)
-
-        # todo check local gpu in used
-
         context = zmq.Context()
         for node in self.nodes_config:
             node_info = NodeInfo(
