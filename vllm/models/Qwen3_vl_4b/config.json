@@ -1,5 +1,5 @@
 {
-    "model_type": "Qwen",
+    "model_type": "qwen_vl",
     "model_path": "/external/ai/models/llm/Qwen/Qwen3-VL-4B-Instruct/",
     "mutlimoda": true,
     "model_param": {
