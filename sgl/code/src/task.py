@@ -68,8 +68,10 @@ class BaseTask:
             printenv(self.logger)
             check_gpu_in_use(self.logger)
             envs = self.envs.copy()
-            envs['GLOO_SOCKET_IFNAME'] = self.nodes_used[0].interface
-            envs['MCCL_IB_HCA'] = self.nodes_used[0].ib_hcas
+            if self.nodes_used[0].interface not in [None, '']:
+                envs['GLOO_SOCKET_IFNAME'] = self.nodes_used[0].interface
+            if self.nodes_used[0].ib_hcas not in [None, '']:
+                envs['MCCL_IB_HCA'] = self.nodes_used[0].ib_hcas
             op_content = OperationContent(
                         id=get_next_op_id(),
                         type=OperationType.RUN,
@@ -99,8 +101,10 @@ class BaseTask:
                 if index == 0:
                     self.server_full_cmd = cmd
                 envs = self.envs.copy()
-                envs['GLOO_SOCKET_IFNAME'] = node.interface
-                envs['MCCL_IB_HCA'] = node.ib_hcas
+                if node.interface not in [None, '']:
+                    envs['GLOO_SOCKET_IFNAME'] = node.interface
+                if node.ib_hcas not in [None, '']: 
+                    envs['MCCL_IB_HCA'] = node.ib_hcas
                 op_content = OperationContent(
                     id=get_next_op_id(),
                     type=OperationType.RUN,

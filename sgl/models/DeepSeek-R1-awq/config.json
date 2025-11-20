@@ -3,7 +3,7 @@
         ["python3 -m sglang.launch_server --trust-remote-code"],
         ["--model-path /models/DeepSeek-R1-AWQ"],
         ["--dtype bfloat16"],
-        ["--disable-radix-cache --disable-chunked-prefix-cache"],
+        ["--disable-radix-cache"],
         ["--quantization moe_wna16"],
         ["--attention-backend flashinfer"],
         ["--tp 8 --dp 4 --enable-dp-attention --enable-dp-lm-head"],
@@ -12,7 +12,7 @@
     ],
     "tasks": [
         {
-            "task_name": "DS-R1-AWQ-TP8DP4",
+            "task_name": "DS-R1-AWQ-TP2DP4",
             "launch_mode": "online",
             "server_port": "9000",
             "environment": [],
@@ -26,7 +26,7 @@
         }
         ,
         {
-            "task_name": "DS-R1-AWQ-tp8dp4-ceval",
+            "task_name": "DS-R1-AWQ-tp2dp4-ceval",
             "launch_mode": "online",
             "acc_type":"ceval", 
             "server_port": "9000",
@@ -38,7 +38,7 @@
         }
         ,
         {
-            "task_name": "DS-R1-AWQ-tp8dp4-mmlu",
+            "task_name": "DS-R1-AWQ-tp2dp4-mmlu",
             "launch_mode": "online",
             "acc_type":"mmlu", 
             "server_port": "9000",
