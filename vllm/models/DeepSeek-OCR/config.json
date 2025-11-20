@@ -1,0 +1,11 @@
+{
+    "model_type": "deepseek-ocr",
+    "model_path": "/external/ai/models/llm/DeepSeek/DeepSeek-OCR/",
+    "mutlimoda": true,
+    "model_param": {
+        "dtype": "bfloat16",
+        "tensor_parallel_size": 1,
+        "gpu_memory_utilization": 0.9,
+        "batch_size": 1
+    }
+}
