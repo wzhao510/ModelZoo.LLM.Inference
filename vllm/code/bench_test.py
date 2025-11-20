@@ -28,7 +28,8 @@ def run_benchmark_mutlimoda(args, model_config):
         "--output-len={}".format(args.output_len),
         "--tensor-parallel-size={}".format(model_config["model_param"]["tensor_parallel_size"]),
     ]
-
+    if args.highlight_test:
+        script_args.append("--highlight-test") 
     if args.enforce_eager:
         script_args.append("--enforce-eager")
     if args.batched_test:
@@ -53,11 +54,13 @@ def run_benchmark(args):
     if vllm_version is None:
         raise ValueError("Cannot get vllm_version.")
     
+    if args.model.endswith('/'):
+        args.model = args.model[:-1]
+
     if model_config.get("mutlimoda", False):
         run_benchmark_mutlimoda(args, model_config)
         return
-    if args.model.endswith('/'):
-        args.model = args.model[:-1]
+    
     model_name = os.path.split(args.model)[-1]
     model_path = model_config["model_path"]
     lora_path = model_config.get("lora_path", None)
