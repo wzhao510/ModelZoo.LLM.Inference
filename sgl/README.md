@@ -131,7 +131,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
     ......
 }
 ```
-如上在task中直接通过引用已经定义的server命令名称来设置当前task的启动server命令；当然task中的**launch_server**也可以不引用，直接和上面的**server_cmd**一样用list来设置自己的命令。
+如上在task中可以直接通过引用已经定义的server命令名称来设置当前task的启动server命令，如果需要引用多个，则以分号分隔（如"server_cmd;server_cmd2"）；当然task中的**launch_server**也可以不引用，直接和上面的**server_cmd**一样用list来设置自己的命令。
 
 
 - **tasks: 测试任务信息**

@@ -275,7 +275,7 @@ def run_sys_cmd(op_content: OperationContent, logger = None):
                     break
 
 
-def get_gpu_mem_used(logger = None) -> str:
+def get_gpu_mem_used(logger = None):
     mem_use = OperationContent(
         id=get_next_op_id(),
         type=OperationType.RUN,
