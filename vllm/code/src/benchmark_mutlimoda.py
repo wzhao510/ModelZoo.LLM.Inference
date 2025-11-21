@@ -108,7 +108,7 @@ class VllmBenchmark:
             # bs_1_input_256_output_1024 Throughput: 0.08 requests/s, 98.17 total tokens/s, 78.54 output tokens/s
             print(
                 f"bs_{batch_size}_input_{in_len}_output_{out_len} "
-                f"Throughput: {qps:.2f} requests/s, {total_tps:.2f} tokens/s, {out_tps:.2f} output tokens/s, "
+                f"Throughput: {qps:.2f} requests/s, {total_tps:.2f} total tokens/s, {out_tps:.2f} output tokens/s, "
             )
 
         # print(f"benchmark result: {res}")
