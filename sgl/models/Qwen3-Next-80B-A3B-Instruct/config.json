@@ -7,9 +7,9 @@
         ["--tp 4 --dp 2 --enable-dp-attention "],
         ["--mem-fraction-static 0.70"],
         ["--speculative-algorithm NEXTN"],
-        ["--speculative-num-steps 2"],
+        ["--speculative-num-steps 3"],
         ["--speculative-eagle-topk 1"],
-        ["--speculative-num-draft-tokens 3"]
+        ["--speculative-num-draft-tokens 4"]
     ],
     "tasks": [
         {
