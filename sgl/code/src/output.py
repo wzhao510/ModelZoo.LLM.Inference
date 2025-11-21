@@ -437,7 +437,7 @@ class OutputManager:
     @staticmethod
     def get_launch_server_args(task_server_id, command):
         server_args = {
-                        'Tsid':[str(task_server_id)],
+                        'ServerId':[str(task_server_id)],
                         'Model':[],
                         'Torch Compile':[],
                         'Cache': [],
@@ -571,10 +571,6 @@ class OutputManager:
 
                 value.append(f'{tp_str}{dp_str}{pp_str}{ep_str}')
 
-        # output_string = ""
-        # for key, value in server_args.items():
-        #     output_string += f'__{key}-{value[0]}'
-        # output_string = output_string.replace(" ", "")
         output_string = OutputManager.get_launch_server_args_str(command)
         return server_args, output_string
 
