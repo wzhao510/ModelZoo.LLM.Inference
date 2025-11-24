@@ -8,6 +8,8 @@ from sd_model.pipeline_onnx_stable_diffusion_3 import OnnxStableDiffusion3Pipeli
 from utils.utils import get_params
 import time
 from utils.clip_score import ClipScore
+import random
+import numpy as np
 
 EVAL_MODEL_PATH="/external/ai/models/llm/CLIP/CLIP-ViT-H-14-laion2B-s32B-b79K/open_clip_pytorch_model.bin"
 
@@ -80,6 +82,9 @@ def main(modelname, step=50, images_per_prompt=1, EP="maca", output_size=None, d
 
     params = get_params(modelname)
 
+    # Initialize random seed
+    random_int = random.randint(0, 2**32 - 1) if params["seed"] == -1 else params["seed"]
+    np.random.seed(random_int)
     check_models(params)
 
     text_encoder_path = os.path.join(params["ori_path"], f"text_encoder/{params['text_encoder']}")
