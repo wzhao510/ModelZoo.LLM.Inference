@@ -1,5 +1,7 @@
 from typing import List, Tuple
 import itertools
+import argparse
+
 
 MAINSTREAM_MODEL=["DeepSeek","Qwen3","Glm4.5"]
 
@@ -80,3 +82,26 @@ class VllmParamLibrary(object):
         filterd_params = self.params_filter(params, is_mainstream_model)
         print(f"final test set is {filterd_params}")
         return filterd_params
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-m",
+                        "--model",
+                        type=str,
+                        required=True,
+                        help="model name"
+                        )
+    parser.add_argument("--highlight",
+                        action='store_true',
+                        help="using highlight params or not."
+                        )
+    parser.add_argument("--output",
+                        type=str,
+                        required=True,
+                        help="output params file path.")
+    args = parser.parse_args()
+    vpl = VllmParamLibrary()
+    params_set = vpl.generates(args.model, args.highlight)
+    print(params_set)
+    with open(args.output, 'w') as o:
+        o.write(repr(params_set))
