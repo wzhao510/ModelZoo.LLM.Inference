@@ -32,9 +32,12 @@ def run_ngrams():
             out += generated_text 
         if "12" in out:
             print("测试成功，精度正常\n")
+            print("=================================")
+            return 1
         else:
             print("精度可能出现异常，请手动检查\n")
-        print("=================================")
+            print("=================================")
+            return 0
     except Exception as e:
         print(f"run_ngrams 运行错误: {e}", file=sys.stderr)
         sys.exit(1) 
@@ -65,9 +68,12 @@ def run_eagle():
             out += generated_text 
         if "12" in out:
             print("测试成功，精度正常\n")
+            print("=================================")
+            return 1
         else:
             print("精度可能出现异常，请手动检查\n")
-        print("=================================")
+            print("=================================")
+            return 0
     except Exception as e:
         print(f"run_eagle3 运行错误: {e}", file=sys.stderr)
         sys.exit(2) 
@@ -96,9 +102,12 @@ def run_draft():
             out += generated_text 
         if "12" in out:
             print("测试成功，精度正常\n")
+            print("=================================")
+            return 1
         else:
             print("精度可能出现异常，请手动检查\n")
-        print("=================================")
+            print("=================================")
+            return 0
     except Exception as e:
         print(f"run_draft 运行错误: {e}", file=sys.stderr)
         sys.exit(3) 
@@ -114,6 +123,6 @@ parser.add_argument('--draft_model_path', type=str)
 args = parser.parse_args()
 print(args)
 if __name__ == "__main__":
-    run_ngrams()
-    run_eagle()
-    run_draft()
+    result = run_ngrams() + run_eagle() + run_draft()
+    print("=================================")
+    print(f"正确率: {result}/3 ({(result/3)*100:.2f}%)")
