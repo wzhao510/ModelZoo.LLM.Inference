@@ -15,7 +15,8 @@ MODEL_PATH="$1"
 GPUS="$2"
 HOST="localhost"
 PORT="8000"
-WAIT_TIME=1200
+WAIT_TIME=12000
+
 
 if [ ! -d "$MODEL_PATH" ]; then
     echo "错误: 提供的模型路径 '$MODEL_PATH' 不存在或不是目录。"
@@ -162,14 +163,20 @@ echo "=========================================================="
 printf "%-25s | %-10s | %-10s | %-10s\n" "配置描述" "正确数" "总题数" "正确率"
 echo "----------------------------------------------------------"
 
+COUNT=0
+TOTAL_PERCENT=0
 for ((i=0; i<${#TEST_NAMES[@]}; i++)); do
     NAME="${TEST_NAMES[$i]}"
     CORRECT=${TEST_CORRECT[$i]}
     TOTAL=${TEST_TOTAL[$i]}
     PERCENT=$((100 * CORRECT / TOTAL))
+    COUNT=$((COUNT + 1))
+    TOTAL_PERCENT=$((TOTAL_PERCENT + PERCENT))
     printf "%-25s | %-10s | %-10s | %-9s%%\n" "$NAME" "$CORRECT" "$TOTAL" "$PERCENT"
 done
+RESULT=$((TOTAL_PERCENT/COUNT))
 
 echo "=========================================================="
 echo " 测试全部完成！"
+echo "$(basename ${MODEL_PATH})正确率：${RESULT}%"
 echo "=========================================================="

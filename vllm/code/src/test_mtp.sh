@@ -1,58 +1,49 @@
 #/bin/bash
 set -e 
 
-# export CUDA_VISIBLE_DEVICES=0,1
+MODEL_PATH="$1"
+GPU_REQUIERED="$2"
+DRAFT_PATH="$3"
 
-### model_path  tp_size   extra config
-MODELS=$(cat <<EOF
-/mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B 2 /pde_ai/models/llm/Qwen/Qwen3-14B_eagle3/
-EOF
-)
-
-
-log_path="logs/daily_test"
+log_path="$MTP_LOG_PATH"
+echo "log路径: $log_path"
 mkdir -p ${log_path}
 rm -rf ${log_path}/*
 
-while read -r model tp draft command_rest; do
-    echo "==================================================="
 
-    log=$(basename ${model}.log)
-    draftName=$(basename ${draft})
-    echo "model: ${model}, tp: ${tp}, draft: ${draftName}, custom cmd: ${command_rest} ---> ${log}"
-    echo "开始测试"
+echo "==================================================="
 
-    # MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE=1 MACA_VLLM_USE_TN_2_NN=0 python offline.py \
-    #     --model_path $model \
-    #     --tensor_parallel_size $tp \
-    #     --data_parallel_size 1 \
-    #     --distributed_executor_backend ray ${command_rest}   > ${log_path}/${log} 2>&1
+model=$(basename ${MODEL_PATH})
+draftName=$(basename ${DRAFT_PATH})
+echo "model: ${model}, tp: ${GPU_REQUIERED}, draft: ${draftName}  ---> ${model}.log"
+echo "开始测试"
 
-    # echo "************************************************"
+python offline_mtp.py \
+    --model_path $MODEL_PATH \
+    --tensor_parallel_size $GPU_REQUIERED \
+    --distributed_executor_backend ray \
+    --draft_model_path $DRAFT_PATH  > ${log_path}/${model}.log 2>&1 #
 
-    python offline_mtp.py \
-        --model_path $model \
-        --tensor_parallel_size $tp \
-        --distributed_executor_backend ray \
-        --draft_model_path $draft ${command_rest} > ${log_path}/${log} 2>&1 #
-    exit_code=$?
-    if [ $exit_code -eq 1 ]; then
-        echo "run_ngrams 执行异常"
-    elif [ $exit_code -eq 2 ]; then
-        echo "run_eagle3 执行异常"
-    elif [ $exit_code -eq 3 ]; then
-        echo "run_draft 执行异常"
-    elif [ $exit_code -eq 0 ]; then
-        echo "程序正常测试完成"
-    else
-        echo "未知退出码: $exit_code"
-    fi
-    # 实时监听并提取日志中的测试结果
-    sed -n '/======== ngrams 测试结果 ========/,/=================================/p' ${log_path}/${log}
-    sed -n '/======== eagle3 测试结果 ========/,/=================================/p' ${log_path}/${log}
-    sed -n '/======== draft 测试结果 ========/,/=================================/p' ${log_path}/${log}
-done <<< "$MODELS"
+exit_code=$?
+if [ $exit_code -eq 1 ]; then
+    echo "run_ngrams 执行异常"
+elif [ $exit_code -eq 2 ]; then
+    echo "run_eagle3 执行异常"
+elif [ $exit_code -eq 3 ]; then
+    echo "run_draft 执行异常"
+elif [ $exit_code -eq 0 ]; then
+    echo "程序正常测试完成"
+else
+    echo "未知退出码: $exit_code"
+fi
+# 实时监听并提取日志中的测试结果
+sed -n '/======== ngrams 测试结果 ========/,/=================================/p' ${log_path}/${model}.log
+sed -n '/======== eagle3 测试结果 ========/,/=================================/p' ${log_path}/${model}.log
+sed -n '/======== draft 测试结果 ========/,/=================================/p' ${log_path}/${model}.log
+
 
 echo "=========================================================="
 echo "所有测试已成功完成！"
+last_line=$(tail -n 1 "${log_path}/${model}.log")
+echo "${last_line}"
 echo "=========================================================="

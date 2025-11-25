@@ -429,24 +429,18 @@ lm_eval --model local-chat-completions --tasks mmmu_val --model_args model=$your
 apt install curl
 ```
 ```
-bash ./code/src/test_mtp.sh
+export MTP_LOG_PATH=logs/dailytest
+bash test_mtp.sh /mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B/ 2 /pde_ai/models/llm/Qwen/Qwen3-14B_eagle3/
 ```
 ```
 #参数说明
-在脚本test_mtp.sh中MODELS中进行配置 
-参数分别是：model_path  tp_size draft_model_path 
-可添加多个模型
-#示例:
-MODELS=$(cat <<EOF
-/mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B 2 /pde_ai/models/llm/Qwen/Qwen3-14B_eagle3/
-...
-EOF
-)
+bash test_mtp.sh ${model_path} ${gpus_required} ${draft_model_path}
 ```
 ```
 #输出示例
+log路径: logs/dailytest
 ===================================================
-model: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B, tp: 2, draft: Qwen3-14B_eagle3, custom cmd:  ---> Qwen3-14B.log
+model: Qwen3-14B, tp: 2, draft: Qwen3-14B_eagle3  ---> Qwen3-14B.log
 开始测试
 程序正常测试完成
 ======== ngrams 测试结果 ========
@@ -464,6 +458,10 @@ Prompt: '144的平方根是多少?请直接给出结果不用解释。', Generat
 测试成功，精度正常
 
 =================================
+==========================================================
+所有测试已成功完成！
+正确率: 3/3 (100.00%)
+==========================================================
 ```
 
 ## 测试tp+dp 不同组合下模型的功能
@@ -481,17 +479,17 @@ bash test_tp+dp.sh ${model_path} ${least_gpus_required}
 ```
 ```
 #输出示例
+本轮测试完成 (5/5)
 
+==========================================================
  最终测试汇总
 ==========================================================
 配置描述              | 正确数  | 总题数  | 正确率
 ----------------------------------------------------------
-TP=1, DP=1 (1 GPU)        | 5          | 5          | 100      %
-TP=2, DP=1 (2 GPU)        | 5          | 5          | 100      %
-TP=1, DP=2 (2 GPU)        | 5          | 5          | 100      %
 TP=2, DP=2 (4 GPU)        | 5          | 5          | 100      %
 ==========================================================
  测试全部完成！
+Qwen3-30B-A3B.w8a8正确率：100%
 ==========================================================
 ```
 
@@ -502,7 +500,7 @@ apt install jq
 apt install curl
 ```
 ```
-bash tesh_dcp.sh /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V2-Lite/ 4
+bash test_dcp.sh /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V2-Lite/ 4
 ```
 ```
 # 参数说明
@@ -510,15 +508,18 @@ bash test_dcp.sh ${model_path} ${gpus_required}
 ```
 ```
 # 输出示例
+本轮测试完成 (2/5)
+
 ==========================================================
  最终测试汇总
 ==========================================================
 配置描述              | 正确数  | 总题数  | 正确率
 ----------------------------------------------------------
 TP=4, DCP=2 (4 GPU)       | 2          | 5          | 40       %
-TP=4, DCP=4 (4 GPU)       | 3          | 5          | 60       %
+TP=4, DCP=4 (4 GPU)       | 2          | 5          | 40       %
 ==========================================================
  测试全部完成！
+DeepSeek-V2-Lite正确率：40%
 ==========================================================
 ```
 ## lmcache
