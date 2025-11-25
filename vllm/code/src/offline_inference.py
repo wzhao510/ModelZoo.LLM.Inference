@@ -17,7 +17,7 @@ def run(args):
     llm = LLM(model=args.model,tensor_parallel_size=args.tensor_parallel_size, 
               trust_remote_code=args.trust_remote_code, max_model_len=args.max_model_len, 
               enforce_eager=args.enforce_eager, dtype=args.dtype,
-              gpu_memory_utilization=0.95, distributed_executor_backend=args.distributed_executor_backend)
+              gpu_memory_utilization=0.90, distributed_executor_backend=args.distributed_executor_backend)
     # Generate texts from the prompts. The output is a list of RequestOutput objects
     # that contain the prompt, generated text, and other information.
     outputs = llm.generate(prompts, sampling_params)
