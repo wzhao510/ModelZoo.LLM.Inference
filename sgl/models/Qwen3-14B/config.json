@@ -5,7 +5,7 @@
         ["--cuda-graph-max-bs 256"],
         ["--disable-radix-cache"],
         ["--attention-backend flashinfer"],
-        ["--tp 1 "],
+        ["--tp 1 "]
     ],
     "tasks": [
         {
