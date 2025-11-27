@@ -274,7 +274,7 @@ class BaseTask:
         params = {
             'tp': None,
             'dp': None,
-            'pp': None
+            'pp-size': None
         }
         
         # 分割命令字符串为参数列表
@@ -289,7 +289,7 @@ class BaseTask:
                         params[param] = int(parts[i + 1])
         
         tp = params["tp"]
-        pp = params["pp"]
+        pp = params["pp-size"]
         gpu_count = 0
         if pp:
             gpu_count = pp*tp
