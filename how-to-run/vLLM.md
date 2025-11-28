@@ -524,21 +524,65 @@ DeepSeek-V2-Lite正确率：40%
 ```
 ## lmcache
 ```
-
+python offline_lmcache_offload.py \
+ --model /mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B/ \ 
+ --port 9001 --test-cpu  --test-disk
 ```
+```
+# 参数说明
+--model MODEL                                       vLLM 模型路径
+--host HOST                                         KVCache 测试服务的主机
+--port PORT                                         KVCache 测试服务的端口
+--max-model-len MAX_MODEL_LEN                       vLLM 实例的最大模型长度
+--test-prompt-tokens TEST_PROMPT_TOKENS             长上下文的 token 数量
+--tensor_parallel_size /-tp TENSOR_PARALLEL_SIZE    tp
+--test-cpu                                          测试CPU offload
+--test-disk                                         测试Disk offload
+--log-dir LOG_DIR                                   Server日志文件保存目录
+```
+```
+# 输出示例
+================================================================================
+测试结果汇总
+================================================================================
+CPU KVCache offload: ✅ 通过
+Disk KVCache offload: ✅ 通过
 
-
-
+测试完成：通过率：100.0% (2/2)
+```
 ## toolcall
 ```
-
+python test_toolcall.py --model /mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B/ --port 9002 -tp 1
 ```
+```
+# 参数说明
+--model MODEL                           模型路径
+--port PORT                             端口号
+--tensor_parallel_size, -tp             tp
+--log LOG                               server log 路径
+--tool-call-parser TOOL_CALL_PARSER     会根据模型类型去自动选择，也可以强制指定
+--disable-auto-tool-choice              关闭tool call
+```
+```
+# 输出示例
+==================================================
+Test Report
+==================================================
 
+Detailed results:
+T01. Math calculation: PASS
+T02. Complex calculation: PASS
+T03. Weather query: PASS
+T04. English weather: PASS
+T05. Weather with unit: PASS
+T06. Force tool call: PASS
+T07. No tool needed: PASS
 
-
-
-
-
+Conclusion: PASS - Tool call functionality is working
+Total tests: 7
+Successful: 7
+Success rate: 100.0%
+```
 
 ***
 
