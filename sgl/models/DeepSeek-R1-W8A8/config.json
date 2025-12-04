@@ -5,8 +5,7 @@
         ["--disable-radix-cache"],
         ["--attention-backend flashinfer"],
         ["--tp 16 --dp 8 --enable-dp-attention --enable-dp-lm-head"],
-        [" --speculative-algorithm NEXTN --speculative-draft-model-path /mnt/shared_data/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"],
-        ["--disable-shared-experts-fusion"]
+        [" --speculative-algorithm NEXTN --speculative-draft-model-path /mnt/shared_data/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"]
     ],
     "tasks": [
         {
