@@ -5,7 +5,7 @@
         ["--disable-radix-cache --disable-chunked-prefix-cache"],
         ["--attention-backend triton"],
         ["--tp 4 --dp 2 --enable-dp-attention "],
-        ["--mem-fraction-static 0.85"],
+        ["--mem-fraction-static 0.82"],
         ["--speculative-algorithm NEXTN"],
         ["--speculative-num-steps 2"],
         ["--speculative-eagle-topk 1"],
