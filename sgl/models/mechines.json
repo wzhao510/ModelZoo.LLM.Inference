@@ -19,7 +19,8 @@
       "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM=1",
       "MACA_QUEUE_SCHEDULE_POLICY=1"
     ],
-    "pp_envs": [
+    // DeepSeek TP 并行 和 Qwen3 235B PP并行建议使用此环境变量
+    "specific_scenario_envs": [
       "MACA_SMALL_PAGESIZE_ENABLE=1",
       "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP=1",
       "TRITON_ENABLE_MACA_CHAIN_DOT_OPT=1",
