@@ -69,8 +69,8 @@ def run_benchmark(args):
     async_engine = args.async_engine if args.async_engine else model_config.get("async_engine")
     dtype = model_config["model_param"]["dtype"]
     gpu_memory_utilization = args.gpu_memory_utilization if args.gpu_memory_utilization is not None else model_config["model_param"]["gpu_memory_utilization"]
-    max_model_len = model_config["model_param"].get("max_model_len", args.max_model_len)
-    max_model_len = args.max_model_len if args.max_model_len <= max_model_len else max_model_len
+    max_model_len = model_config["model_param"].get("max_model_len", None)
+    max_model_len = max_model_len if max_model_len is not None else args.max_model_len
     enable_profile = os.getenv("MX_VLLM_ENABLE_PROFILE", None)
     enable_profile= False if enable_profile is None else True
     if args.speculative_model is  None:
