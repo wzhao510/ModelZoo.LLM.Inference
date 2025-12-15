@@ -635,7 +635,6 @@ def peak_search(
             bench_output_jsonl,
             ttft_ms_max=ttft_ms_max,
             tpot_ms_max=tpot_ms_max,
-            mode=mode,
             dry_run=dry_run,
             print_cmd=print_cmd,
             backend=backend,
