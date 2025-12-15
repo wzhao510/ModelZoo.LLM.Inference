@@ -37,7 +37,7 @@
 # 使用随机输入输出  寻找300/300 1024/1024输入组合 在ttfs<2s tpot<50ms 的最佳并发  
 # 预估最佳并发范围是8到32  上限是40 使用默认--con-times 10倍并发测试  
 # 测试完毕后会自动将结果保存到{model}_{mode}_{YYMMDD}.jsonl和{model}_{YYYYMMDD_HHMM}.log中
-python sla.py --model /path/to/model \
+python sla.py --model /path/to/model --find-precise-bs true --con-times 5 \
 --combinations 300/300 1024/1024  --mandatory 8 32 --max-concurrency-limit 40 --port 8000
 ```
 - burstgpt
@@ -45,6 +45,6 @@ python sla.py --model /path/to/model \
 # 使用burstgpt数据集 在ttfs<2s tpot<50ms 的最佳并发 （不需要指定输入输出长度）
 # 预估最佳并发范围是8到32  上限是40 使用默认--con-times 10倍并发测试  
 # 测试完毕后会自动将结果保存到{model}_{mode}_{YYMMDD}.jsonl和{model}_{YYYYMMDD_HHMM}.log中
-python sla.py --model /path/to/model --dataset-name burstgpt  \
---mandatory 8 32 --max-concurrency-limit 40 --port 8000
+python sla.py --model /external/ai/models/llm/Qwen/Qwen2.5-1.5B-Instruct/ \
+ --dataset-name burstgpt  --mandatory 5 7 --max-concurrency-limit 128 --port 9002 --find-precise-bs true --con-times 5
 ```
