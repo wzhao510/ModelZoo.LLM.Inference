@@ -67,7 +67,7 @@ run_test_case() {
         -tp "$TP_SIZE" \
         -dp "$DP_SIZE" \
         --max-model-len 4096 \
-        --gpu-memory-utilization 0.90 \
+        --gpu-memory-utilization 0.85 \
         --trust-remote-code \
         &
 
