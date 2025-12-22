@@ -3,7 +3,7 @@ import itertools
 import argparse
 
 
-MAINSTREAM_MODEL=["DeepSeek","Qwen3","Glm4.5"]
+MAINSTREAM_MODEL=["DeepSeek","Qwen3","Glm4.5","Glm4.6"]
 
 class VllmParamLibrary(object):
     def _common_params():
