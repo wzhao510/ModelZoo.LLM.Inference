@@ -336,7 +336,7 @@ def check_gpu_in_use(logger) -> str:
     used_info = ''
     for gpu_id, mem_info in enumerate(gpu_mem_used):
         used_mem, used_per = mem_info.split('_')
-        if int(used_mem) >= 1000 or int(used_per) > 0:
+        if int(used_mem) > 2000 or int(used_per) > 0:
             used_flag = True
             log_msg_level(f'GPU {gpu_id} are in used({used_mem}, {used_per}), please check process!!', logger)
             used_info += f'GPU {gpu_id} are in used({used_mem}, {used_per}), please check process!!\n'
