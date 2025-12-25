@@ -130,9 +130,18 @@ python code/src/offline_inference.py --model /external/ai/models/llm/quantize_mo
     cd ModelZoo.LLM.Inference/vllm/code/src目录下执行以下命令
 
     ```shell
-    python benchmark_serving.py --model {model_name} --dataset-name custom_multiModal --dataset-path {picture_dir}  --trust-remote-code --ignore-eos --backend openai-chat --endpoint /v1/chat/completions  --max-concurrency 32 --num-prompts 128 --custom-input-len 512 --custom-output-len 256 --resize {x,y}
+    python benchmark_serving.py --model {model_name} --dataset-name custom_multiModal --dataset-path {picture_dir}  --trust-remote-code --ignore-eos --backend openai-chat --endpoint /v1/chat/completions  --max-concurrency 32 --num-prompts 128 --custom-input-len 512 --custom-output-len 256 --resize {x,y} 
+
+    注意： 此命令从下个版本开始不再支持，后续请使用下面命令测试
+
+    vllm bench serve --model /mxstorage/pde_ai/models/llm/Qwen/Qwen3-VL-8B-Instruct/ --dataset-name random-mm --backend openai-chat --endpoint /v1/chat/completions --trust-remote-code --ignore-eos  --max-concurrency 32 --num-prompts 128 --port ${port} --random-mm-base-items-per-request 1 --random-mm-num-mm-items-range-ratio 0 --random-mm-limit-mm-per-prompt '{"image": 1, "video": 0}' --random-mm-bucket-config '{(1080, 1920, 1): 1.0}' --random-input-len 512 --random-output-len 256
+
+    或者
+
+    python benchmark_serving.py --model /mxstorage/pde_ai/models/llm/Qwen/Qwen3-VL-8B-Instruct/ --dataset-name random-mm --backend openai-chat --endpoint /v1/chat/completions --trust-remote-code --ignore-eos  --max-concurrency 32 --num-prompts 128 --port ${port} --random-mm-base-items-per-request 1 --random-mm-num-mm-items-range-ratio 0 --random-mm-limit-mm-per-prompt '{"image": 1, "video": 0}' --random-mm-bucket-config '{(1080, 1920, 1): 1.0}' --random-input-len 512 --random-output-len 256
+
     ```
-    
+
     其中picture_dir为存放图片的目录，resize为设置图片尺寸若不配置默认为1920,1080
 
 
@@ -216,6 +225,10 @@ python code/src/offline_inference.py --model /external/ai/models/llm/quantize_mo
 
     ```shell
     python code/src/benchmark_serving.py --model /external/ai/models/llm/DeepSeek/DeepSeek-V2-Lite/ --dataset_name random --random_input_len 1024 --random_output_len 1024 --num-prompts 320 --trust-remote-code --ignore-eos --max-concurrency 32
+
+    或者使用下面命令
+
+    vllm bench serve --model /external/ai/models/llm/DeepSeek/DeepSeek-V2-Lite/ --dataset_name random --random_input_len 1024 --random_output_len 1024 --num-prompts 320 --trust-remote-code --ignore-eos --max-concurrency 32
     ```
     
 

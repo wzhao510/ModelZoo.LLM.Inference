@@ -12,7 +12,7 @@ from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
 
 # from vllm.assets.image import ImageAsset
-from vllm.utils import FlexibleArgumentParser
+from vllm.utils.argparse_utils import FlexibleArgumentParser
 from PIL import Image
 
 
