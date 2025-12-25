@@ -7,6 +7,22 @@
         ["--tp 16 --dp 8 --enable-dp-attention --enable-dp-lm-head"],
         [" --speculative-algorithm NEXTN --speculative-draft-model-path /mnt/shared_data/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"]
     ],
+    "server_cmd_tp16mtp3": [
+        ["python3 -m sglang.launch_server --trust-remote-code"],
+        ["--model-path /mnt/shared_data/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model"],
+        ["--disable-radix-cache"],
+        ["--attention-backend flashinfer"],
+        ["--tp 16"],
+        [" --speculative-algorithm NEXTN --speculative-draft-model-path /mnt/shared_data/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 3 --speculative-eagle-topk 1 --speculative-num-draft-tokens 4 --quantization w8a8_int8"]
+    ],
+    "server_cmd_tp4dp4mtp3": [
+        ["python3 -m sglang.launch_server --trust-remote-code"],
+        ["--model-path /mnt/shared_data/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model"],
+        ["--disable-radix-cache"],
+        ["--attention-backend flashinfer"],
+        ["--tp 16 --dp 4 --enable-dp-attention --enable-dp-lm-head"],
+        [" --speculative-algorithm NEXTN --speculative-draft-model-path /mnt/shared_data/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"]
+    ],
     "tasks": [
         {
             "task_name": "DeepSeek-R1-W8A8-0528",
@@ -20,8 +36,33 @@
                 "max_concurrency": ["1", "16", "32", "64", "128"],
                 "num_prompt_times": 1
             }
-        }
-        ,
+        },
+        {
+            "task_name": "DeepSeek-R1-W8A8-0528-tp16mtp3",
+            "launch_mode": "online",
+            "server_port": "5005",
+            "environment": [],
+            "launch_server": "server_cmd_tp16mtp3",
+            "benchmark": {
+                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /mnt/shared_data/ShareGPT_V3_unfiltered_cleaned_split.json ",
+                "input_output_len": ["3072/1024"],
+                "max_concurrency": ["1", "16", "32", "64", "128"],
+                "num_prompt_times": 1
+            }
+        },
+        {
+            "task_name": "DeepSeek-R1-W8A8-0528-tp4dp4mtp3",
+            "launch_mode": "online",
+            "server_port": "5005",
+            "environment": [],
+            "launch_server": "server_cmd_tp4dp4mtp3",
+            "benchmark": {
+                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /mnt/shared_data/ShareGPT_V3_unfiltered_cleaned_split.json ",
+                "input_output_len": ["3072/1024"],
+                "max_concurrency": ["1", "16", "32", "64", "128"],
+                "num_prompt_times": 1
+            }
+        },
         {
             "task_name": "DeepSeek-R1-W8A8-0528-mmlu",
             "acc_type": "mmlu",
@@ -35,12 +76,58 @@
         }
         ,
         {
+            "task_name": "DeepSeek-R1-W8A8-0528-mmlu-tp16mtp3",
+            "acc_type": "mmlu",
+            "launch_mode": "online",
+            "server_port": "5005",
+            "environment": [],
+            "launch_server": "server_cmd_tp16mtp3",
+            "benchmark": {
+                "command_base": "python3 bench_sglang.py --data_dir /models/acc/mmlu/data --nsub 60"
+            }
+        }
+        ,
+        {
+            "task_name": "DeepSeek-R1-W8A8-0528-mmlu-tp4dp4mtp3",
+            "acc_type": "mmlu",
+            "launch_mode": "online",
+            "server_port": "5005",
+            "environment": [],
+            "launch_server": "server_cmd_tp4dp4mtp3",
+            "benchmark": {
+                "command_base": "python3 bench_sglang.py --data_dir /models/acc/mmlu/data --nsub 60"
+            }
+        }
+        ,
+        {
             "task_name": "DeepSeek-R1-W8A8-0528-ceval",
             "acc_type": "ceval",
             "launch_mode": "online",
             "server_port": "5005",
             "environment": [],
             "launch_server": "server_cmd",
+            "benchmark": {
+                "command_base": "python3 run_ceval_client.py --model /mnt/shared_data/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model  --test_jsonl /workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl --batch_size 64"
+            }
+        },
+        {
+            "task_name": "DeepSeek-R1-W8A8-0528-ceval-tp16mtp3",
+            "acc_type": "ceval",
+            "launch_mode": "online",
+            "server_port": "5005",
+            "environment": [],
+            "launch_server": "server_cmd_tp16mtp3",
+            "benchmark": {
+                "command_base": "python3 run_ceval_client.py --model /mnt/shared_data/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model  --test_jsonl /workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl --batch_size 64"
+            }
+        },
+        {
+            "task_name": "DeepSeek-R1-W8A8-0528-ceval-tp4dp4mtp3",
+            "acc_type": "ceval",
+            "launch_mode": "online",
+            "server_port": "5005",
+            "environment": [],
+            "launch_server": "server_cmd_tp4dp4mtp3",
             "benchmark": {
                 "command_base": "python3 run_ceval_client.py --model /mnt/shared_data/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model  --test_jsonl /workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl --batch_size 64"
             }
