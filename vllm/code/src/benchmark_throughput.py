@@ -38,7 +38,8 @@ from vllm.inputs import TextPrompt, TokensPrompt
 from vllm.lora.request import LoRARequest
 from vllm.outputs import RequestOutput
 from vllm.sampling_params import BeamSearchParams
-from vllm.utils import FlexibleArgumentParser, merge_async_iterators
+from vllm.utils.argparse_utils import FlexibleArgumentParser
+from vllm.utils.async_utils import merge_async_iterators
 
 from benchmark_utils import VllmParamLibrary
 
@@ -270,7 +271,7 @@ async def run_vllm_async(
     async with build_async_engine_client_from_engine_args(
         engine_args, disable_frontend_multiprocessing=disable_frontend_multiprocessing
     ) as llm:
-        model_config = await llm.get_model_config()
+        model_config = llm.model_config
         print("Start warm up....")
         for idx in range(args.warmup_loops):
             print(f"warm up {idx}...")
