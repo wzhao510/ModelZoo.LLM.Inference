@@ -317,7 +317,7 @@ class ToolCallValidator:
         print(f"\nConclusion: {'PASS - Tool call functionality is working' if rate >= 70 else 'FAIL - Tool call issues detected'}")
         print(f"Total tests: {total}")
         print(f"Successful: {success}")
-        print(f"Success rate: {rate:.1f}%")
+        print(f"正确率：{rate:.1f}%")
 
         return rate >= 70
 
