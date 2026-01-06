@@ -594,7 +594,26 @@ T07. No tool needed: PASS
 Conclusion: PASS - Tool call functionality is working
 Total tests: 7
 Successful: 7
-Success rate: 100.0%
+正确率: 100.0%
+```
+
+## BAAI rerank 模型精度测试
+```
+apt install jq
+apt install curl
+```
+```
+bash test_rerank.sh /mxstorage/pde_ai/models/llm/BAAI/bge-reranker-v2-m3/
+bash test_rerank.sh /mxstorage/pde_ai/models/llm/BAAI/bge-reranker-large/
+```
+```
+# 参数说明
+--model MODEL                           模型路径
+# 输出示例
+==========================================================
+bge-reranker-large 精度异常
+bge-reranker-large 正确率：0%
+==========================================================
 ```
 
 ***
