@@ -214,8 +214,8 @@ class BGEReranker:
             print(f"Error processing batch: {e}")
             # Add zero scores for failed batch
             all_scores.extend([0.0] * len(query_doc_pairs))
+            return None, None, None
         
-
         # Record end time
         end_time = time.time()
         
@@ -276,6 +276,8 @@ def main():
     # Score query-document pairs and calculate TPS
     try:
         scores, tps, process_time_ms = reranker.score(queries, documents,args)
+        if scores is None:
+            return
     except Exception as e:
         print(f"Scoring failed: {e}")
         return

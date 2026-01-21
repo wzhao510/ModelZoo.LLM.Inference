@@ -209,6 +209,7 @@ class BGEEmbedder:
             embedding_dim = 1024
             zero_embeddings = np.zeros((batch_size, embedding_dim))
             all_embeddings.append(zero_embeddings)
+            return None, None, None
         
         batch_end_time = time.time()
         batch_process_time_ms = (batch_end_time - batch_start_time) * 1000
@@ -270,6 +271,8 @@ def main():
     # Generate embeddings and calculate TPS
     try:
         embeddings, tps, process_time_ms = embedder.embed(prompts, args)
+        if embeddings is None:
+            return
     except Exception as e:
         print(f"Embedding generation failed: {e}")
         return
