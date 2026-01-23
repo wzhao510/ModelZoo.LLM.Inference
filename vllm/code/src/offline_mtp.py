@@ -13,6 +13,7 @@ def run_ngrams():
         sampling_params = SamplingParams(temperature=0.8, top_p=0.95)
         llm = LLM(
             model=args.model_path,
+            gpu_memory_utilization=args.gpu_memory_utilization,
             enforce_eager=args.enforce_eager,
             tensor_parallel_size=args.tensor_parallel_size,
             distributed_executor_backend=args.distributed_executor_backend,
@@ -49,6 +50,7 @@ def run_eagle():
         llm = LLM(
             model=args.model_path,
             enforce_eager=args.enforce_eager,
+            gpu_memory_utilization=args.gpu_memory_utilization,
             tensor_parallel_size=args.tensor_parallel_size,
             distributed_executor_backend=args.distributed_executor_backend,
             max_model_len=1024,
@@ -85,6 +87,7 @@ def run_draft():
         llm = LLM(
             model=args.model_path,
             enforce_eager=args.enforce_eager,
+            gpu_memory_utilization=args.gpu_memory_utilization,
             tensor_parallel_size=args.tensor_parallel_size,
             distributed_executor_backend=args.distributed_executor_backend,
             max_model_len=1024,
@@ -119,6 +122,12 @@ parser.add_argument('--tensor_parallel_size', type=int,default=1)
 parser.add_argument('--distributed_executor_backend',default="ray")
 parser.add_argument('--enforce_eager', type = bool, default=True)
 parser.add_argument('--draft_model_path', type=str)
+parser.add_argument('--gpu-memory-utilization',
+                        type=float,
+                        default=0.85,
+                        help='the fraction of GPU memory to be used for '
+                        'the model executor, which can range from 0 to 1.'
+                        'If unspecified, will use the default value of 0.85.')
 
 args = parser.parse_args()
 print(args)

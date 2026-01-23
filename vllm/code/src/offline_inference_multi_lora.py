@@ -82,7 +82,7 @@ def process_requests(engine: LLMEngine,
             generated_text = output.outputs[0].text
             print(f"Prompt: {prompt!r}, Generated text: {generated_text!r}")
 
-def initialize_engine(model_path, tensor_parallel_size, trust_remote_code, max_model_len, dtype, enforce_eager) -> LLMEngine:
+def initialize_engine(model_path, tensor_parallel_size, trust_remote_code, max_model_len, dtype, enforce_eager, gpu_memory_utilization) -> LLMEngine:
     """Initialize the LLMEngine."""
     # max_loras: controls the number of LoRAs that can be used in the same
     #   batch. Larger numbers will cause higher memory usage, as each LoRA
@@ -97,6 +97,7 @@ def initialize_engine(model_path, tensor_parallel_size, trust_remote_code, max_m
                              max_model_len=max_model_len,
                              dtype=dtype,
                              enforce_eager=enforce_eager,
+                             gpu_memory_utilization=gpu_memory_utilization,
                              enable_lora=True,
                              max_loras=1,
                              max_lora_rank=8,
@@ -108,7 +109,7 @@ def initialize_engine(model_path, tensor_parallel_size, trust_remote_code, max_m
 def main(args):
     os.environ['VLLM_ALLOW_DEPRECATED_BEAM_SEARCH'] = "1"
     """Main function that sets up and runs the prompt processing."""
-    engine = initialize_engine(args.model, args.tensor_parallel_size, args.trust_remote_code, args.max_model_len, args.dtype, args.enforce_eager)
+    engine = initialize_engine(args.model, args.tensor_parallel_size, args.trust_remote_code, args.max_model_len, args.dtype, args.enforce_eager,args.gpu_memory_utilization)
     #lora_path = snapshot_download(repo_id="yard1/llama-2-7b-sql-lora-test")
     test_prompts = create_test_prompts(args.lora_path)
     process_requests(engine, test_prompts)
@@ -141,6 +142,12 @@ if __name__ == "__main__":
     parser.add_argument("--enforce-eager",
                         action="store_true",
                         help="enforce eager execution")
+    parser.add_argument('--gpu-memory-utilization',
+                        type=float,
+                        default=0.85,
+                        help='the fraction of GPU memory to be used for '
+                        'the model executor, which can range from 0 to 1.'
+                        'If unspecified, will use the default value of 0.85.')
 
     args = parser.parse_args()
 

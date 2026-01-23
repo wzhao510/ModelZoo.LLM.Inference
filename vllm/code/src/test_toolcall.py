@@ -10,11 +10,13 @@ from typing import Dict, List, Any, Optional
 class VLLMServerManager:
 
     def __init__(self, model: str, port: int = 8000, tensor_parallel: int = 1, 
+                 gpu_memory_utilization = 0.85, 
                  log_file: str = "vllm_server.log", tool_call_parser: str = "llama3_json",
                  enable_auto_tool_choice: bool = True):
         self.model = model
         self.port = port
         self.tensor_parallel = tensor_parallel
+        self.gpu_memory_utilization = gpu_memory_utilization
         self.log_file = log_file
         self.tool_call_parser = tool_call_parser
         self.enable_auto_tool_choice = enable_auto_tool_choice
@@ -34,6 +36,7 @@ class VLLMServerManager:
             "--port", str(self.port),
             "--tensor-parallel-size", str(self.tensor_parallel),
             "--tool-call-parser", self.tool_call_parser,
+            "--gpu-memory-utilization", str(self.gpu_memory_utilization)
         ]
         
         if self.enable_auto_tool_choice:
@@ -349,7 +352,13 @@ def main():
     # Tool Call parameters
     parser.add_argument("--tool-call-parser", help="Tool call parser (llama3_json/hermes/mistral/internlm)")
     parser.add_argument("--disable-auto-tool-choice", action="store_true", help="Disable auto tool choice")
-    
+    parser.add_argument('--gpu-memory-utilization',
+                        type=float,
+                        default=0.85,
+                        help='the fraction of GPU memory to be used for '
+                        'the model executor, which can range from 0 to 1.'
+                        'If unspecified, will use the default value of 0.85.')
+
     args = parser.parse_args()
     
     # Auto detect model configuration
@@ -366,6 +375,7 @@ def main():
         model=args.model,
         port=args.port,
         tensor_parallel=args.tensor_parallel_size,
+        gpu_memory_utilization=args.gpu_memory_utilization,
         log_file=args.log,
         tool_call_parser=tool_call_parser,
         enable_auto_tool_choice=enable_auto_tool_choice

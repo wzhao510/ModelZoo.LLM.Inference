@@ -287,10 +287,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--gpu-memory-utilization",
         type=float,
-        default=0.9,
+        default=0.85,
         help="the fraction of GPU memory to be used for "
         "the model executor, which can range from 0 to 1."
-        "If unspecified, will use the default value of 0.9.",
+        "If unspecified, will use the default value of 0.85.",
     )
     parser.add_argument(
         '--distributed-executor-backend',

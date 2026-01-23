@@ -4,14 +4,15 @@ echo "rerank 测试脚本"
 echo "=========================================================="
 
 # --- 1. 参数校验 ---
-if [ "$#" -ne 1 ]; then
+if [ "$#" -lt 1 ]; then
     echo "错误: 未提供模型路径"
-    echo "用法: $0 <path_to_your_model> <the least gpu required>"
-    echo "示例: test_rerank.sh /data/models/Qwen1.5-32B-Chat"
+    echo "用法: $0 <path_to_your_model> <the least gpu required> <gpu memory utilization>"
+    echo "示例: bash test_rerank.sh /mxstorage/pde_ai/models/llm/BAAI/bge-reranker-v2-m3/ 0.85"
     exit 1
 fi
 
 MODEL_PATH="$1"
+GPU_MEMORY_UTILIZATION="$2"
 HOST="localhost"
 PORT="8000"
 WAIT_TIME=12000
@@ -43,8 +44,7 @@ run_test_case() {
     vllm serve "$MODEL_PATH" \
         --host "$HOST" \
         --port "$PORT" \
-        --max-model-len 4096 \
-        --gpu-memory-utilization 0.8 \
+        --gpu-memory-utilization ${GPU_MEMORY_UTILIZATION:-0.85} \
         --trust-remote-code \
         --tensor-parallel-size 1  \
         &

@@ -29,6 +29,7 @@ def run(args):
         max_model_len=args.max_model_len, 
         dtype=args.dtype,
         enforce_eager=args.enforce_eager,
+        gpu_memory_utilization=args.gpu_memory_utilization,
         enable_lora=True)
 
     # Generate texts from the prompts for LoRA adapter. The output is a list of RequestOutput objects
@@ -74,6 +75,12 @@ if __name__ == "__main__":
         default=None,
         help='Maximum length of a sequence (including prompt and output). '
         'If None, will be derived from the model.')
+    parser.add_argument('--gpu-memory-utilization',
+                        type=float,
+                        default=0.85,
+                        help='the fraction of GPU memory to be used for '
+                        'the model executor, which can range from 0 to 1.'
+                        'If unspecified, will use the default value of 0.85.')
 
     args = parser.parse_args()
 
