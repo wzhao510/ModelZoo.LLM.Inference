@@ -4,15 +4,16 @@ echo "dp+tp 测试脚本"
 echo "=========================================================="
 
 # --- 1. 参数校验 ---
-if [ "$#" -ne 2 ]; then
+if [ "$#" -lt 2 ]; then
     echo "错误: 未提供模型路径或最少需要的gpu数量"
-    echo "用法: $0 <path_to_your_model> <the least gpu required>"
-    echo "示例: test_dp+tp.sh /data/models/Qwen1.5-32B-Chat 2"
+    echo "用法: $0 <path_to_your_model> <the least gpu required> <gpu memory utilization>"
+    echo "示例: bash test_tp+dp.sh /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B.w8a8/ 2 0.85"
     exit 1
 fi
 
 MODEL_PATH="$1"
 GPUS="$2"
+GPU_MEMORY_UTILIZATION="$3"
 HOST="localhost"
 PORT="8000"
 WAIT_TIME=12000
@@ -67,7 +68,7 @@ run_test_case() {
         -tp "$TP_SIZE" \
         -dp "$DP_SIZE" \
         --max-model-len 4096 \
-        --gpu-memory-utilization 0.85 \
+        --gpu-memory-utilization ${GPU_MEMORY_UTILIZATION:-0.85} \
         --trust-remote-code \
         &
 

@@ -443,11 +443,12 @@ apt install curl
 ```
 ```
 export MTP_LOG_PATH=logs/dailytest
-bash test_mtp.sh /mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B/ 2 /pde_ai/models/llm/Qwen/Qwen3-14B_eagle3/
+bash test_mtp.sh /mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B/ 2 /pde_ai/models/llm/Qwen/Qwen3-14B_eagle3/ 0.85
 ```
 ```
 #参数说明
-bash test_mtp.sh ${model_path} ${gpus_required} ${draft_model_path}
+# gpu利用率 默认0.85,可省略
+bash test_mtp.sh ${model_path} ${gpus_required} ${draft_model_path} ${gpu-memory-utilization} 
 ```
 ```
 #输出示例
@@ -488,7 +489,8 @@ bash test_tp+dp.sh /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B.w8a8/ 2
 ```
 ```
 #参数
-bash test_tp+dp.sh ${model_path} ${least_gpus_required}
+# gpu利用率 默认0.85,可省略
+bash test_tp+dp.sh ${model_path} ${least_gpus_required} ${gpu-memory-utilization} 
 ```
 ```
 #输出示例
@@ -517,7 +519,8 @@ bash test_dcp.sh /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V2-Lite/ 4
 ```
 ```
 # 参数说明
-bash test_dcp.sh ${model_path} ${gpus_required}
+# gpu利用率 默认0.85,可省略
+bash test_dcp.sh ${model_path} ${gpus_required} ${gpu-memory-utilization} 
 ```
 ```
 # 输出示例
@@ -552,6 +555,7 @@ python offline_lmcache_offload.py \
 --test-cpu                                          测试CPU offload
 --test-disk                                         测试Disk offload
 --log-dir LOG_DIR                                   Server日志文件保存目录
+--gpu-memory-utilization                            gpu利用率 默认0.85
 ```
 ```
 # 输出示例
@@ -575,6 +579,7 @@ python test_toolcall.py --model /mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B/ --p
 --log LOG                               server log 路径
 --tool-call-parser TOOL_CALL_PARSER     会根据模型类型去自动选择，也可以强制指定
 --disable-auto-tool-choice              关闭tool call
+--gpu-memory-utilization                gpu利用率 默认0.85
 ```
 ```
 # 输出示例

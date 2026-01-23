@@ -17,7 +17,7 @@ def run(args):
     llm = LLM(model=args.model,tensor_parallel_size=args.tensor_parallel_size, 
               trust_remote_code=args.trust_remote_code, max_model_len=args.max_model_len, 
               enforce_eager=args.enforce_eager, dtype=args.dtype,
-              gpu_memory_utilization=0.90, distributed_executor_backend=args.distributed_executor_backend)
+              gpu_memory_utilization=args.gpu_memory_utilization, distributed_executor_backend=args.distributed_executor_backend)
     # Generate texts from the prompts. The output is a list of RequestOutput objects
     # that contain the prompt, generated text, and other information.
     outputs = llm.generate(prompts, sampling_params)
@@ -60,6 +60,12 @@ if __name__ == "__main__":
         'The "auto" option will use FP16 precision '
         'for FP32 and FP16 models, and BF16 precision '
         'for BF16 models.')
+    parser.add_argument('--gpu-memory-utilization',
+                        type=float,
+                        default=0.85,
+                        help='the fraction of GPU memory to be used for '
+                        'the model executor, which can range from 0 to 1.'
+                        'If unspecified, will use the default value of 0.85.')
 
     args = parser.parse_args()
 

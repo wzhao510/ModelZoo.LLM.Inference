@@ -42,6 +42,12 @@ def parse_args():
                        help="测试磁盘卸载")
     parser.add_argument("--log-dir", type=str, default="./vllm_test_logs",
                        help="Server日志文件保存目录")
+    parser.add_argument('--gpu-memory-utilization',
+                        type=float,
+                        default=0.85,
+                        help='the fraction of GPU memory to be used for '
+                        'the model executor, which can range from 0 to 1.'
+                        'If unspecified, will use the default value of 0.85.')
     
     return parser.parse_args()
 
@@ -123,6 +129,7 @@ def vllm_offload_service(offload_type, test_run_path, args):
             "--port", str(args.port),
             "--tensor_parallel_size", str(args.tensor_parallel_size),
             "--max-model-len", str(args.max_model_len),
+            "--gpu-memory-utilization", str(args.gpu_memory_utilization),
             "--kv-transfer-config",
             '{"kv_connector":"LMCacheConnectorV1", "kv_role":"kv_both"}'
         ]
