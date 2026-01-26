@@ -14,7 +14,7 @@ _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
 
-def with_mxml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
+def with_mxsml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
     @wraps(fn)
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
         pymxml.nvmlInit()
@@ -48,11 +48,11 @@ class GPUManager:
         self.occupied_gpus = set()
 
     @cache
-    @with_mxml_context
+    @with_mxsml_context
     def get_gpu_count(self) -> int:
         return pymxml.nvmlDeviceGetCount()
 
-    @with_mxml_context
+    @with_mxsml_context
     def get_gpu_memory_list(self) -> list[dict]:
         """
         Get a list of dict, length equal to the number of GPUs, each dict contains used, free, and total memory (MiB).
@@ -72,7 +72,7 @@ class GPUManager:
             )
         return mems_infos
 
-    @with_mxml_context
+    @with_mxsml_context
     def get_free_gpu_indices(self, used_threshold_mb: int | None = None) -> list[int]:
         """
         Get a list of GPU indices that have free memory above the given threshold (MiB).
@@ -88,7 +88,7 @@ class GPUManager:
         ]
         return free_list
 
-    @with_mxml_context
+    @with_mxsml_context
     def get_gpu_process_info(self, gpu_index: int) -> list[dict]:
         """
         Get memory info for a specific GPU index.
@@ -116,7 +116,7 @@ class GPUManager:
             for proc in gpu_process_infos
         ]  # type: ignore
 
-    @with_mxml_context
+    @with_mxsml_context
     def get_gpu_process_pid(self, gpu_index_list: list[int]) -> list[int]:
         """
         Get a list of PIDs for processes using the specified GPU indices.
@@ -127,7 +127,7 @@ class GPUManager:
             pids.extend([proc["pid"] for proc in info])
         return pids
 
-    @with_mxml_context
+    @with_mxsml_context
     def get_all_gpu_process_info(self) -> dict[int, list[dict]]:
         """
         Get a dictionary mapping GPU index to a list of processes using that GPU.
