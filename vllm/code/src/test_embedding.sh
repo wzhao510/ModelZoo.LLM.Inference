@@ -148,7 +148,7 @@ run_test_case() {
     # --- 关闭服务 ---
     echo "----------------------------------------------------------"
     echo "关闭 vLLM 服务 (PID: $SERVER_PID)..."
-    kill -9 $SERVER_PID
+    kill $SERVER_PID
     wait $SERVER_PID 2>/dev/null
     sleep 10
 
