@@ -6,13 +6,13 @@ import requests
 import socket
 import textwrap
 from pathlib import Path
-import contextlib 
-import argparse
+import contextlib
 import sys
 import tempfile
 import shutil
 import datetime
 
+from vllm_arg_parser import create_vllm_parser
 
 try:
     from openai import OpenAI
@@ -20,37 +20,6 @@ try:
 except ImportError:
     print("错误：请先安装 'openai' 和 'transformers' 库 (pip install openai transformers)")
     exit(1)
-
-
-# --- 测试配置参数 (通过命令行参数设置) ---
-def parse_args():
-    parser = argparse.ArgumentParser(description="vLLM KVCache 卸载测试脚本")
-    parser.add_argument("--model", type=str, required=True,
-                       help="vLLM 模型路径")
-    parser.add_argument("--host", type=str, default="localhost",
-                       help="KVCache 测试服务的主机")
-    parser.add_argument("--port", type=int, default=8300,
-                       help="KVCache 测试服务的端口")
-    parser.add_argument("--max-model-len", type=int, default=16384,
-                       help="vLLM 实例的最大模型长度")
-    parser.add_argument("--test-prompt-tokens", type=int, default=15000,
-                       help="长上下文的 token 数量")
-    parser.add_argument("--tensor_parallel_size", "-tp", type=int, default=1, help="tp")
-    parser.add_argument("--test-cpu", action="store_true", default=True,
-                       help="测试CPU offload")
-    parser.add_argument("--test-disk", action="store_true", default=True,
-                       help="测试磁盘卸载")
-    parser.add_argument("--log-dir", type=str, default="./vllm_test_logs",
-                       help="Server日志文件保存目录")
-    parser.add_argument('--gpu-memory-utilization',
-                        type=float,
-                        default=0.85,
-                        help='the fraction of GPU memory to be used for '
-                        'the model executor, which can range from 0 to 1.'
-                        'If unspecified, will use the default value of 0.85.')
-    
-    return parser.parse_args()
-
 
 # --- 上下文管理器：自动化管理 vLLM 卸载服务 ---
 
@@ -350,8 +319,30 @@ def create_test_directory(base_temp_dir, test_name):
     return test_dir
 
 
+def add_custom_args(parser):
+    parser.add_argument("--host", type=str, default="localhost",
+                       help="KVCache 测试服务的主机")
+    parser.add_argument("--port", type=int, default=8300,
+                       help="KVCache 测试服务的端口")
+    parser.add_argument("--test-prompt-tokens", type=int, default=15000,
+                       help="长上下文的 token 数量")
+    parser.add_argument("--test-cpu", action="store_true", default=True,
+                       help="测试CPU offload")
+    parser.add_argument("--test-disk", action="store_true", default=True,
+                       help="测试磁盘卸载")
+    parser.add_argument("--log-dir", type=str, default="./vllm_test_logs",
+                       help="Server日志文件保存目录")
+
+
 def main():
-    args = parse_args()
+    parser = create_vllm_parser(  
+        description="kvcache offload test",  
+        add_custom_args=add_custom_args  
+    )  
+
+    args = parser.parse_args()
+    print(f"port---------------------{args.port}")
+    print(f"max-model-len---------------{args.max_model_len}")
     
     log_dir = Path(args.log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)

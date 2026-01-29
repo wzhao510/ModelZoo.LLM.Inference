@@ -90,13 +90,13 @@ CUDA_VISIBLE_DEVICES=${0~7} python ./code/bench_test.py --model ./models/Qwen2.5
 ### 离线推理脚本（配置 lora_path 为微调的LoRA模型路径）：
 
 ```shell
-python code/src/offline_inference_lora.py --model /external/ai/models/llm/Llama/Llama-2-7b-hf/ --lora_path /external/ai/models/models-7/LoRA/lora_test/lora_llama-2-7b/llama-2-7b-sql-lora-test/
+python code/src/offline_inference_lora.py --model /external/ai/models/llm/Llama/Llama-2-7b-hf/ --lora-path /external/ai/models/models-7/LoRA/lora_test/lora_llama-2-7b/llama-2-7b-sql-lora-test/
 ```
 
 ### multi-LoRA 推理脚本：
 
 ```shell
-python code/src/offline_inference_multi_lora.py --model /external/ai/models/llm/Llama/Llama-2-7b-hf/ --lora_path /external/ai/models/models-7/LoRA/lora_test/lora_llama-2-7b/llama-2-7b-sql-lora-test/
+python code/src/offline_inference_multi_lora.py --model /external/ai/models/llm/Llama/Llama-2-7b-hf/ --lora-path /external/ai/models/models-7/LoRA/lora_test/lora_llama-2-7b/llama-2-7b-sql-lora-test/
 ```
 
 
