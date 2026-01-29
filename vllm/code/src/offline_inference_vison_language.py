@@ -13,6 +13,7 @@ from vllm import LLM, SamplingParams
 
 # from vllm.assets.image import ImageAsset
 from vllm.utils.argparse_utils import FlexibleArgumentParser
+from vllm_arg_parser import create_vllm_parser
 from PIL import Image
 
 
@@ -237,12 +238,7 @@ def main(args):
         generated_text = o.outputs[0].text
         print(f"generated_text :{generated_text}")
 
-
-if __name__ == "__main__":
-    parser = FlexibleArgumentParser(
-        description="Demo on using vLLM for offline inference with "
-        "vision language models"
-    )
+def add_custom_args(parser):  
     parser.add_argument(
         "--model-type", type=str, required=True, help="model type of vision language"
     )
@@ -252,53 +248,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--image-path", type=str, required=True, help="path of input image"
     )
-    parser.add_argument(
-        "--max-num-seqs", type=int, default=128, help="Number of max seqs."
-    )
-    parser.add_argument(
-        "--max-model-len",
-        type=int,
-        default=None,
-        help="Maximum length of a sequence (including prompt and output). "
-        "If None, will be derived from the model.",
-    )
-    parser.add_argument(
-        "--num-prompts", type=int, default=1, help="Number of prompts to run."
-    )
-    parser.add_argument("--tensor-parallel-size", "-tp", type=int, default=1)
-    parser.add_argument(
-        "--trust-remote-code",
-        action="store_true",
-        help="trust remote code from huggingface",
-    )
-    parser.add_argument(
-        "--enforce-eager", action="store_true", help="enforce eager execution"
-    )
-    parser.add_argument(
-        "--dtype",
-        type=str,
-        default="auto",
-        choices=["auto", "half", "float16", "bfloat16", "float", "float32"],
-        help="data type for model weights and activations. "
-        'The "auto" option will use FP16 precision '
-        "for FP32 and FP16 models, and BF16 precision "
-        "for BF16 models.",
-    )
-    parser.add_argument(
-        "--gpu-memory-utilization",
-        type=float,
-        default=0.85,
-        help="the fraction of GPU memory to be used for "
-        "the model executor, which can range from 0 to 1."
-        "If unspecified, will use the default value of 0.85.",
-    )
-    parser.add_argument(
-        '--distributed-executor-backend',
-        choices=['ray', 'mp'],
-        default=None,
-        help='Backend to use for distributed serving. When more than 1 GPU '
-        'is used, will be automatically set to "ray" if installed '
-        'or "mp" (multiprocessing) otherwise.')
+
+if __name__ == "__main__":
+
+    parser = create_vllm_parser(  
+        description="Demo on using vLLM for offline inference with "
+        "vision language models",  
+        add_custom_args=add_custom_args
+    )  
 
     args = parser.parse_args()
     main(args)

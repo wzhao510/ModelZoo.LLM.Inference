@@ -1,11 +1,9 @@
 # 2025 - Modified by MetaX Integrated Circuits (Shanghai) Co., Ltd. All Rights Reserved.
-import argparse
-
 import torch
 
 from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
-
+from vllm_arg_parser import create_vllm_parser
 
 def run(args):
     # Sample prompts.
@@ -47,40 +45,15 @@ def run(args):
         print(f"Prompt: {prompt!r}, Generated text: {generated_text!r}")
 
 
+def add_custom_args(parser):  
+    parser.add_argument("--lora-path", type=str, default="/AI-DATA/LoRA/lora_test/lora_llama-2-7b/llama-2-7b-sql-lora-test/")
 
 if __name__ == "__main__":
     
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="/external/ai/models/llm/Llama/Llama-2-7b-hf/")
-    parser.add_argument("--lora_path", type=str, default="/AI-DATA/LoRA/lora_test/lora_llama-2-7b/llama-2-7b-sql-lora-test/")
-    parser.add_argument("--tensor_parallel_size", "-tp", type=int, default=1)
-    parser.add_argument('--trust_remote_code',
-                        action='store_true',
-                        help='trust remote code from huggingface')
-    parser.add_argument(
-        '--dtype',
-        type=str,
-        default='auto',
-        choices=['auto', 'half', 'float16', 'bfloat16', 'float', 'float32'],
-        help='data type for model weights and activations. '
-        'The "auto" option will use FP16 precision '
-        'for FP32 and FP16 models, and BF16 precision '
-        'for BF16 models.')
-    parser.add_argument("--enforce-eager",
-                        action="store_true",
-                        help="enforce eager execution")
-    parser.add_argument(
-        '--max-model-len',
-        type=int,
-        default=None,
-        help='Maximum length of a sequence (including prompt and output). '
-        'If None, will be derived from the model.')
-    parser.add_argument('--gpu-memory-utilization',
-                        type=float,
-                        default=0.85,
-                        help='the fraction of GPU memory to be used for '
-                        'the model executor, which can range from 0 to 1.'
-                        'If unspecified, will use the default value of 0.85.')
+    parser = create_vllm_parser(  
+        description="offline inference lora",  
+        add_custom_args=add_custom_args  
+    )  
 
     args = parser.parse_args()
 
