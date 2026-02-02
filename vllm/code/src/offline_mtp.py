@@ -1,18 +1,17 @@
 import os
 from vllm import LLM, SamplingParams
-import argparse
 from vllm.config import CompilationConfig
 import sys
-
+from vllm_arg_parser import create_vllm_parser
 
 os.environ["RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"] = "1"
 
-def run_ngrams():
+def run_ngrams(args):
     try:
         prompts = ["144的平方根是多少?请直接给出结果不用解释。"]
         sampling_params = SamplingParams(temperature=0.8, top_p=0.95)
         llm = LLM(
-            model=args.model_path,
+            model=args.model,
             gpu_memory_utilization=args.gpu_memory_utilization,
             enforce_eager=args.enforce_eager,
             tensor_parallel_size=args.tensor_parallel_size,
@@ -43,12 +42,12 @@ def run_ngrams():
         print(f"run_ngrams 运行错误: {e}", file=sys.stderr)
         sys.exit(1) 
 
-def run_eagle():
+def run_eagle(args):
     try:
         prompts = ["144的平方根是多少?请直接给出结果不用解释。"]
         sampling_params = SamplingParams(temperature=0, top_p=0.95)
         llm = LLM(
-            model=args.model_path,
+            model=args.model,
             enforce_eager=args.enforce_eager,
             gpu_memory_utilization=args.gpu_memory_utilization,
             tensor_parallel_size=args.tensor_parallel_size,
@@ -80,12 +79,12 @@ def run_eagle():
         print(f"run_eagle3 运行错误: {e}", file=sys.stderr)
         sys.exit(2) 
 
-def run_draft():
+def run_draft(args):
     try:
         prompts = ["144的平方根是多少?请直接给出结果不用解释。"]
         sampling_params = SamplingParams(temperature=0, top_p=0.95)
         llm = LLM(
-            model=args.model_path,
+            model=args.model,
             enforce_eager=args.enforce_eager,
             gpu_memory_utilization=args.gpu_memory_utilization,
             tensor_parallel_size=args.tensor_parallel_size,
@@ -116,22 +115,16 @@ def run_draft():
         sys.exit(3) 
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--model_path', type=str)
-parser.add_argument('--tensor_parallel_size', type=int,default=1)
-parser.add_argument('--distributed_executor_backend',default="ray")
-parser.add_argument('--enforce_eager', type = bool, default=True)
-parser.add_argument('--draft_model_path', type=str)
-parser.add_argument('--gpu-memory-utilization',
-                        type=float,
-                        default=0.85,
-                        help='the fraction of GPU memory to be used for '
-                        'the model executor, which can range from 0 to 1.'
-                        'If unspecified, will use the default value of 0.85.')
+def add_custom_args(parser):  
+    parser.add_argument('--draft-model-path', type=str)
 
-args = parser.parse_args()
-print(args)
 if __name__ == "__main__":
-    result = run_ngrams() + run_eagle() + run_draft()
+
+    parser = create_vllm_parser(  
+        description="mtp test",  
+        add_custom_args=add_custom_args  
+    )
+    args = parser.parse_args()
+    result = run_ngrams(args) + run_eagle(args) + run_draft(args)
     print("=================================")
     print(f"正确率: {result}/3 ({(result/3)*100:.2f}%)")

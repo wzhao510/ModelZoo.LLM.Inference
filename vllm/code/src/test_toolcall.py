@@ -6,6 +6,7 @@ import subprocess
 import socket
 from openai import OpenAI
 from typing import Dict, List, Any, Optional
+from vllm_arg_parser import create_vllm_parser
 
 class VLLMServerManager:
 
@@ -340,24 +341,18 @@ def get_model_parser_config(model: str) -> tuple:
         return 'hermes', True
     else:
         return 'llama3_json', True
-
-def main():
-
-    parser = argparse.ArgumentParser(description="vLLM Tool Call validation script")
-    parser.add_argument("--model", required=True, help="Model path")
+def add_custom_args(parser): 
     parser.add_argument("--port", type=int, default=8000, help="Server port")
-    parser.add_argument("--tensor_parallel_size", "-tp", type=int, default=1, help="tp")
     parser.add_argument("--log", default="vllm_server.log", help="Server log file")
-    
-    # Tool Call parameters
     parser.add_argument("--tool-call-parser", help="Tool call parser (llama3_json/hermes/mistral/internlm)")
     parser.add_argument("--disable-auto-tool-choice", action="store_true", help="Disable auto tool choice")
-    parser.add_argument('--gpu-memory-utilization',
-                        type=float,
-                        default=0.85,
-                        help='the fraction of GPU memory to be used for '
-                        'the model executor, which can range from 0 to 1.'
-                        'If unspecified, will use the default value of 0.85.')
+    
+def main():
+
+    parser = create_vllm_parser(  
+        description="offline inference",  
+        add_custom_args=add_custom_args  
+    )  
 
     args = parser.parse_args()
     

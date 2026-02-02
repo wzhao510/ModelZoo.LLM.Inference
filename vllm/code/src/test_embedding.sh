@@ -6,13 +6,14 @@ echo "=========================================================="
 # --- 1. 参数校验 ---
 if [ "$#" -lt 1 ]; then
     echo "错误: 未提供模型路径"
-    echo "用法: $0 <path_to_your_model> <the least gpu required> <gpu memory utilization>"
-    echo "示例: bash test_embedding.sh /mxstorage/pde_ai/models/llm/BAAI/bge-large-zh/"
+    echo "用法: $0 <path_to_your_model> <the least gpu required> <gpu memory utilization> <max num seqs>"
+    echo "示例: bash test_embedding.sh /mxstorage/pde_ai/models/llm/BAAI/bge-large-zh/ 0.85 256"
     exit 1
 fi
 
 MODEL_PATH="$1"
 GPU_MEMORY_UTILIZATION="$2"
+MAX_NUM_SEQS="$3"
 HOST="localhost"
 PORT="9003"
 WAIT_TIME=12000
@@ -71,6 +72,7 @@ run_test_case() {
         --host "$HOST" \
         --port "$PORT" \
         --gpu-memory-utilization ${GPU_MEMORY_UTILIZATION:-0.85} \
+        --max-num-seqs ${MAX_NUM_SEQS:-256} \
         --trust-remote-code \
         --tensor-parallel-size 1  \
         &

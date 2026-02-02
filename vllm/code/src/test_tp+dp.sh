@@ -6,14 +6,15 @@ echo "=========================================================="
 # --- 1. 参数校验 ---
 if [ "$#" -lt 2 ]; then
     echo "错误: 未提供模型路径或最少需要的gpu数量"
-    echo "用法: $0 <path_to_your_model> <the least gpu required> <gpu memory utilization>"
-    echo "示例: bash test_tp+dp.sh /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B.w8a8/ 2 0.85"
+    echo "用法: $0 <path_to_your_model> <the least gpu required> <gpu memory utilization> <max num seqs>"
+    echo "示例: bash test_tp+dp.sh /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B.w8a8/ 2 0.85 256"
     exit 1
 fi
 
 MODEL_PATH="$1"
 GPUS="$2"
 GPU_MEMORY_UTILIZATION="$3"
+MAX_NUM_SEQS="$4"
 HOST="localhost"
 PORT="8000"
 WAIT_TIME=12000
@@ -69,6 +70,7 @@ run_test_case() {
         -dp "$DP_SIZE" \
         --max-model-len 4096 \
         --gpu-memory-utilization ${GPU_MEMORY_UTILIZATION:-0.85} \
+        --max-num-seqs ${MAX_NUM_SEQS:-256} \
         --trust-remote-code \
         &
 
