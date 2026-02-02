@@ -180,7 +180,7 @@ class Scheduler:
             self.gpu_manager = GPUManager()
             max_workers = self.gpu_manager.get_gpu_count()
 
-        self.executor = ThreadPoolExecutor(max_workers=max_workers)
+        self.executor = ThreadPoolExecutor(max_workers=1)
 
     def _load_yaml_config(self, config_yaml: str) -> list[dict]:
         with open(config_yaml, "r") as f:
