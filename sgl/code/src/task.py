@@ -1,13 +1,13 @@
 from typing import Optional, List, Dict, Any, Union
 import time
 import threading
+import copy
 
 from src.connection import Connection
-from src.output import BenchmarkOutputManager, AccOutputManager, SearchOutputManager, RampupOutputManager, RealProgressManager, NOW_TIME
+from src.output import OutputManager, RealProgressManager
+from src.benchmark import PerfBenchmark
 from utils.utils import *
 
-
-TIMEOUT_DURATION = 60*10.678
 
 class BaseTask:
     def __init__(self,
@@ -15,18 +15,19 @@ class BaseTask:
         launch_server: str,
         envs: Optional[Dict],
         task_id: int,
-        port: int = 5000
+        dist_port: int,
+        server_port: int,
     ) -> None:
         self.connection = connection
         self.timer = None
         self.launch_mode = None
         self.task_name = None
-        self.task_type = None
         self.task_id = task_id
         self.server_cmd = launch_server
         self.server_full_cmd = self.server_cmd
-        self.server_port = port
-        self.output_manager: Union["BenchmarkOutputManager","AccOutputManager", "SearchOutputManager", "RampupOutputManager"] = None
+        self.server_port = server_port
+        self.dist_port = dist_port
+        self.output_manager: OutputManager = None
         self.real_progress_manager = None
         self.envs = envs
         self.timeout = None
@@ -41,9 +42,6 @@ class BaseTask:
         self.current_bench_op = None
 
         self.model_name = None
-        self.acc_type = None
-        self.max_ttft = None
-        self.max_tpot = None
 
         self.global_logger = None
         self.logger = None
@@ -52,6 +50,9 @@ class BaseTask:
         self._get_nodes_used()
         self.is_stopped = False
         self.log_file_subpath = None
+
+        self.running_server_args_str = None
+        self.running_server_args_dict = None
 
     def init(self):
         pass
@@ -64,6 +65,7 @@ class BaseTask:
         self.logger = self.output_manager.logger
         self.connection.task_logger = self.logger
         nodes_num = len(self.nodes_used)
+        server_cmd_port = self.server_cmd + f' --port {self.server_port} '
         if nodes_num == 1:
             printenv(self.logger)
             check_gpu_in_use(self.logger)
@@ -72,11 +74,11 @@ class BaseTask:
                 envs['GLOO_SOCKET_IFNAME'] = self.nodes_used[0].interface
             if self.nodes_used[0].ib_hcas not in [None, '']:
                 envs['MCCL_IB_HCA'] = self.nodes_used[0].ib_hcas
-            op_content = OperationContent(
+            op_content = MsgContent(
                         id=get_next_op_id(),
-                        type=OperationType.RUN,
+                        type=MsgType.RUN_CMD,
                         envs=envs,
-                        cmd=self.server_cmd,
+                        cmd=server_cmd_port,
                         store_output=True,
                         is_ready=True,
                         is_async=True,
@@ -91,13 +93,15 @@ class BaseTask:
                     printenv(self.logger)
                     check_gpu_in_use(self.logger)
                 else:
-                    cmd = self.server_cmd + f' --nnodes {nodes_num} --node-rank {index}'
-                    self.connection.init_slave_output_file(node, self.output_manager.get_info_for_slave(), cmd)
+                    cmd = server_cmd_port + f' --nnodes {nodes_num} --node-rank {index}'
+                    output_depends = copy.deepcopy(self.output_manager.output_depends)
+                    output_depends.node_id = index
+                    self.connection.sync_slave_output_info(node, output_depends.to_json())
                     self.connection.check_slave_gpu_in_use(node)
 
             for index, node in enumerate(self.nodes_used):
-                cmd = self.server_cmd
-                cmd += f' --dist-init-addr {self.nodes_used[0].ip}:{self.server_port} --nnodes {nodes_num} --node-rank {index}'
+                cmd = server_cmd_port
+                cmd += f' --dist-init-addr {self.nodes_used[0].ip}:{self.dist_port} --nnodes {nodes_num} --node-rank {index}'
                 if index == 0:
                     self.server_full_cmd = cmd
                 envs = self.envs.copy()
@@ -105,9 +109,9 @@ class BaseTask:
                     envs['GLOO_SOCKET_IFNAME'] = node.interface
                 if node.ib_hcas not in [None, '']: 
                     envs['MCCL_IB_HCA'] = node.ib_hcas
-                op_content = OperationContent(
+                op_content = MsgContent(
                     id=get_next_op_id(),
-                    type=OperationType.RUN,
+                    type=MsgType.RUN_CMD,
                     envs=envs,
                     cmd=cmd,
                     store_output=True,
@@ -148,7 +152,7 @@ class BaseTask:
     def set_real_progress_manager(self, real_progress_manager: RealProgressManager):
         self.real_progress_manager = real_progress_manager
 
-    def set_output_manager(self, output_manager: Union["BenchmarkOutputManager","AccOutputManager", "SearchOutputManager", "RampupOutputManager"]) -> None:
+    def set_output_manager(self, output_manager: OutputManager) -> None:
         self.output_manager = output_manager
         self.logger = self.output_manager.logger
 
@@ -159,9 +163,6 @@ class BaseTask:
         abnormal_thread = threading.Thread(target=self.check_other_abnormal)
         abnormal_thread.daemon = True
         abnormal_thread.start()
-
-    def set_file_log_subfile(self, subpath):
-        self.log_file_subpath = subpath
 
     def check_other_abnormal(self):
         abnormal_flag_str = [
@@ -212,18 +213,17 @@ class BaseTask:
             for index in range(1, min(len(self.nodes_used), len(self.server_cmd_ops))):
                 node = self.nodes_used[index]
                 server_cmd = self.server_cmd_ops[index].cmd
-                op_content = OperationContent(
+                op_content = MsgContent(
                     id=get_next_op_id(),
-                    type=OperationType.CHECK_ABNORMAL,
+                    type=MsgType.CHECK_OUTPUT_FLAG,
                     cmd=server_cmd,
-                    abnormal_flags=abnormal_flag_str
+                    info=abnormal_flag_str
                 )
                 message = self.connection.run_cmd(node, op_content)
-                output = OperationContent.from_json(message)
-                abnormal_str, curr_log_folder_size[index] = output.abnormal_flags
+                output = MsgContent.from_json(message)
+                abnormal_str, curr_log_folder_size[index] = output.info
                 if abnormal_str is None:
                     continue
-                abnormal_str = output.abnormal_flags[0]
                 abnormal_flag = True
                 self.logger.error(f"********************************{node.ip} abnormal********************************")
                 self.logger.error(f"****************************{node.ip} {abnormal_str}****************************")
@@ -233,7 +233,7 @@ class BaseTask:
             if abnormal_flag:
                 break
 
-            curr_log_folder_size[0] = get_folder_size(self.log_file_subpath)
+            curr_log_folder_size[0] = get_folder_size(self.output_manager.log_path)
             for node_id in range(node_num):
                 if curr_log_folder_size[node_id] is not None and curr_log_folder_size[node_id] > last_log_folder_size[node_id]:
                     last_log_update_time[node_id] = time.time()
@@ -243,7 +243,7 @@ class BaseTask:
             time_diff = [current_time - lastime for lastime in last_log_update_time]
             print(f"## check abnormal time_diff: {time_diff}")
             time.sleep(10)
-            if min(time_diff) >= TIMEOUT_DURATION:
+            if min(time_diff) >= self.timeout:
                 self.logger.error(f"********************************abnormal********************************")
                 self.logger.error(f"****************************timeout****************************")
                 self.real_progress_manager.set_fail_reason('timeout')
@@ -251,9 +251,6 @@ class BaseTask:
 
         self.stop_all(False)
         self.logger.info(f"check_other_abnormal exit!")
-
-    def set_server_port(self, port):
-        self.server_port = port
 
     def _get_nodes_used(self):
         expected_gpu_count = self._get_gpu_count(self.server_cmd)
@@ -296,21 +293,41 @@ class BaseTask:
         else:
             gpu_count = tp
         return gpu_count
+    
+    def get_running_server_args(self, log_msg):
+        match = re.search(r'server_args=ServerArgs\((.*?)\)', log_msg, re.DOTALL)
+        if match:
+            args_str = match.group(1)
+            raw_args_str = match.group(0)
+        else:
+            log_msg_level("未找到 server_args=ServerArgs(...) 这一行", self.logger)
+            return None,None
+
+        args_dict = {}
+        for param in args_str.split(','):
+            param_match = re.match(r'(\w+)=(.*)', param.strip())
+            if param_match:
+                key = param_match.group(1)
+                value = param_match.group(2)
+                args_dict[key] = value
+        return raw_args_str,args_dict
+
 
 class TaskOnline(BaseTask):
     def __init__(self,
         connection: Connection,
         launch_server: str,
-        bench_serving: List[str],
+        bench_serving,
         task_id: int,
         envs: Optional[Dict],
-        port: int
+        dist_port: int,
+        server_port: int,
     ) -> None:
-        super().__init__(connection, launch_server, envs, task_id)
-        super().set_server_port(port)
+        super().__init__(connection, launch_server, envs, task_id, dist_port, server_port)
         self.bench_serving = bench_serving
         self.launch_mode = TaskLaunchMode.online
         self.current_bench_id = 0
+        self.bench_total_num = sum([len(bench.cmd_list) for bench in self.bench_serving])
 
     def init(self):
         self.is_stopped = False
@@ -322,9 +339,10 @@ class TaskOnline(BaseTask):
             self.check_abnormal()
             self.start_server()
             self.real_progress_manager.init(self)
-            self.real_progress_manager.write_real_progress_bench_serving(0, False)
+            self.real_progress_manager.write_real_progress_bench_serving(0, None, False)
             self.is_bench_finish = False
             server_start = self.wait_server_ready()
+            self.running_server_args_str, self.running_server_args_dict = self.get_running_server_args(' '.join(self.server_cmd_ops[0].output))
             if server_start and not self.is_bench_finish:
                 self.bench_test(client_id)
 
@@ -356,64 +374,64 @@ class TaskOnline(BaseTask):
 
         #for i, one_bench in enumerate(self.bench_serving):
         bench_id = -1
-        for content in self.bench_serving:
-            bench_id += 1
-            if self.is_stopped:
-                self.logger.error(f'bench stop success0')
-                return
+        for benchmark in self.bench_serving:
+            for i, bench_cmd in enumerate(benchmark.cmd_list):
+                bench_id += 1
+                if self.is_stopped:
+                    self.logger.error(f'bench stop success0')
+                    return
 
-            # 此处判断如果上次bench中断,则跳过之前已经跑过的bench client
-            if bench_id < self.current_bench_id:
-                continue
-            self.current_bench_id = bench_id + 1
+                # 此处判断如果上次bench中断,则跳过之前已经跑过的bench client
+                if bench_id < self.current_bench_id:
+                    continue
+                self.current_bench_id = bench_id + 1
 
-            # 此处判断如果上次主进程中断,则跳过之前已经跑过的bench client
-            if bench_id < client_id:
-                self.logger.info("current client id " + str(bench_id) + " last client id " + str(client_id))
-                continue
-            
-            # --output-file 追加, 不然jsonl生成到其他目录下
-            one_bench_with_output = self.output_manager.append_result_file_param(content.get_cmd())
+                # 此处判断如果上次主进程中断,则跳过之前已经跑过的bench client
+                if bench_id < client_id:
+                    self.logger.info("current client id " + str(bench_id) + " last client id " + str(client_id))
+                    continue
+                
+                # --output-file 追加, 不然jsonl生成到其他目录下
+                one_bench_with_output = self.output_manager.append_result_file_param(bench_cmd, benchmark)
 
-            self.current_bench_op = OperationContent(
-                id=get_next_op_id(),
-                type=OperationType.RUN,
-                envs=self.envs,
-                cmd=one_bench_with_output,
-                store_output=True,
-                print_output=True,
-                is_master=True,
-                is_benching=True,
-                special_logger=self.global_logger
-            )
+                self.current_bench_op = MsgContent(
+                    id=get_next_op_id(),
+                    type=MsgType.RUN_CMD,
+                    envs=benchmark.envs,
+                    cmd=one_bench_with_output,
+                    store_output=True,
+                    print_output=True,
+                    is_master=True,
+                    is_benching=True,
+                    special_logger=self.global_logger
+                )
 
-            self.current_bench_id = bench_id + 1
-            self.real_progress_manager.write_real_progress_bench_serving(bench_id)
-            self.connection.run_cmd(self.nodes_used[0], self.current_bench_op)
-            statu = self.current_bench_op.status
-            result = self.current_bench_op.output
+                self.current_bench_id = bench_id + 1
+                self.real_progress_manager.write_real_progress_bench_serving(bench_id, bench_cmd)
+                self.connection.run_cmd(self.nodes_used[0], self.current_bench_op)
+                statu = self.current_bench_op.status
+                result = self.current_bench_op.output
 
-            if statu == 0:
-                self.real_progress_manager.write_real_progress_result('pass', content.get_id())
-                self.output_manager.write_client_result(content.get_cmd(), result)
-            else:
-                self.real_progress_manager.write_real_progress_result('fail', content.get_id())
-                self.output_manager.write_client_result(content.get_cmd(), result, False)
+                if statu == 0:
+                    self.real_progress_manager.write_real_progress_result('pass', i)
+                    self.output_manager.write_client_result(bench_cmd, benchmark, result)
+                    self.output_manager.extract_result_metrics(bench_cmd, benchmark, self.running_server_args_str, self.running_server_args_dict)
+                else:
+                    self.real_progress_manager.write_real_progress_result('fail', i)
+                    self.output_manager.write_client_result(bench_cmd, benchmark, result, False)
 
-            if self.is_stopped:
-                self.logger.error(f'bench stop success1')
-                if self.current_bench_id == len(self.bench_serving):
-                    self.is_bench_finish = True
-                return
+                if self.is_stopped:
+                    self.logger.error(f'bench stop success1')
+                    if self.current_bench_id == len(self.bench_serving):
+                        self.is_bench_finish = True
+                    return
 
-            self.current_bench_op = None
+                self.current_bench_op = None
 
-        self.output_manager.extract_result_metrics()
-        if self.task_type == TaskType.search:
-            self.output_manager.parser_single_search_data()
-        if self.current_bench_id == len(self.bench_serving):
+        if self.current_bench_id == self.bench_total_num:
             self.is_bench_finish = True
             self.real_progress_manager.write_to_run_args(self.task_id+1, 0)
+
 
 class TaskOffline(BaseTask):
     def __init__(self,
@@ -421,12 +439,14 @@ class TaskOffline(BaseTask):
         launch_server: str,
         task_id: int,
         envs: Optional[Dict],
-        port: int
+        dist_port: int,
+        server_port: int,
     ) -> None:
-        super().__init__(connection, launch_server, envs, task_id)
-        super().set_server_port(port)        
+        super().__init__(connection, launch_server, envs, task_id, dist_port, server_port)
         self.launch_mode = TaskLaunchMode.offline
         self.task_id = task_id
+        self.bench_serving = PerfBenchmark('custom', None, task_id, TaskLaunchMode.offline)
+        self.bench_total_num = 1
     
     def start_offline_server(self):
         # 拼接 --result-filename = xxxxx.jsonl
@@ -437,15 +457,15 @@ class TaskOffline(BaseTask):
         master_ops.thread.join()
         statu = master_ops.status
         result = master_ops.output
-       
+        
         if statu == 0:
             self.real_progress_manager.write_real_progress_result('pass',self.task_id)
-            self.output_manager.write_client_result(self.server_cmd, result)
+            self.output_manager.write_client_result(self.server_cmd, self.bench_serving, result)
+            self.running_server_args_str, self.running_server_args_dict = self.get_running_server_args(' '.join(result))
+            self.output_manager.extract_result_metrics(self.server_cmd, self.bench_serving, self.running_server_args_str, self.running_server_args_dict)
         else:
             self.real_progress_manager.write_real_progress_result('fail',self.task_id)
-            self.output_manager.write_client_result(self.server_cmd, result, False)
-        self.output_manager.extract_result_metrics()
-        
+            self.output_manager.write_client_result(self.server_cmd, self.bench_serving, result, False)
         
     def run(self, client_id=0):
         self.check_abnormal()

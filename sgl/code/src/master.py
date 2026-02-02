@@ -1,18 +1,14 @@
 import argparse
 import sys
 import signal
-#import os
-# 获取当前文件所在目录的上一级目录（即项目的根目录）
-#root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-#sys.path.append(root_dir)
-
 import json
 import re
 from typing import Optional, List, Dict, Any, Union
 from src.task import TaskOnline, TaskOffline,BaseTask
 
 from src.connection import Connection
-from src.output import BenchmarkOutputManager, AccOutputManager, SearchOutputManager, RampupOutputManager, RealProgressManager
+from src.output import OutputManager, RealProgressManager
+from src.benchmark import Benchmark
 
 from utils.utils import *
 from itertools import product
@@ -20,10 +16,10 @@ from collections import defaultdict
 import pandas as pd
 
 
-server_id_global = -1
-server_pass_list = defaultdict(list)
+DEFAULT_SERVER_PORT = 30000
+DEFAULT_DIST_PORT = 5000
 
-class ConfigParser:
+class ServerParser:
     @staticmethod
     def online_server(server, logger = None):
         param_list = []
@@ -45,8 +41,20 @@ class ConfigParser:
         return launch_server_commands
 
     @staticmethod
-    def get_config_default(config, key, default_value):
-        return config[key] if key in config.keys() else default_value
+    def get_server_list(config, task_name, task, logger):
+        server_list = []
+        server_cmd = task['launch_server']
+        if isinstance(server_cmd, list):
+            server_list = ServerParser.online_server(server_cmd, logger=logger)
+        elif isinstance(server_cmd, str):
+            server_cmds = get_json_config_default(config, 'server_cmds', None)
+            for cmd_name in server_cmd.split(';'):
+                if server_cmds is None or cmd_name.strip() not in server_cmds.keys():
+                    raise RuntimeError(f"Task[{task['task_name']}] launch server cmd{cmd_name.strip()} not set!")
+                server_list.extend(ServerParser.online_server(server_cmds[cmd_name.strip()], logger=logger))
+        else:
+            raise RuntimeError(f"Task[{task_name}] launch server cmd only support str or list!")
+        return server_list
 
     @staticmethod
     def extract_task_model_name(server_cmd) -> str:
@@ -64,319 +72,18 @@ class ConfigParser:
         return parts[-1][1]
 
     @staticmethod
-    def parse_benchmark(benchmark_config, task_type, launch_mode):
-        command_base = ConfigParser.get_config_default(benchmark_config, 'command_base', '') if launch_mode == 'online' else ''
-        client_id = -1
-        benchmark_list = []
-        max_concurrency = ConfigParser.get_config_default(benchmark_config, 'max_concurrency', None)
-        num_prompt_times = ConfigParser.get_config_default(benchmark_config, 'num_prompt_times', None)
-        for input_output in benchmark_config['input_output_len']:
-            input_len, output_len = input_output.split('/')
-            if task_type in [TaskType.benchmark]:
-                if max_concurrency is None or num_prompt_times is None:
-                    for index, num_prompt in enumerate(benchmark_config['num_prompt']):
-                        client_id += 1
-                        benchmark_list.append(
-                            BenchmarkCmds(
-                                client_id, f" {command_base} --random-input-len {input_len} --random-output-len {output_len} --num-prompts {num_prompt}"
-                            )
-                        )
-                    continue
-                
-                assert (
-                    isinstance(max_concurrency, list), f'invalid max_concurrency, must be list'
-                )
-                for index, concurrency in enumerate(benchmark_config['max_concurrency']):
-                    client_id += 1
-                    cur_num_prompt = None
-                    if isinstance(num_prompt_times, list):
-                        if index < len(num_prompt_times):
-                            cur_num_prompt = int(num_prompt_times[index])
-                        else:
-                            cur_num_prompt = 1
-                    else:
-                        cur_num_prompt = int(num_prompt_times)
-
-                    if cur_num_prompt is None or cur_num_prompt <= 0:
-                        benchmark_list.append(
-                            BenchmarkCmds(
-                                client_id, f" {command_base} --random-input-len {input_len} --random-output-len {output_len} --num-prompts {concurrency}"
-                            )
-                        )
-                        continue
-                    cur_num_prompt = cur_num_prompt * int(concurrency)
-                    benchmark_list.append(
-                        BenchmarkCmds(
-                            client_id, f" {command_base} --random-input-len {input_len} --random-output-len {output_len} --num-prompts {cur_num_prompt} --max-concurrency {concurrency}"
-                        )
-                    )
-            elif task_type == TaskType.search:
-                batch_size_config = benchmark_config["batch_size_config"]
-                bs_range = batch_size_config["range"]
-                steps = int(batch_size_config["steps"])
-                for bs in range(int(min(bs_range)),int(max(bs_range)),steps):
-                    client_id += 1
-                    benchmark_list.append(
-                        BenchmarkCmds(client_id, f" {command_base} --random-input-len {input_len} --random-output-len {output_len} --num-prompts {bs}")
-                    )
-        return benchmark_list
-
-    @staticmethod
-    def filter_benchmark(svr_id, benchmark_list, incremental_mode):
-        global server_pass_list
-
-        if incremental_mode:
-            benchmark_list_filter = []
-            for index, item in enumerate(benchmark_list):
-                if str(index) in server_pass_list[str(svr_id)]:
-                    continue
-                benchmark_list_filter.append(item)
-            return benchmark_list_filter
-        return benchmark_list
-    
-    @staticmethod
     def merge_task_envs(environments, task_envs):
-        default_envs = ConfigParser.get_config_default(environments, 'default_envs', [])
+        default_envs = get_json_config_default(environments, 'default_envs', [])
         if len(task_envs) == 0:
-            return ConfigParser.convert_str_to_env_dict(default_envs)
+            return convert_str_to_env_dict(default_envs)
         new_env = []
         for env_value in task_envs:
             if env_value in environments.keys():
                 new_env.extend(environments[env_value])
                 continue
             new_env.append(env_value)
-        return ConfigParser.convert_str_to_env_dict(new_env)
+        return convert_str_to_env_dict(new_env)
     
-    @staticmethod
-    def convert_str_to_env_dict(env_strs: List[str]):
-        if env_strs is None or len(env_strs) == 0:
-            return {}
-        env_dict = {}
-        for env_str in env_strs:
-            position = env_str.find('=')
-            if position == -1:
-                continue
-            env_dict[env_str[:position]] = env_str[position+1:]
-        return env_dict
-
-
-class BenmchmarkParser(ConfigParser):
-    @staticmethod
-    def from_config(config, task, connection, task_type, incremental_mode, args, environments, logger = None):
-        global server_id_global
-        task_list = []
-        server_list = []
-        server_cmd = task['launch_server']
-        if isinstance(server_cmd, list):
-            server_list = ConfigParser.online_server(server_cmd, logger=logger)
-        elif isinstance(server_cmd, str):
-            for cmd_name in server_cmd.split(';'):
-                if cmd_name.strip() not in config.keys():
-                    raise RuntimeError(f"Task[{task['task_name']}] launch server cmd{cmd_name.strip()} not set!")
-                server_list.extend(ConfigParser.online_server(config[cmd_name.strip()], logger=logger))
-        else:
-            raise RuntimeError(f"Task[{task['task_name']}] launch server cmd only support str or list!")
-        launch_mode = ConfigParser.get_config_default(task, 'launch_mode', 'online')
-        benchmark_list = ConfigParser.parse_benchmark(task['benchmark'], task_type, launch_mode)
-        envs = ConfigParser.merge_task_envs(environments, ConfigParser.get_config_default(task, 'environment', []))
-        max_ttft = None
-        max_tpot = None
-        if task_type == TaskType.search:
-            benchmark = task['benchmark']
-            max_ttft = benchmark["max_ttft"]
-            max_tpot = benchmark["max_tpot"]
-
-        for server_cmd in server_list:
-            if launch_mode == 'online':
-                server_id_global += 1
-                if str(server_id_global) in server_pass_list and len(server_pass_list[str(server_id_global)]) == len(benchmark_list):
-                    continue
-
-                benchmark_list_filter = ConfigParser.filter_benchmark(server_id_global, benchmark_list, incremental_mode)
-                _task = TaskOnline(connection, server_cmd, benchmark_list_filter, server_id_global, envs, task['server_port'])
-                _task.task_name = ConfigParser.get_config_default(task, 'task_name', f' ')
-                _task.task_type = task_type
-                _task.model_name = ConfigParser.extract_task_model_name(server_cmd)
-                _task.max_ttft = max_ttft
-                _task.max_tpot = max_tpot
-                if task_type == TaskType.search:
-                    _task.set_output_manager(SearchOutputManager(args, _task))
-                else:
-                    _task.set_output_manager(BenchmarkOutputManager(args, _task))
-                _task.global_logger = logger
-                task_list.append(_task)
-            else:
-                for benchmark in benchmark_list:
-                    server_id_global += 1
-                    if str(server_id_global) in server_pass_list:
-                        continue
-                    _task = TaskOffline(connection, server_cmd+" "+benchmark.get_cmd(), server_id_global, envs, task['server_port'])
-                    _task.task_name = task['task_name']
-                    _task.task_type = task_type
-                    _task.model_name = ConfigParser.extract_task_model_name(server_cmd)
-                    if task_type == TaskType.search:
-                        _task.set_output_manager(SearchOutputManager(args, _task))
-                    else:
-                        _task.set_output_manager(BenchmarkOutputManager(args, _task))
-                    _task.global_logger = logger
-                    task_list.append(_task)
-        log_msg_level(f'Benmchmark task list len={len(task_list)}', logger)
-        return task_list
-
-
-class RampupParser(ConfigParser):
-    @staticmethod
-    def from_config(config, connection, incremental_mode, args):
-        global server_id_global
-        # parse config and return TaskOffline/TaskONline list
-        task_list = []
-
-        for task_id, task in enumerate(config['tasks']):
-            server_cmds:list[str] = ConfigParser.online_server(task['launch_server'])
-            benchmark_cmds = RampupParser.get_rampup_benchmark_cmds(task['benchmark'])
-            envs = ConfigParser.get_config_default(task, 'environment', {})
-
-            for cmd_id, server_cmd in enumerate(server_cmds):
-                server_id_global += 1
-                if str(server_id_global) in server_pass_list and len(server_pass_list[str(server_id_global)]) == len(benchmark_cmds):
-                    continue
-                benchmark_list_filter = ConfigParser.filter_benchmark(server_id_global, benchmark_cmds, incremental_mode)
-                _task = TaskOnline(connection, server_cmd, benchmark_list_filter, server_id_global, envs, task['server_port'])
-                _task.task_name = ConfigParser.get_config_default(task, 'task_name', f'task{task_id}_{cmd_id}')
-                _task.task_type = TaskType.rampup
-                _task.model_name = ConfigParser.extract_task_model_name(server_cmd)
-
-                _task.set_output_manager(RampupOutputManager(args, _task))
-                task_list.append(_task)
-
-        return task_list
-
-    @staticmethod
-    def get_rampup_benchmark_cmds(benchmark_config):
-        # 填充爬坡的cmds
-        command_base = ConfigParser.get_config_default(benchmark_config, 'command_base', '')
-        rampup_params = RampupParser.compose_rampup_params(benchmark_config)
-        #variations
-        # bm_input_output_len_params = RampupParser.input_output_len(benchmark_config['input_output_len'])
-
-        client_id = -1
-        benchmark_cmds = []
-        # 对所有input-output 适用rampup参数
-        for input_output in benchmark_config['input_output_len']:
-            input_len, output_len = input_output.split('/')
-            for rampup_param in rampup_params:
-                client_id += 1
-                benchmark_cmds.append(
-                    BenchmarkCmds(client_id, f" {command_base} {rampup_param} --random-input-len {input_len} --random-output-len {output_len}")
-                )
-        return benchmark_cmds
-
-    @staticmethod
-    def compose_rampup_params(config_benchmark):
-        max_concurrent_requests:list[str] = config_benchmark['max_concurrent_requests'] #暂时认为他是单一的
-        rampup_period_list:list[str] = config_benchmark['rampup_period'] #多组
-        requests_config_list:list[str] = config_benchmark['requests_configs']
-
-        max_concurrent_requests = [int(x) for x in max_concurrent_requests]
-        
-        # 使用上面的参数按爬坡的顺序组合
-        rampup_params = []
-        for requests_config in requests_config_list:
-            least_requests_num, num_warmup_requests_ratio, num_benchmark_requests_ratio = RampupParser.parse_request_configs(requests_config)
-            for rampup_periods in rampup_period_list:
-                rampup_periods = [int(x) for x in rampup_periods.split(',')]
-        
-                for max_concurrent_request, rampup_period in zip(max_concurrent_requests,rampup_periods):
-                    num_warmup_requests = max(least_requests_num, int(max_concurrent_request)*num_warmup_requests_ratio)
-                    num_benchmark_requests = max(least_requests_num, int(max_concurrent_request)*num_benchmark_requests_ratio)
-                    rampup_param = f' --max-concurrency {max_concurrent_request} --warmup-requests {num_warmup_requests} --num-prompts {num_benchmark_requests} --ramp-up-period {rampup_period} --rampup-mode --flush-cache'
-                    rampup_params.append(rampup_param)
-
-        return rampup_params
-
-    @staticmethod
-    def parse_request_configs(requests_config:str):
-        """
-        --least_requests_num 16 --num_warmup_requests_ratio 4 --num_benchmark_requests_ratio 16
-        或
-        --num_warmup_requests_ratio 4 --num_benchmark_requests_ratio 16
-        """
-        pattern = r'--(\w+)\s+(\d+)'
-        matches = re.findall(pattern, requests_config)
-        params = dict(matches)
-        
-        # 提取目标参数（如果least_requests_num不存在则返回 16)
-        least_reqs_num = int(params.get('least_requests_num', 16))
-        warmup_reqs_ratio = int(params.get('num_warmup_requests_ratio'))
-        benchmark_reqs_ratio = int(params.get('num_benchmark_requests_ratio'))
-
-        return least_reqs_num, warmup_reqs_ratio, benchmark_reqs_ratio
-
-
-class AccParser(ConfigParser):
-    @staticmethod
-    def from_config(config, task, connection, incremental_mode, args, environments, logger = None):
-        global server_id_global
-        task_list = []
-        server_list = []
-        server_cmd = task['launch_server']
-        if isinstance(server_cmd, list):
-            server_list = ConfigParser.online_server(server_cmd, logger=logger)
-        elif isinstance(server_cmd, str):
-            for cmd_name in server_cmd.split(';'):
-                if cmd_name.strip() not in config.keys():
-                    raise RuntimeError(f"Task[{task['task_name']}] launch server cmd{cmd_name.strip()} not set!")
-                server_list.extend(ConfigParser.online_server(config[cmd_name.strip()], logger=logger))
-        else:
-            raise RuntimeError(f"Task[{task['task_name']}] launch server cmd only support str or list!")
-
-        acc_type = TaskAccType(ConfigParser.get_config_default(task, 'acc_type', TaskAccType.mmlu.value))
-        benchmark_cmds = AccParser.get_acc_benchmark_cmds(acc_type, task['benchmark'])
-        envs = ConfigParser.merge_task_envs(environments, ConfigParser.get_config_default(task, 'environment', {}))
-        envs['GLOO_SOCKET_IFNAME'] = connection.nodes_info[0].interface
-        envs['MCCL_IB_HCA'] = connection.nodes_info[0].ib_hcas
-
-        for cmd_id, server_cmd in enumerate(server_list):
-            server_id_global += 1
-            if str(server_id_global) in server_pass_list and len(server_pass_list[str(server_id_global)]) == len(benchmark_cmds):
-                continue
-            benchmark_list_filter = ConfigParser.filter_benchmark(server_id_global, benchmark_cmds, incremental_mode)
-            _task = TaskOnline(connection, server_cmd, benchmark_list_filter, server_id_global, envs, task['server_port'])
-            _task.task_name = ConfigParser.get_config_default(task, 'task_name', f'task{server_id_global}_{cmd_id}')
-            _task.task_type = TaskType.acc
-            _task.acc_type = acc_type
-            _task.model_name = ConfigParser.extract_task_model_name(server_cmd)
-
-            _task.set_output_manager(AccOutputManager(args, _task))
-            _task.global_logger = logger
-            task_list.append(_task)
-        log_msg_level(f'Acc task list len={len(task_list)}', logger)
-        return task_list
-
-    @staticmethod
-    def get_acc_benchmark_cmds(acc_type:TaskAccType, benchmark_config):
-        client_id = -1
-
-        command_base = ConfigParser.get_config_default(benchmark_config, 'command_base', '')
-        if acc_type == TaskAccType.mmlu:
-            client_id += 1
-            return [BenchmarkCmds(client_id, command_base)]
-
-        elif acc_type == TaskAccType.ceval:
-            benchmark_cmds = []
-            if 'random' in benchmark_config:
-                for random in benchmark_config['random']:
-                    client_id += 1
-                    benchmark_cmds.append(
-                        BenchmarkCmds(client_id, f"{command_base} {random}")
-                    )
-            else:
-                client_id += 1
-                benchmark_cmds.append(
-                    BenchmarkCmds(client_id, f"{command_base}")
-                )
-            return benchmark_cmds
-
 
 class TaskScheduler:
     def __init__(self, args:argparse.Namespace) -> None:
@@ -389,6 +96,8 @@ class TaskScheduler:
         self.real_progress_manager = RealProgressManager(self.args)
         self.now_path = self.real_progress_manager.now_time_path
         self.global_logger = get_logger(self.now_path, 'bench_record.log')
+        self.server_id_global = -1
+        self.server_pass_list = defaultdict(list)
 
     def pass_id_filter(self):
         # 1.获取 total_real_progress_file 文件数据
@@ -407,33 +116,32 @@ class TaskScheduler:
             self.global_logger.info(f'The current task list is not empty, follow the normal production task process')
             return
 
-        global server_pass_list
         for task in task_list:
             if task["launch_mode"] == "online":
                 for client in task["client_test"]:
                     if client["status"] != "pass":
                         continue
-                    server_pass_list[task['server_id']].append(client["id"])
+                    self.server_pass_list[task['server_id']].append(client["id"])
             elif task["launch_mode"] == "offline":
                 if task["status"] != "pass":
                     continue
-                server_pass_list[task['server_id']] = []
+                self.server_pass_list[task['server_id']] = []
             else:
                 self.global_logger.error(f'launch_mode is unknown type...' + task["launch_mode"] + " server id: " + task["server_id"])
         self.global_logger.info("current server_pass_list after filter:")
-        self.global_logger.info(server_pass_list)
+        self.global_logger.info(self.server_pass_list)
     
     def is_valid_task_config(self, config_path):
         """
         检查是否为有效的task配置文件
-        条件：1. 是有效的JSON文件 2. 包含'tasks'字段
+        条件 1. 是有效的JSON文件 2. 包含'tasks'字段
         """
         if not config_path.lower().endswith(('.json')):
             return False, 0
         try:
             config = read_json(config_path)
             # 检查是否包含必要的tasks字段
-            if 'tasks' in config and isinstance(config['tasks'], list):
+            if 'tasks' in config and isinstance(config['tasks'], dict):
                 return True,config
             else:
                 self.global_logger.warning(f"Skip invalid task config: {config_path} - Missing or invalid 'tasks' field")
@@ -442,46 +150,78 @@ class TaskScheduler:
             self.global_logger.warning(f"Skip invalid JSON file: {config_path} - Error: {str(e)}")
             return False,0
 
-    def get_task_type_from_config(self, task_config) -> TaskType:
-        """
-        根据规则获取任务类型：
-        1. 存在acc_type字段 -> TaskType.acc
-        2. 存在task_type字段 -> 检查合法性并返回对应类型
-        3. 都不存在 -> 默认TaskType.benchmark
-        """
-        # 规则1：存在acc_type字段，返回acc类型
-        if 'acc_type' in task_config:
-            return TaskType.acc
-        
-        # 规则2：存在task_type字段
-        if 'task_type' in task_config:
-            task_type_str = task_config['task_type']
-            try:
-                return TaskType(task_type_str)
-            except ValueError:
-                self.global_logger.warning(f"Unknown task type: {task_type_str}, using benchmark as default")
-                return TaskType.benchmark
-        
-        # 规则3：都不存在，默认benchmark
-        return TaskType.benchmark
+    def parse_task(self, config, task_name, task_config, environments) -> None:
+        task_list = []
+        server_list = ServerParser.get_server_list(config, task_name, task_config, self.global_logger)
+        launch_mode = get_json_config_default(task_config, 'launch_mode', 'online')
+        envs = ServerParser.merge_task_envs(environments, get_json_config_default(task_config, 'environment', []))
+        dist_port = get_json_config_default(task_config, 'dist_port', DEFAULT_DIST_PORT)
+        server_port = get_json_config_default(task_config, 'server_port', DEFAULT_SERVER_PORT)
+
+        client_id = 0
+        benchmark_cmd = task_config['benchmark']
+        benchmark_list = []
+        if isinstance(benchmark_cmd, dict):
+            bench_type = get_json_config_default(benchmark_cmd, 'type', 'perf')
+            if bench_type in self.args.specify_test:
+                benchmark_list = [Benchmark.parse_config('', benchmark_cmd, client_id, environments, launch_mode)]
+        elif isinstance(benchmark_cmd, str):
+            benchmark_cmds = get_json_config_default(config, 'benchmark_cmds', None)
+            for bench_name in benchmark_cmd.split(';'):
+                if benchmark_cmds is None or bench_name.strip() not in benchmark_cmds.keys():
+                    raise RuntimeError(f"Task[{task_name}] benchmark cmd{bench_name.strip()} not set!")
+                bench_type = get_json_config_default(benchmark_cmds[bench_name.strip()], 'type', 'perf')
+                if bench_type in self.args.specify_test:
+                    benchmark_list.append(
+                        Benchmark.parse_config(bench_name.strip(), benchmark_cmds[bench_name.strip()], client_id, environments, launch_mode)
+                    )
+                    client_id = benchmark_list[-1].get_end_id()
+        else:
+            raise RuntimeError(f"Task[{task_name} launch server cmd only support str or dict!")
+
+        for server_cmd in server_list:
+            if launch_mode == 'online':
+                self.server_id_global += 1
+                # if str(self.server_id_global) in self.server_pass_list and len(self.server_pass_list[str(self.server_id_global)]) == client_id:
+                #     continue
+
+                # benchmark_list_filter = ConfigParser.filter_benchmark(server_id_global, benchmark_list, incremental_mode)
+                _task = TaskOnline(self.connection, server_cmd, benchmark_list, self.server_id_global, envs, dist_port, server_port)
+                _task.task_name = task_name
+                _task.timeout = self.args.timeout
+                _task.model_name = ServerParser.extract_task_model_name(server_cmd)
+                _task.set_output_manager(OutputManager.from_task(self.args, _task))
+                _task.global_logger = self.global_logger
+                task_list.append(_task)
+            else:
+                for benchmark in benchmark_list:
+                    for cmd in benchmark.cmd_list:
+                        self.server_id_global += 1
+                        # if str(server_id_global) in server_pass_list:
+                        #     continue
+                        _task = TaskOffline(self.connection, f'{server_cmd} {cmd}', self.server_id_global, envs, dist_port, server_port)
+                        _task.task_name = task_name
+                        _task.timeout = self.args.timeout
+                        _task.model_name = ServerParser.extract_task_model_name(server_cmd)
+                        _task.set_output_manager(OutputManager.from_task(self.args, _task))
+                        _task.global_logger = self.global_logger
+                        task_list.append(_task)
+        log_msg_level(f'server task list len={len(task_list)}', self.global_logger)
+        return task_list
 
     def generate_task(self) -> None:
-        # 跑非PASS测试, 需要设置此参数
-        # 此处将pass的测试id添加到全局变量 server_pass_list, 后续筛选使用
-        # if self.args.incremental_mode:
-        #     self.pass_id_filter()
-        incremental_mode = False
+        # incremental_mode = False
         machines = read_json(self.args.machine_config)
-        self.connection = Connection(machines['machine_info'], self.args.port, logger=self.global_logger)
+        self.connection = Connection(machines['machine_info'], self.args.port, self.args.local_ip, logger=self.global_logger)
         self.connection.connect()
-        environments = ConfigParser.get_config_default(machines, 'environments', {})
+        environments = get_json_config_default(machines, 'environments', {})
 
-        # 新增：处理目录和文件混合的情况
+        # 处理目录和文件混合的情况
         expanded_config_paths = []
         for config_path in self.args.tasks_config:
             if os.path.isdir(config_path):
                 # 如果是目录，遍历目录下的所有JSON文件,用了if判断是否是json文件
-                for root, dirs, files in os.walk(config_path):
+                for root, _, files in os.walk(config_path):
                     for file in files:
                         if file.lower().endswith(('.json')) and os.path.join(root, file) not in expanded_config_paths:
                             expanded_config_paths.append(os.path.join(root, file))
@@ -494,45 +234,36 @@ class TaskScheduler:
             if not is_valid_task_config:
                 continue
             
-            for task_config in config['tasks']:
-                task_type = self.get_task_type_from_config(task_config)
-                if task_type == TaskType.benchmark and task_type.value in self.args.specify_task:
-                    tasks = BenmchmarkParser.from_config(
-                        config, task_config, self.connection, task_type, incremental_mode, 
-                        self.args, environments, logger=self.global_logger)
-                    self.task_list.extend(tasks)
-                elif task_type == TaskType.acc:
-                    acc_type = ConfigParser.get_config_default(task_config, 'acc_type', TaskAccType.mmlu.value)
-                    if task_type.value in self.args.specify_task or acc_type in self.args.specify_task:
-                        tasks = AccParser.from_config(
-                            config, task_config, self.connection, incremental_mode, 
-                            self.args, environments, logger=self.global_logger)
-                        self.task_list.extend(tasks)
-                    
+            for name, task_config in config['tasks'].items():
+                self.task_list.extend(self.parse_task(config, name, task_config, environments))           
 
     def merge_result(self):
-        task_types = [task.task_type for task in self.task_list]
-        task_types = list(dict.fromkeys(task_types))    # 去重
-        
-        for task_type in task_types:
-            try:
-                if task_type == TaskType.search:
-                    search_tasks = [task for task in self.task_list if task.task_type == TaskType.search]
-                    search_task = search_tasks[0]
-                    search_task.output_manager.merge_online_search_result(task_type,search_task.max_ttft, search_task.max_tpot)
+        result_files = {}        
+        for task in self.task_list:
+            out_csv_list = task.output_manager.get_merged_result_info(self.global_logger)
+            for one_csv in out_csv_list:
+                file_name = one_csv[0]
+                file_path = one_csv[1]
+                if file_name in result_files.keys():
+                    if file_path not in result_files[file_name]:
+                        result_files[file_name].append(file_path)
                 else:
-                    path_merged = []
-                    all_data = pd.DataFrame()
-                    for task in self.task_list:
-                        if task.task_type == task_type:
-                            data = task.output_manager.merge_result(path_merged, self.global_logger)
-                            all_data = pd.concat([all_data, data], ignore_index=True)
-                    output_path = os.path.join(self.now_path, f'{task_type.value}.csv')
-                    with open(output_path, 'w', encoding='utf-8') as csv_file:
-                        all_data.to_csv(csv_file, index=False)
-                    self.global_logger.info(f"{task_type.value} result_csv store in {output_path}, len={len(all_data)}")
+                    result_files[file_name] = [file_path]
+
+        for name, results in result_files.items():
+            try:
+                all_data = pd.DataFrame()
+                for one_result in results:
+                    data = pd.read_csv(one_result)
+                    self.global_logger.info(f'merge result {one_result}, len={len(data)}')
+                    all_data = pd.concat([all_data, data], ignore_index=True)
+
+                output_path = os.path.join(self.now_path, f'merge_{name}')
+                with open(output_path, 'w', encoding='utf-8') as csv_file:
+                    all_data.to_csv(csv_file, index=False)
+                self.global_logger.info(f"f'merge_{name}' store in {output_path}, len={len(all_data)}")
             except Exception as e:
-                self.global_logger.info(f"merge_result {task_type.value} exception {e}")
+                self.global_logger.info(f"merge_result {name} exception {e}")
 
     def run(self):
         # 注册信号处理
@@ -564,7 +295,6 @@ class TaskScheduler:
                         continue
                     is_task_skip = False
                     self.global_logger.info("current task need skip done.." )
-                task.output_manager.init()
                 # real_progress_manager.init(task)
                 task.set_real_progress_manager(self.real_progress_manager)
                 self.current_task = task
@@ -607,19 +337,20 @@ class TaskScheduler:
         sys.exit(0) 
 
 if __name__ == "__main__":
-    task_type_list = [
-        TaskType.benchmark.value,
-        TaskType.acc.value,
-        TaskAccType.mmlu.value,
-        TaskAccType.ceval.value
+    benchmark_type_list = [
+        BenchmarkType.perf.value,
+        BenchmarkType.mmlu.value,
+        BenchmarkType.ceval.value
     ]
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-path", type=str, default="output", help="Path for storing results")
     parser.add_argument("--tasks-config", type=str, nargs='*', help="JSON file or dir describing the task list")
     parser.add_argument("--machine-config", type=str, help="JSON file describing the machine list")
     parser.add_argument("--image-tag", type=str, default=" ",help="docker image tag")
-    parser.add_argument('--specify-task', nargs='*', choices=task_type_list, default=task_type_list, help='special task type to run, default all')
+    parser.add_argument('--specify-test', nargs='*', choices=benchmark_type_list, default=benchmark_type_list, help='special benchmark type to run, default all')
     parser.add_argument("--port",type=int,default=20000,help="client port bind to recv msg")
+    parser.add_argument("--timeout",type=int,default=1200,help="timeout in second for every task")
+    parser.add_argument("--local-ip",type=str,required=True,help="default local ip")
     
     Args = parser.parse_args(sys.argv[1:])
 

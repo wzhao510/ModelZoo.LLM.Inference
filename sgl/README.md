@@ -7,6 +7,7 @@ sgl
 ├──code/
 │   ├── src/
 │   │   ├── __init__.py
+│   │   ├── benchmark.py
 │   │   ├── connection.py
 │   │   ├── master.py
 │   │   ├── output.py
@@ -39,7 +40,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 
 | 测试类型     | 说明                                                         |
 | ------------ | ------------------------------------------------------------ |
-| benchmark    | 可以组合各种参数的benchmark测试                              |
+| perf         | 可以组合各种参数的性能测试                              |
 | acc          | 精度测试，目前支持 mmlu和ceval                               |
 
 ## 2.1 服务器信息配置 (mechines.json)
@@ -102,7 +103,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
   }
 }
 ```
-这里可以配置多组环境变量，以组名区分，如default_envs、specific_scenario_envs，不同的任务可以通过在task配置中的**environment**字段添加组名（如specific_scenario_envs）来直接引用对应的环境变量。
+这里可以配置多组环境变量，以组名区分，如default_envs、specific_scenario_envs，不同的任务可以通过在task和benchmark配置中的**environment**字段添加组名（如specific_scenario_envs）来直接引用对应的环境变量。
 
 注意：**default_envs**是针对当前版本提供的默认服务启动参数的最优环境变量；如果变更服务启动参数，比如由TP切分改为DP切分，当前的默认的环境变量可能不是最优，可以尝试使用**specific_scenario_envs**，当前版本测试发现对于DeepSeek TP并行和 Qwen3 235B PP并行，**specific_scenario_envs**环境变量是最优的
 
@@ -114,42 +115,80 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 在config.json的最前面可以配置一些通用的server命令，然后各个task中的**launch_server**参数可以通过命令的名称来引用，如下：
 ```json
 {
-    "server_cmd": [
-        ["python3 -m sglang.launch_server --trust-remote-code"],
-        ["--model-path /mnt/shared_data/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model"],
-        ["--disable-radix-cache"],
-        ["--attention-backend flashinfer"],
-        ["--tp 16 --dp 8 --enable-dp-attention --enable-dp-lm-head"],
-        [" --speculative-algorithm NEXTN --speculative-draft-model-path /mnt/shared_data/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"],
-        ["--disable-shared-experts-fusion"]
-    ],
-    "tasks": [
-        {
+    "server_cmds": {
+        "server_cmd": [
+            ["python3 -m sglang.launch_server --trust-remote-code"],
+            ["--model-path /mnt/shared_data/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model"],
+            ["--disable-radix-cache"],
+            ["--attention-backend flashinfer"],
+            ["--tp 16 --dp 8 --enable-dp-attention --enable-dp-lm-head"],
+            [" --speculative-algorithm NEXTN --speculative-draft-model-path /mnt/shared_data/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"],
+            ["--disable-shared-experts-fusion"]
+        ]
+    },
+    "tasks": {
+        "DeepSeek-R1-0528-BF16-W8A8" : {
             ......
             "launch_server": "server_cmd",
             ......
         }
-    ],
+    },
     ......
 }
 ```
 如上在task中可以直接通过引用已经定义的server命令名称来设置当前task的启动server命令，如果需要引用多个，则以分号分隔（如"server_cmd;server_cmd2"）；当然task中的**launch_server**也可以不引用，直接和上面的**server_cmd**一样用list来设置自己的命令。
 
 
+- **通用benchmark命令**
+
+在config.json的最前面也可以配置一些通用的benchmark命令，然后各个task中的**benchmark**参数可以通过命令的名称来引用，如下：
+```json
+{
+    ......
+    "benchmark_cmds": {
+        "random": {
+            "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json ",
+            "input_output_len": ["3072/1024"],
+            "max_concurrency": ["1", "16", "32", "64", "128", "256"],
+            "num_prompt_times": 5
+        },
+        "ceval": {
+            "type": "ceval",
+            "command_base": "python3  run_ceval_client.py --model /models/DeepSeek-R1-0528-BF16-W8A8  --test_jsonl /workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl --batch_size 64 --random_seed 0 --random_num 5"
+        },
+        "mmlu": {
+            "type": "mmlu",
+            "environment": ["mmlu_envs"],
+            "command_base": "python3 bench_sglang.py --data_dir /models/acc/mmlu/data --nsub 60"
+        }
+    },
+    "tasks": {
+        "DeepSeek-R1-0528-BF16-W8A8" : {
+            ......
+            "benchmark": "random;ceval;mmlu"
+            ......
+        }
+    }
+    ......
+}
+```
+如上在task中可以直接通过引用已经定义的benchmark命令名称来设置当前task的启动benchmark命令，如果需要引用多个，则以分号分隔（如"random;ceval"）；当然task中的**benchmark**也可以不引用，直接和上面的**benchmark_cmds**中的命令一样用结构来设置自己的命令。
+
+
 - **tasks: 测试任务信息**
 
-| 参数        | 说明                         |
-| ----------- | ---------------------------- |
-| task_name   | 任务名称                     |
-| launch_mode | 模式：online、offline        |
-| server_port | 端口号                       |
+| 参数        | 说明                                  |
+| ----------- | -----------------------------------  |
+| launch_mode | 模式：online、offline，默认 online     |
+| server_port | http server 端口号，默认30000          |
+| dist_port   | 卡间通信组的端口号，默认5000            |
 
 - **environment：任务独有环境变量配置**
 
 | 参数                                              | 说明                                      |
 | ------------------------------------------------- | ----------------------------------------- |
 
-如果为空，则此任务使用**mechines.json**中的**default_envs**环境变量配置
+如果不设置或者为空，则此任务使用**mechines.json**中的**default_envs**环境变量配置
 可以添加独有环境变量；也可以直接添加**mechines.json**中的环境变量组名来直接引用已有的环境变量，如：
 ```json
     ......
@@ -163,10 +202,11 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 
 **所有内置的模型config.json文件都是当前版本的最佳性能参数，只需要修改模型路径和机器等信息即可**
 
-## 2.3 Benchmark 测试 (config.json)
+## 2.3 Perf 测试 (config.json)
 
 | 参数             | 说明                                              |
 | ---------------- | ------------------------------------------------- |
+| type             | 测试类型，支持perf，ceval，mmlu，默认为perf         |
 | input_output_len | 输入token长度/输出token长度                        |
 | num_prompt       | 并发请求数，为列表                                         |
 | max_concurrency  | 最大并发数，为列表，如果不设置，则并发数和num_prompt相等，必须和num_prompt_times一起使用，且不需要配置num_prompt参数|
@@ -175,58 +215,70 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 - 传统方式，不带max_concurrency参数的如下：
 ```json
 {
-    "tasks": [
-        {
-            "task_name": "sglang_bench",
-            "launch_mode": "online",
-            "server_port": "5005",
-            "environment": [],
-            "launch_server": "server_cmd",
-            "benchmark": {
-                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json",
-                "input_output_len": ["3072/1024"],
-                "num_prompt": ["1", "16", "32", "64", "128"]
-            }
+    ......
+    "benchmark_cmds": {
+        "random": {
+            "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json",
+            "input_output_len": ["3072/1024"],
+            "num_prompt": ["1", "16", "32", "64", "128"]
         }
-    ]
+    },
+    "tasks": {
+        "DeepSeek-R1-0528-BF16-W8A8" : {
+            ......
+            "benchmark": "random"
+            ......
+        }
+    }
+    ......
 }
 
 ```
 - max_concurrency方式，且num_prompt_times为单个数字：
 ```json
 {
-    "tasks": [
-        {
-            ......
-            "benchmark": {
-                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json",
-                "input_output_len": ["3072/1024"],
-                "max_concurrency": ["1", "16", "32", "64", "128"],
-                "num_prompt_times": 5
-            }
+    ......
+    "benchmark_cmds": {
+        "random": {
+            "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json",
+            "input_output_len": ["3072/1024"],
+            "max_concurrency": ["1", "16", "32", "64", "128"],
+            "num_prompt_times": 5
         }
-    ]
+    },
+    "tasks": {
+        "DeepSeek-R1-0528-BF16-W8A8" : {
+            ......
+            "benchmark": "random"
+            ......
+        }
+    }
+    ......
 }
-
 ```
 这是对所有并发都跑5倍prompts的测试配置，比如bs=1组成的测试命令是 **--random-input-len 3072 --random-output-len 1024 --num-prompts 5 --max-concurrency 1**
 
 - max_concurrency方式，且num_prompt_times为列表，这种方式可对不同并发设置不同倍数的prompts：
 ```json
 {
-    "tasks": [
-        {
-            ......
-            "benchmark": {
-                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json",
-                "input_output_len": ["3072/1024"],
-                "max_concurrency": ["1", "16", "32", "64", "128"],
-                "num_prompt_times": [2, 3]
-            }
+    ......
+    "benchmark_cmds": {
+        "random": {
+            "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json",
+            "input_output_len": ["3072/1024"],
+            "max_concurrency": ["1", "16", "32", "64", "128"],
+            "num_prompt_times": [2, 3]
         }
-    ]
+    },
+    "tasks": {
+        "DeepSeek-R1-0528-BF16-W8A8" : {
+            ......
+            "benchmark": "random"
+            ......
+        }
+    }
+    ......
 }
-
 ```
 如上，对于bs=1则跑2倍并发：**--random-input-len 3072 --random-output-len 1024 --num-prompts 2 --max-concurrency 1**
 
@@ -249,9 +301,9 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 | data_dir | 如果使用mmlu数据集进行精度测试，需要准备data数据，请从https://people.eecs.berkeley.edu/~hendrycks/data.tar下载、解压, 使用此路径。此外，如果是离线环境还需要从https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken下载"cl100k_base.tiktoken"文件，放到容器内任意路径下，并且将cl100k_base.tiktoken文件重命名为9b5ad71b2ce5302211f9c61530b329a4922fc6a4(注：此目录名称为tiktoken下载的http链接的hash，如果后续下载链接有变更，则调整此目录名)，同时需要在任务配置信息中增加环境变量 TIKTOKEN_CACHE_DIR 设置为上述任意路径的绝对全路径，如下：
 ```json
     ......
-    "environment": {
-        "TIKTOKEN_CACHE_DIR": "{下载cl100k_base.tiktoken的所在的路径的绝对全路径}"
-    },
+    "environment": [
+        "TIKTOKEN_CACHE_DIR={下载cl100k_base.tiktoken的所在的路径的绝对全路径}"
+    ],
     ......
 ```
 
@@ -267,38 +319,25 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 ```json
 {
     ......
-    "tasks": [
-        {
-            "task_name": "test_mmlu",
-            "acc_type": "mmlu",
-            "launch_mode": "online",
-            "server_port": "5005",
-            "environment": [],
-            "launch_server": [
-                ["python3 -m sglang.launch_server --trust-remote-code"],
-                ["--model-path /mnt/shared_data/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model"],
-                ["--disable-radix-cache"],
-                ["--attention-backend flashinfer"],
-                ["--tp 16 --dp 8 --enable-dp-attention --enable-dp-lm-head"],
-                [" --speculative-algorithm NEXTN --speculative-draft-model-path /mnt/shared_data/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"],
-                ["--disable-shared-experts-fusion"]
-            ],
-            "benchmark": {
-                "command_base": "python3 bench_sglang.py --data_dir /model/acc/mmlu/data --nsub 60"
-            }
+    "benchmark_cmds": {
+        "ceval": {
+            "type": "ceval",
+            "command_base": "python3  run_ceval_client.py --model /models/DeepSeek-R1-0528-BF16-W8A8  --test_jsonl /workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl --batch_size 64 --random_seed 0 --random_num 5"
         },
-        {
-            "task_name": "test_ceval",
-            "acc_type": "ceval",
-            "launch_mode": "online",
-            "server_port": "5005",
-            "environment": [],
-            "launch_server": "server_cmd",
-            "benchmark": {
-                "command_base": "python3 run_ceval_client.py --model /models/DeepSeek-R1-W8A8-0528/vllm_quant_model  --test_jsonl /workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl --batch_size 64 --random_seed 0 --random_num 50"
-            }
+        "mmlu": {
+            "type": "mmlu",
+            "environment": ["mmlu_envs"],
+            "command_base": "python3 bench_sglang.py --data_dir /models/acc/mmlu/data --nsub 60"
         }
-    ]
+    },
+    "tasks": {
+        "DeepSeek-R1-0528-BF16-W8A8" : {
+            ......
+            "benchmark": "ceval;mmlu"
+            ......
+        }
+    }
+    ......
 }
 ```
 
@@ -325,44 +364,23 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 　　├── {时间戳}                                # 本轮测试的目录
 　　│    ├──  {模型名}                          # 本轮测试的模型名称1
 　　│    └──  {模型名}                          # 本轮测试的模型名称2
-　　│    └──  benchmark.csv                    # 本轮测试的精度测试结果汇总（若有）
-　　│    └──  acc.csv                          # 本轮测试的benchmark测试结果汇总（若有）
+　　│    └──  merge_perf_result.csv            # 本轮测试的性能测试结果汇总（若有）
+　　│    └──  merge_acc_result.csv             # 本轮测试的精度测试结果汇总（若有）
 　　│    └──  bench_record.log                 # 本轮测试的测试脚本执行记录和结果汇总日志
 　　└── total_real_progress_file.json          # 全局进度控制文件
 ```
 
-**层级3**: 每轮测试目录包含该轮测试所指定的各大类任务，如acc(精度)，benchmark(标准benchmark)等。
-
-```markdown
-{模型名}/
-├── acc/                                     # 精度
-│   └── real_progress_file.json              # 测试进度控制文件
-└── benchmark/                               # 标准benchmark
-    └── real_progress_file.json
-```
-
-**层级4**: 每种任务各自目录，包含logs(实时日志)，result(任务结果相关)。result下目录结构根据任务类型不同有所差异，具体参考下面结构。
+**层级3**: 每种任务各自目录，包含logs(实时日志)，result(任务结果相关)。result下目录结构根据任务类型不同有所差异，具体参考下面结构。
 
 ```plaintext
-acc/
-　├── logs/
-　│　 └── {任务名}_server{任务编号}_node{节点}.log    # 实时日志
-　└── result/
-　　　└── ceval|mmlu/                                # 精度任务子类型
-　　　 　　└── {任务名}-server{任务编号}/              # 单次精度结果
-　　　 　　　　├── *_result.json                      # 结果
-　　　 　　　　├── *_result.txt                       # 过程输出
-　　　 　　　　└── *_result.csv                       # 指标提取
-　　　 　　　　└── *.txt                              # ceval测试会多出的一个结果文件
-
-benchmark
+{模型名}/
 　├── logs/
 　│　 └── {任务名}_server{任务编号}_node{节点}.log    # 实时日志
 　└── result/
 　　　└── {任务名}-server{任务编号}/                   # 单任务结果
-　　　 　　├── *_result.jsonl                         # 结果
-　　　 　　├── *_result.txt                           # 过程输出
-　　　 　　└── *_result.csv                           # 指标提取
+　　　 　　├── *.jsonl                                # 性能或精度测试结果
+　　　 　　├── *.txt                                  # 性能或精度测试过程输出
+　　　 　　└── *.csv                                  # 性能或精度结果指标提取
 ```
 
 # 4 启动测试
@@ -406,26 +424,36 @@ docker run -it --device=/dev/dri --device=/dev/mxcd --device=/dev/infiniband --p
 
 进入主节点容器内部，modelzoo目录就在 /workspace/ModelZoo.LLM.Inference
 
-以DeepSeek-R1-BF16-W8A8为例，测试的任务是benchmark，那么修改 
+以DeepSeek-R1-W8A8为例，测试的任务是性能测试，那么修改 
 
- /workspace/ModelZoo.LLM.Inference/models/DeepSeek-R1-BF16-W8A8/benchmark.json
+ /workspace/ModelZoo.LLM.Inference/models/DeepSeek-R1-W8A8/config.json
 
 ```json
 {
-    "tasks": [
-        {
-            "task_name": "test",
-            "launch_mode": "online",
-            "server_port": "5005",
-            "environment": [],
-            "launch_server": "server_cmd",
-            "benchmark": {
-                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json",
-                "input_output_len": ["3072/1024"],
-                "num_prompt": ["1", "16", "32", "64", "128"]
-            }
+    "server_cmds": {
+        "server_cmd": [
+            ["python3 -m sglang.launch_server --trust-remote-code"],
+            ["--model-path /models/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model"],
+            ["--disable-radix-cache"],
+            ["--attention-backend flashinfer"],
+            ["--tp 16 --dp 8 --enable-dp-attention --enable-dp-lm-head"],
+            [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"]
+        ]
+    },
+    "benchmark_cmds": {
+        "random": {
+            "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json ",
+            "input_output_len": ["3072/1024"],
+            "max_concurrency": ["1", "16", "32", "64", "128"],
+            "num_prompt_times": 5
         }
-    ]
+    },
+    "tasks": {
+        "test" : {
+            "launch_server": "server_cmd",
+            "benchmark": "random"
+        }
+    }
 }
 ```
 
@@ -441,20 +469,23 @@ cd /workspace/ModelZoo.LLM.Inference/code
 # 对mechines.json文件中除主节点以外的“所有”从节点执行（无论从节点在此任务中有没有使用到），以上面4.2中的配置信息为例，需要对ip为192.168.0.2的设备执行即可。 port 可自定义（保持主从一致），
 python3 -m src.slave --local-ip 192.168.1.10 --port 20005 
 # 必选参数：
---local-ip：从节点ip，与mechines.json中配置的从节点ip保持一致
+--local-ip：当前节点ip，与mechines.json中配置的从节点ip保持一致
 # 可选参数：
 --port：从节点监听的端口后，必须和主节点一致，默认是20000
 
 # 在主节点执行， port 可自定义（保持主从一致），可不配置，默认20000
-python3 -m src.master --output-path ../outputs/ --tasks-config ../models/DeepSeek-R1-BF16-W8A8/benchmark.json ../models/DeepSeek-R1-BF16-W8A8/acc.json --machine-config ../models/mechines.json --port 20005
+python3 -m src.master --output-path ../outputs/ --tasks-config ../models/DeepSeek-R1-W8A8/config.json --machine-config ../models/mechines.json --port 20005
+
 
 # 参数说明：
 --machine-config：本次测试需要的机器信息
 --output-path：结果输出的根目录，最好是外部挂载进容器的目录，防止容器删了结果丢失
 --tasks-config：指定测试的配置文件或者目录，可以指定多个配置
 --image-tag：镜像标签，用于结果区分，默认为空
---specify-task：从测试的配置文件中筛选出特定的任务类型执行，支持benchmark,acc,mmlu,ceval，默认是全部执行，可选择多个
+--specify-test：从测试的配置文件中筛选出特定的任务类型执行，支持perf,mmlu,ceval，默认是全部执行，可选择多个
 --port：socket的端口号，默认20000
+--timeout：测试的超时时间，单位是秒，默认1200秒
+--local-ip：当前节点ip，与mechines.json中配置的主节点ip保持一致
 
 ```
 

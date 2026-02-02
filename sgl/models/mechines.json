@@ -27,6 +27,9 @@
       "MACA_DIRECT_DISPATCH=1",
       "MCDBG_GRAPH_LAUNCH_QUEUE_POLICY=3",
       "MACA_GRAPH_LAUNCH_QUEUE_POLICY=3"
+    ],
+    "mmlu_envs" : [
+        "TIKTOKEN_CACHE_DIR=/models/"
     ]
   }
 }

@@ -99,7 +99,7 @@ def create_file(filename):
 def read_json(json_file):
     with open(json_file, 'r') as f:
         config_str = f.read()
-    json_str = re.sub('//.*', '', config_str)
+    json_str = re.sub(r'^[ \t]*//.*(?:\r?\n)?', '', config_str, flags=re.MULTILINE)
     json_str = re.sub('/\*.*?\*/', '', json_str, flags=re.S)
     config = json.loads(json_str)
     return config
@@ -152,31 +152,17 @@ def get_all_local_ip(logger = None) -> str:
     log_msg_level(f'found ip list: {addr_list}', logger)
     return addr_list
 
-def task_type_to_string(type):
-    if type == TaskType.benchmark:
-        return "benchmark"
-    elif type == TaskType.acc:
-        return "acc"
-    elif type == TaskType.rampup:
-        return "rampup"
-    elif type == TaskType.perf:
-        return "perf"
-    elif type == TaskType.search:
-        return "search"
+
+def get_json_config_default(config, key, default_value):
+    return config[key] if key in config.keys() else default_value
 
 
-class TaskType(Enum):
-    benchmark = "benchmark"
-    acc = "acc"
-    rampup = "rampup"
+class BenchmarkType(Enum):
     perf = "perf"
-    search = "search"
-
-class TaskAccType(Enum):
-    mmlu = 'mmlu'
+    mmlu = "mmlu"
     ceval = 'ceval'
 
-# @dataclasses.dataclass
+
 class TaskLaunchMode(Enum):
     online = "online"
     offline = "offline"
@@ -189,18 +175,20 @@ def get_next_op_id() -> int:
     return global_operation_id
 
 
-class OperationType(IntEnum):
-    GET = auto()
-    RUN = auto()
-    STOP = auto()
-    CHECK_ABNORMAL = auto()
+class MsgType(IntEnum):
+    CONNECT = auto()
+    GET_GPU_STATUS = auto()
+    SYNC_OUTPUT_INFO = auto()
+    RUN_CMD = auto()
+    STOP_CMD = auto()
+    CHECK_OUTPUT_FLAG = auto()
     EXIT = auto()
 
 
 @dataclasses.dataclass
-class OperationContent:
+class MsgContent:
     id: int = 0
-    type: int = OperationType.GET
+    type: int = MsgType.CONNECT
     cmd: Optional[str] = ''
     envs: Optional[Dict[str, Any]] = None
     is_async: Optional[bool] = False
@@ -214,12 +202,9 @@ class OperationContent:
     is_master: Optional[bool] = False
     thread: Optional[None] = None
     is_benching: Optional[bool] = False # 用于区别主节点的server/bench调用
-    info: Dict[str, Any] = None  # 传输其他信息给slave用的参数
-                                 # 包含 task_info:dict[str, str]传输给从节点时的task信息，用于合成日志目录
-                                 #       ['model_name','task_id','task_type','task_launch_mode','task_full_name']
+    info: Optional[Any] = None  # 传输其他信息给slave用的参数
     printenv: Optional[bool] = False    # 是否在执行run_sys_cmd 期间打印环境信息
     special_logger: Optional[None] = None
-    abnormal_flags: Optional[List[str]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)
@@ -236,7 +221,7 @@ class OperationContent:
         return cls.from_dict(json.loads(json_str))
     
 
-def run_sys_cmd(op_content: OperationContent, logger = None):
+def run_sys_cmd(op_content: MsgContent, logger = None):
     """Run |cmd| and return its output."""
     custom_env = os.environ.copy()
     if op_content.envs is not None:
@@ -276,9 +261,9 @@ def run_sys_cmd(op_content: OperationContent, logger = None):
 
 
 def get_gpu_mem_used(logger = None):
-    mem_use = OperationContent(
+    mem_use = MsgContent(
         id=get_next_op_id(),
-        type=OperationType.RUN,
+        type=MsgType.RUN_CMD,
         cmd="mx-smi",
         store_output=True,
         is_master=True,
@@ -305,16 +290,16 @@ def get_gpu_mem_used(logger = None):
             used_percent = line[percent_pos:percent_end]
         elif ' MiB' in line:
             mem_end = line.find('/', mem_pos)
-            used_mem_mb = line[mem_pos:mem_end].strip()
+            used_mem_mb = line[mem_pos:mem_end].strip() 
             mem_list.append(f'{used_mem_mb}_{used_percent}')
         else:
             continue
     return gpu_count, ','.join(mem_list)
 
 def get_python_proc(logger):
-    op_content = OperationContent(
+    op_content = MsgContent(
         id=get_next_op_id(),
-        type=OperationType.RUN,
+        type=MsgType.RUN_CMD,
         cmd="ps -ef",
         store_output=True,
         is_master=True,
@@ -351,9 +336,9 @@ def printenv(logger):
     主进程start_server期间调用(会每个任务log都加)
     """
     log_msg_level(f"environment:", logger)
-    op_content = OperationContent(
+    op_content = MsgContent(
         id=get_next_op_id(),
-        type=OperationType.RUN,
+        type=MsgType.RUN_CMD,
         cmd='printenv',
         store_output=True,
         is_master=True,
@@ -370,9 +355,9 @@ def kill_local_defunct_process(logger = None):
     ]
     for kill_cmd in kill_cmds:
         time.sleep(1)
-        op_content = OperationContent(
+        op_content = MsgContent(
                 id=get_next_op_id(),
-                type=OperationType.RUN,
+                type=MsgType.RUN_CMD,
                 cmd=kill_cmd,
                 store_output=True,
                 is_ready=True
@@ -393,13 +378,13 @@ def get_folder_size(folder_path):
     return total_size
 
 
-class BenchmarkCmds:
-    def __init__(self, id, cmd) -> None:
-        self.id = id
-        self.cmd = cmd
-
-    def get_cmd(self):
-        return self.cmd
-
-    def get_id(self):
-        return self.id
+def convert_str_to_env_dict(env_strs: List[str]):
+    if env_strs is None or len(env_strs) == 0:
+        return {}
+    env_dict = {}
+    for env_str in env_strs:
+        position = env_str.find('=')
+        if position == -1:
+            continue
+        env_dict[env_str[:position]] = env_str[position+1:]
+    return env_dict
