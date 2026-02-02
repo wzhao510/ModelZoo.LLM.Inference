@@ -5,6 +5,7 @@ MODEL_PATH="$1"
 GPU_REQUIERED="$2"
 DRAFT_PATH="$3"
 GPU_MEMORY_UTILIZATION="$4"
+MAX_NUM_SEQS="$5"
 
 log_path="$MTP_LOG_PATH"
 echo "log路径: $log_path"
@@ -20,11 +21,12 @@ echo "model: ${model}, tp: ${GPU_REQUIERED}, draft: ${draftName}  ---> ${model}.
 echo "开始测试"
 
 python offline_mtp.py \
-    --model_path $MODEL_PATH \
-    --tensor_parallel_size $GPU_REQUIERED \
+    --model $MODEL_PATH \
+    --tensor-parallel-size $GPU_REQUIERED \
     --gpu-memory-utilization ${GPU_MEMORY_UTILIZATION:-0.85} \
-    --distributed_executor_backend ray \
-    --draft_model_path $DRAFT_PATH  > ${log_path}/${model}.log 2>&1 #
+    --max-num-seqs ${MAX_NUM_SEQS:-256} \
+    --distributed-executor-backend ray \
+    --draft-model-path $DRAFT_PATH  > ${log_path}/${model}.log 2>&1 #
 
 exit_code=$?
 if [ $exit_code -eq 1 ]; then

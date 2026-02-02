@@ -443,12 +443,12 @@ apt install curl
 ```
 ```
 export MTP_LOG_PATH=logs/dailytest
-bash test_mtp.sh /mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B/ 2 /pde_ai/models/llm/Qwen/Qwen3-14B_eagle3/ 0.85
+bash test_mtp.sh /mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B/ 2 /pde_ai/models/llm/Qwen/Qwen3-14B_eagle3/ 0.85 256 
 ```
 ```
 #参数说明
 # gpu利用率 默认0.85,可省略
-bash test_mtp.sh ${model_path} ${gpus_required} ${draft_model_path} ${gpu-memory-utilization} 
+bash test_mtp.sh ${model_path} ${gpus_required} ${draft_model_path} ${gpu-memory-utilization} ${max-num-seqs} 
 ```
 ```
 #输出示例
@@ -485,12 +485,12 @@ apt install jq
 apt install curl
 ```
 ```
-bash test_tp+dp.sh /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B.w8a8/ 2
+bash test_tp+dp.sh /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B.w8a8/ 2 0.85 256
 ```
 ```
 #参数
 # gpu利用率 默认0.85,可省略
-bash test_tp+dp.sh ${model_path} ${least_gpus_required} ${gpu-memory-utilization} 
+bash test_tp+dp.sh ${model_path} ${least_gpus_required} ${gpu-memory-utilization} ${max-num-seqs} 
 ```
 ```
 #输出示例
@@ -515,12 +515,12 @@ apt install jq
 apt install curl
 ```
 ```
-bash test_dcp.sh /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V2-Lite/ 4
+bash test_dcp.sh /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V2-Lite/ 4 0.85 256 
 ```
 ```
 # 参数说明
 # gpu利用率 默认0.85,可省略
-bash test_dcp.sh ${model_path} ${gpus_required} ${gpu-memory-utilization} 
+bash test_dcp.sh ${model_path} ${gpus_required} ${gpu-memory-utilization} ${max-num-seqs}
 ```
 ```
 # 输出示例
@@ -580,6 +580,7 @@ python test_toolcall.py --model /mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B/ --p
 --tool-call-parser TOOL_CALL_PARSER     会根据模型类型去自动选择，也可以强制指定
 --disable-auto-tool-choice              关闭tool call
 --gpu-memory-utilization                gpu利用率 默认0.85
+--max-num-seqs                          最大批处理序列数 默认256
 ```
 ```
 # 输出示例
@@ -613,13 +614,46 @@ bash test_rerank.sh /mxstorage/pde_ai/models/llm/BAAI/bge-reranker-large/
 ```
 ```
 # 参数说明
---model MODEL                           模型路径
+bash test_rerank.sh ${model_path} ${gpus_required} ${gpu-memory-utilization} ${max-num-seqs}            
 # 输出示例
 ==========================================================
 bge-reranker-large 精度异常
 bge-reranker-large 正确率：0%
 ==========================================================
 ```
+
+## BAAI embeddding 模型精度测试
+```
+apt install jq
+apt install curl
+apt install bc
+```
+```
+bash test_embedding.sh /mxstorage/pde_ai/models/llm/BAAI/bge-large-zh/
+bash test_embedding.sh /mxstorage/pde_ai/models/llm/BAAI/bge-small-zh-v1.5/
+```
+```
+# 参数说明
+bash test_embedding.sh ${model_path} ${gpus_required} ${gpu-memory-utilization} ${max-num-seqs}   
+# 输出示例
+actural embedding:
+0.011932877823710442,-0.036393944174051285,-0.03154260292649269,0.0028366129845380783,-0.011230943724513054
+误差阈值: 0.0001
+
+   [index 0]: ✓ 通过
+   [index 1]: ✓ 通过
+   [index 2]: ✓ 通过
+   [index 3]: ✓ 通过
+   [index 4]: ✓ 通过
+----------------------------------------------------------
+所有embedding值都在误差范围内
+==========================================================
+bge-large-zh 精度正常
+bge-large-zh 正确率：100%
+==========================================================
+```
+
+
 
 ***
 
