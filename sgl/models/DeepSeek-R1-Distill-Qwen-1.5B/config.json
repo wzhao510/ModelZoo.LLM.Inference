@@ -1,25 +1,26 @@
 {
-    "server_cmd" : [
-        ["python3 -m sglang.launch_server --trust-remote-code"],
-        ["--model-path /models/DeepSeek-R1-Distill-Qwen-1.5B"],
-        ["--disable-radix-cache --disable-chunked-prefix-cache"],
-        ["--attention-backend flashinfer"],
-        ["--tp 1"],
-        ["--mem-fraction-static 0.82"]
-    ],
-    "tasks": [
-        {
-            "task_name": "DeepSeek-R1-Distill-Qwen-1.5B-TP1",
-            "launch_mode": "online",
-            "server_port": "9000",
-            "environment": [],
-            "launch_server": "server_cmd",
-            "benchmark": {
-                "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json ",
-                "input_output_len": ["128/128"],
-                "max_concurrency": ["1"],
-                "num_prompt_times": 5
-            }
+    "server_cmds": {
+        "server_cmd" : [
+            ["python3 -m sglang.launch_server --trust-remote-code"],
+            ["--model-path /models/DeepSeek-R1-Distill-Qwen-1.5B"],
+            ["--disable-radix-cache --disable-chunked-prefix-cache"],
+            ["--attention-backend flashinfer"],
+            ["--tp 1"],
+            ["--mem-fraction-static 0.82"]
+        ]
+    },
+    "benchmark_cmds": {
+        "random": {
+            "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json ",
+            "input_output_len": ["128/128"],
+            "max_concurrency": ["1"],
+            "num_prompt_times": 5
         }
-    ]
+    },
+    "tasks": {
+        "DeepSeek-R1-Distill-Qwen-1.5B-TP1" : {
+            "launch_server": "server_cmd",
+            "benchmark": "random"
+        }
+    }
 }
