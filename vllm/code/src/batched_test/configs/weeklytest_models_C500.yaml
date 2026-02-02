@@ -31,7 +31,7 @@
   infer_type:
     - text-only
   benchmark:
-    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    bench_param: "configs/bench_params/bench_mainstream.json"
     ignore_eos: true
     sweep_num_runs: 1
   extra_env:
@@ -49,7 +49,7 @@
   infer_type:
     - text-only
   benchmark:
-    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    bench_param: "configs/bench_params/bench_mainstream.json"
     ignore_eos: true
     sweep_num_runs: 1
   extra_env:
@@ -67,7 +67,7 @@
   infer_type:
     - text-only
   benchmark:
-    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    bench_param: "configs/bench_params/bench_mainstream.json"
     ignore_eos: true
     sweep_num_runs: 1
   extra_env:
@@ -85,7 +85,7 @@
   infer_type:
     - text-only
   benchmark:
-    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    bench_param: "configs/bench_params/bench_mainstream.json"
     ignore_eos: true
     sweep_num_runs: 1
   extra_env:
@@ -139,7 +139,7 @@
   infer_type:
     - text-only
   benchmark:
-    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    bench_param: "configs/bench_params/bench_mainstream.json"
     ignore_eos: true
     sweep_num_runs: 1
   extra_env:
@@ -157,7 +157,7 @@
   infer_type:
     - text-only
   benchmark:
-    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    bench_param: "configs/bench_params/bench_mainstream.json"
     ignore_eos: true
     sweep_num_runs: 1
   extra_env:
@@ -175,7 +175,7 @@
   infer_type:
     - text-only
   benchmark:
-    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    bench_param: "configs/bench_params/bench_mainstream.json"
     ignore_eos: true
     sweep_num_runs: 1
   extra_env:
@@ -193,7 +193,7 @@
   infer_type:
     - text-only
   benchmark:
-    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    bench_param: "configs/bench_params/bench_mainstream.json"
     ignore_eos: true
     sweep_num_runs: 1
   extra_env:
@@ -211,7 +211,7 @@
   infer_type:
     - text-only
   benchmark:
-    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    bench_param: "configs/bench_params/bench_mainstream.json"
     ignore_eos: true
     sweep_num_runs: 1
   extra_env:
@@ -229,7 +229,7 @@
   infer_type:
     - single-image
   benchmark:
-    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    bench_param: "configs/bench_params/bench_mainstream.json"
     ignore_eos: true
     sweep_num_runs: 1
   extra_env:
@@ -247,7 +247,7 @@
   infer_type:
     - single-image
   benchmark:
-    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    bench_param: "configs/bench_params/bench_mainstream.json"
     ignore_eos: true
     sweep_num_runs: 1
   extra_env:
@@ -265,7 +265,7 @@
   infer_type:
     - single-image
   benchmark:
-    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    bench_param: "configs/bench_params/bench_mainstream.json"
     ignore_eos: true
     sweep_num_runs: 1
   extra_env:
@@ -283,7 +283,7 @@
   infer_type:
     - single-image
   benchmark:
-    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    bench_param: "configs/bench_params/bench_mainstream.json"
     ignore_eos: true
     sweep_num_runs: 1
   extra_env:
@@ -337,7 +337,7 @@
   infer_type:
     - text-only
   benchmark:
-    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    bench_param: "configs/bench_params/bench_mainstream.json"
     ignore_eos: true
     sweep_num_runs: 1
   extra_env:
@@ -355,7 +355,7 @@
   infer_type:
     - text-only
   benchmark:
-    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    bench_param: "configs/bench_params/bench_mainstream.json"
     ignore_eos: true
     sweep_num_runs: 1
   extra_env:
@@ -373,7 +373,7 @@
   infer_type:
     - text-only
   benchmark:
-    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    bench_param: "configs/bench_params/bench_mainstream.json"
     ignore_eos: true
     sweep_num_runs: 1
   extra_env:

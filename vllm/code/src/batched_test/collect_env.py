@@ -633,7 +633,7 @@ def get_env_info():
         cuda_version_str = torch.version.cuda
 
     sys_version = sys.version.replace("\n", " ")
-    print("-------")
+
     conda_packages = get_conda_packages(run_lambda)
 
     vllm_version = get_vllm_version()
