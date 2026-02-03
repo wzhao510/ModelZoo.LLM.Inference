@@ -665,31 +665,36 @@ def peak_search(
 def parse_combo(s: str):
     return tuple(map(int, s.split("/")))
 
-
-def main() -> None:
-    args = parse_arguments()
-
+def prepare_log_file(args, isl: str = "", osl: str = ""):
     model_name = args.model_name or os.path.basename(os.path.normpath(args.model)).replace(" ", "_")
-    # Unify all read/write to dataset_jsonl
-    dataset_jsonl = args.dataset_jsonl or f"{model_name}_{args.dataset_name}_{datetime.now().strftime('%y%m%d')}.jsonl"
+    dataset_jsonl = ""
+    if args.dataset_name == "burstgpt":
+        dataset_jsonl = args.dataset_jsonl or f"{model_name}_{args.dataset_name}_{datetime.now().strftime('%y%m%d')}.jsonl"
+    else:
+        dataset_jsonl = args.dataset_jsonl or f"{model_name}_{args.dataset_name}_{isl}_{osl}_{datetime.now().strftime('%y%m%d')}.jsonl"
     bench_output_jsonl = args.bench_output_jsonl or dataset_jsonl
     result_jsonl = args.result_jsonl or dataset_jsonl
     log_file = args.log_file or f"{model_name}_{datetime.now().strftime('%Y%m%d_%H%M')}.log"
-
     # Ensure pandas is available (used for optional top3 logging)
     ensure_pandas_installed(log_file)
 
     # Warm cache from the unified dataset jsonl
     cache: Dict[ResultKey, Dict] = load_cache(result_jsonl)
-
     log_both(log_file, f"Using jsonl: {result_jsonl}")
     log_both(log_file, f"Using log file: {log_file}")
+    return bench_output_jsonl,result_jsonl,log_file,cache
 
+def main() -> None:
+    args = parse_arguments()
+            
+    
     overall_best: List[Tuple[Tuple[int, int], int, Optional[float]]] = []
 
     if args.dataset_name == "burstgpt":
         # burstGPT mode: no isl/osl combinations, just test concurrency directly
         isl, osl = 0, 0  # Use (0,0) as placeholder for burstGPT mode
+        # prepare log files
+        bench_output_jsonl, result_jsonl, log_file, cache = prepare_log_file(args)
         log_both(log_file, f"\n=== BurstGPT Mode ===")
 
         mand_best_con, mand_best_qps = mandatory_phase(
@@ -702,7 +707,7 @@ def main() -> None:
             log_file,
             bench_output_jsonl,
             ttft_ms_max=args.ttft_ms_max,
-            tpot_ms_max=args.ttft_ms_max,
+            tpot_ms_max=args.tpot_ms_max,
             dry_run=args.dry_run,
             print_cmd=args.print_cmd,
             backend=args.backend,
@@ -726,7 +731,7 @@ def main() -> None:
             log_file,
             bench_output_jsonl,
             ttft_ms_max=args.ttft_ms_max,
-            tpot_ms_max=args.ttft_ms_max,
+            tpot_ms_max=args.tpot_ms_max,
             dry_run=args.dry_run,
             print_cmd=args.print_cmd,
             backend=args.backend,
@@ -749,10 +754,10 @@ def main() -> None:
             isl=isl,
             osl=osl,
             ttft_ms_max=args.ttft_ms_max,
-            tpot_ms_max=args.ttft_ms_max,
+            tpot_ms_max=args.tpot_ms_max,
             qps_field=args.qps_field
         )
-        maybe_log_top3(cache, isl, osl, log_file, ttft_ms_max=args.ttft_ms_max, tpot_ms_max=args.ttft_ms_max)
+        maybe_log_top3(cache, isl, osl, log_file, ttft_ms_max=args.ttft_ms_max, tpot_ms_max=args.tpot_ms_max)
 
         final_candidates: List[Tuple[int, Optional[float]]] = []
         if mand_best_con != -1:
@@ -784,6 +789,7 @@ def main() -> None:
         # random mode: use isl/osl combinations
         for combo in args.combinations:
             isl, osl = parse_combo(combo)
+            bench_output_jsonl, result_jsonl, log_file, cache = prepare_log_file(args, isl, osl)
             log_both(log_file, f"\n=== Combo isl={isl} osl={osl} ===")
 
             mand_best_con, mand_best_qps = mandatory_phase(
@@ -796,7 +802,7 @@ def main() -> None:
                 log_file,
                 bench_output_jsonl,
                 ttft_ms_max=args.ttft_ms_max,
-                tpot_ms_max=args.ttft_ms_max,
+                tpot_ms_max=args.tpot_ms_max,
                 dry_run=args.dry_run,
                 print_cmd=args.print_cmd,
                 backend=args.backend,
@@ -820,7 +826,7 @@ def main() -> None:
                 log_file,
                 bench_output_jsonl,
                 ttft_ms_max=args.ttft_ms_max,
-                tpot_ms_max=args.ttft_ms_max,
+                tpot_ms_max=args.tpot_ms_max,
                 dry_run=args.dry_run,
                 print_cmd=args.print_cmd,
                 backend=args.backend,
@@ -843,10 +849,10 @@ def main() -> None:
                 isl=isl,
                 osl=osl,
                 ttft_ms_max=args.ttft_ms_max,
-                tpot_ms_max=args.ttft_ms_max,
+                tpot_ms_max=args.tpot_ms_max,
                 qps_field=args.qps_field
             )
-            maybe_log_top3(cache, isl, osl, log_file, ttft_ms_max=args.ttft_ms_max, tpot_ms_max=args.ttft_ms_max)
+            maybe_log_top3(cache, isl, osl, log_file, ttft_ms_max=args.ttft_ms_max, tpot_ms_max=args.tpot_ms_max)
 
             final_candidates: List[Tuple[int, Optional[float]]] = []
             if mand_best_con != -1:
@@ -863,7 +869,7 @@ def main() -> None:
                     continue
                 # Ensure the selected point is SLA-compliant
                 obj = cache.get((isl, osl, con))
-                if not is_sla_compliant(obj, args.ttft_ms_max, args.ttft_ms_max)[0]:
+                if not is_sla_compliant(obj, args.ttft_ms_max, args.tpot_ms_max)[0]:
                     continue
                 if best_qps is None or qps > best_qps:
                     best_qps = qps
@@ -873,6 +879,7 @@ def main() -> None:
             else:
                 log_both(log_file, f"Final best for isl={isl} osl={osl}: con={best_con} qps={best_qps}")
             overall_best.append(((isl, osl), best_con, best_qps))
+            log_both(log_file, f"=== Combo isl={isl} osl={osl} finished ===\n")
 
     log_both(log_file, "\n=== Summary ===")
     if args.dataset_name == "burstGPT":
