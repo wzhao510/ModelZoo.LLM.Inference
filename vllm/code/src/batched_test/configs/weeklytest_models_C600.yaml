@@ -24,7 +24,7 @@
     pp: 1
     extra_args:
       --dtype: "bfloat16"
-      --gpu-memory-utilization: 0.9
+      --gpu-memory-utilization: 0.95
   infer_type:
     - text-only
   benchmark:
@@ -60,7 +60,7 @@
     pp: 1
     extra_args:
       --dtype: "bfloat16"
-      --gpu-memory-utilization: 0.9
+      --gpu-memory-utilization: 0.95
   infer_type:
     - text-only
   benchmark:
@@ -150,7 +150,7 @@
     pp: 1
     extra_args:
       --dtype: "bfloat16"
-      --gpu-memory-utilization: 0.9
+      --gpu-memory-utilization: 0.95
   infer_type:
     - single-image
   benchmark:
@@ -168,7 +168,7 @@
     pp: 1
     extra_args:
       --dtype: "bfloat16"
-      --gpu-memory-utilization: 0.9
+      --gpu-memory-utilization: 0.95
   infer_type:
     - text-only
   benchmark:

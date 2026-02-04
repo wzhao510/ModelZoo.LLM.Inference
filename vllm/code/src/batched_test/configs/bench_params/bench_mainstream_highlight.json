@@ -1,71 +1,71 @@
 [
     {
         "max_concurrency": 1,
-        "num_prompts": 5,
+        "num_prompts": 1,
         "random_input_len": 128,
         "random_output_len": 128
     },
     {
         "max_concurrency": 1,
-        "num_prompts": 5,
+        "num_prompts": 1,
         "random_input_len": 2048,
         "random_output_len": 2048
     },
     {
         "max_concurrency": 1,
-        "num_prompts": 5,
+        "num_prompts": 1,
         "random_input_len": 3072,
         "random_output_len": 1024
     },
 
     {
         "max_concurrency": 16,
-        "num_prompts": 5,
+        "num_prompts": 16,
         "random_input_len": 128,
         "random_output_len": 128
     },
     {
         "max_concurrency": 16,
-        "num_prompts": 5,
+        "num_prompts": 16,
         "random_input_len": 2048,
         "random_output_len": 2048
     },
     {
         "max_concurrency": 16,
-        "num_prompts": 5,
+        "num_prompts": 16,
         "random_input_len": 3072,
         "random_output_len": 1024
     },
 
     {
         "max_concurrency": 32,
-        "num_prompts": 5,
+        "num_prompts": 32,
         "random_input_len": 128,
         "random_output_len": 128
     },
     {
         "max_concurrency": 32,
-        "num_prompts": 5,
+        "num_prompts": 32,
         "random_input_len": 2048,
         "random_output_len": 2048
     },
     {
         "max_concurrency": 32,
-        "num_prompts": 5,
+        "num_prompts": 32,
         "random_input_len": 3072,
         "random_output_len": 1024
     },
 
     {
         "max_concurrency": 128,
-        "num_prompts": 5,
+        "num_prompts": 128,
         "random_input_len": 128,
         "random_output_len": 128
     },
     
     {
         "max_concurrency": 512,
-        "num_prompts": 5,
+        "num_prompts": 512,
         "random_input_len": 128,
         "random_output_len": 128
     }
