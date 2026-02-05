@@ -31,7 +31,6 @@ class Connection:
         self.slave_port = slave_port
         self.sock_timeout = 10000 # 10s
         self.logger = logger
-        self.task_logger = None
         self.send_recv_lock = threading.Lock()
         self.gpu_num_per_node = GPU_NUM_PER_NODE_DEFAULT
         self.local_ip = local_ip
@@ -57,9 +56,9 @@ class Connection:
             node_info.is_local = False
 
             self.logger.info(f"Connect IP: {node_info.ip}")
-            socket = context.socket(zmq.REQ)
-            socket.RCVTIMEO = self.sock_timeout
-            socket.connect(f"tcp://{node_info.ip}:{self.slave_port}")
+            node_info.socket = context.socket(zmq.REQ)
+            node_info.socket.RCVTIMEO = self.sock_timeout
+            node_info.socket.connect(f"tcp://{node_info.ip}:{self.slave_port}")
 
             # check connect timeout
             poller = zmq.Poller()
@@ -68,81 +67,104 @@ class Connection:
                 id=get_next_op_id(),
                 type=MsgType.GET_GPU_STATUS,
             )
-            socket.send_string(f'{op_content.to_json()}')
             try:
-                output_op = MsgContent.from_json(socket.recv_string())
+                output_msg = self.send_slave_msg(node_info, op_content, self.logger)
+                output_op = MsgContent.from_json(output_msg)
                 self.gpu_num_per_node = output_op.info[1]
                 self.logger.info(f"connect to {node_info.ip} ({self.gpu_num_per_node} gpus) successfully!")
-                socket.RCVTIMEO = -1
-                node_info.socket = socket
+                node_info.socket.RCVTIMEO = -1
                 self.nodes_info.append(node_info)
             except zmq.Again:
                 self.logger.info(f"## connect to {node_info.ip} failed, exit!")
                 context.destroy(linger=0)
                 exit(1)
         self.logger.info(self.nodes_info)
-            
+
     def clean(self) -> None:
         op_content = MsgContent(type=MsgType.EXIT)
         for node in self.nodes_info:
             if node.socket is not None:
-                self._send_slave_msg(node.socket, op_content)
+                self.send_slave_msg(node, op_content, self.logger)
                 node.socket.close()
         self.nodes_info.clear()
 
-    def run_cmd(self, node: NodeInfo, op_content: MsgContent) -> str:
+    def run_cmd(self, node: NodeInfo, op_content: MsgContent, task_logger, task_wake_event):
         if node.is_local:
             if op_content.is_async:
-                op_content.thread = threading.Thread(target=run_sys_cmd, args=(op_content,self.task_logger,))
+                op_content.thread = threading.Thread(target=run_sys_cmd, args=(op_content,task_logger,))
                 op_content.thread.start()
                 time.sleep(2)
             else:
-                run_sys_cmd(op_content, self.task_logger)
-            return ""
+                run_sys_cmd(op_content, task_logger)
         else:
-            return self._run_slave_cmd(node, op_content)
+            self._run_slave_cmd(node, op_content, task_logger)
+            while not op_content.is_async:
+                get_status_op = MsgContent(
+                    id=get_next_op_id(),
+                    type=MsgType.GET_CMD_STATUS,
+                    cmd=op_content.cmd,
+                )
+                message = self.send_slave_msg(node, get_status_op, task_logger)
+                output_msg = MsgContent.from_json(message)
+                if output_msg.status is not None:
+                    op_content.status = output_msg.status
+                    op_content.output = output_msg.output
+                    break
+                is_set = task_wake_event.wait(timeout=10)
+                if is_set:
+                    break
 
-    def stop_cmd(self, node: NodeInfo, op_content: MsgContent) -> None:
+    def stop_cmd(self, node: NodeInfo, op_content: MsgContent, task_logger) -> None:
         if node.is_local:
             if op_content.handle is not None:
-                self.task_logger.info(f'Stop [{op_content.cmd}]')
-                kill_process_all(op_content.handle, self.task_logger)
+                task_logger.info(f'Stop [{op_content.cmd}]')
+                kill_process_all(op_content.handle, task_logger)
             else:
-                self.task_logger.info(f'{op_content.cmd} proc not exist!')
+                task_logger.info(f'{op_content.cmd} proc not exist!')
         else:
-            self._stop_slave_cmd(node, op_content)
+            self._stop_slave_cmd(node, op_content, task_logger)
 
-    def sync_slave_output_info(self, node: NodeInfo, info:str) -> None:
+    def sync_output_info(self, node: NodeInfo, info:str, task_logger) -> None:
+        if node.is_local:
+            return
         op_content = MsgContent(
             id=get_next_op_id(),
             type=MsgType.SYNC_OUTPUT_INFO,
             info=info,
         )
-        node.socket.send_string(op_content.to_json())
-        output_info = node.socket.recv_string() 
-        self.task_logger.info(f'## Recv {node.ip} sync output info')
+        output_info = self.send_slave_msg(node, op_content, task_logger)
+        task_logger.info(f'## Recv {node.ip} sync output info')
 
-    def check_slave_gpu_in_use(self, node: NodeInfo) -> None:
-        op_content = MsgContent(
-            id=get_next_op_id(),
-            type=MsgType.GET_GPU_STATUS,
-        )
-        node.socket.send_string(op_content.to_json())
-        output_op = MsgContent.from_json(node.socket.recv_string())
-        self.task_logger.info(f'## Recv {node.ip} gpu status')
+    def check_node_gpu_in_use(self, node: NodeInfo, task_logger) -> None:
+        if node.is_local:
+            check_gpu_in_use(task_logger)
+        else:
+            op_content = MsgContent(
+                id=get_next_op_id(),
+                type=MsgType.GET_GPU_STATUS,
+            )
+            output_msg = self.send_slave_msg(node, op_content, task_logger)
+            output_op = MsgContent.from_json(output_msg)
+            task_logger.info(f'## Recv {node.ip} gpu status {output_op.info}')
 
-    def _run_slave_cmd(self, node: NodeInfo, op_content: MsgContent) -> str:
-        return self._send_slave_msg(node.socket, op_content)
-
-    def _stop_slave_cmd(self, node: NodeInfo, op_content: MsgContent) -> None:
-        op_content.type = MsgType.STOP_CMD
-        self._send_slave_msg(node.socket, op_content)
-
-    def _send_slave_msg(self, sock: zmq.sugar.socket.Socket, op_content: MsgContent) -> str:
+    def send_slave_msg(self, node: NodeInfo, op_content: MsgContent, task_logger) -> str:
         with self.send_recv_lock:
-            sock.send_string(op_content.to_json())
-            message = sock.recv_string()
-            if op_content.type != MsgType.CHECK_OUTPUT_FLAG:
-                self.task_logger.info(f'## Recv {message}')
+            node.socket.send_string(op_content.to_json())
+            message = node.socket.recv_string()
+            # if op_content.type not in [
+            #     MsgType.CHECK_OUTPUT_FLAG,
+            #     MsgType.GET_SERVER_ARGS,
+            #     MsgType.GET_CMD_STATUS
+            #     ]:
+            #     if task_logger is None:
+            #         task_logger.info(f'## Recv {message}')
+            #     else:
+            #         task_logger.info(f'## Recv {message}')
             return message
+    
+    def _run_slave_cmd(self, node: NodeInfo, op_content: MsgContent, task_logger) -> str:
+        return self.send_slave_msg(node, op_content, task_logger)
 
+    def _stop_slave_cmd(self, node: NodeInfo, op_content: MsgContent, task_logger) -> None:
+        op_content.type = MsgType.STOP_CMD
+        self.send_slave_msg(node, op_content, task_logger)

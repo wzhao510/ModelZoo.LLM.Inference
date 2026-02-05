@@ -4,6 +4,8 @@ import signal
 import json
 import re
 from typing import Optional, List, Dict, Any, Union
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 from src.task import TaskOnline, TaskOffline,BaseTask
 
 from src.connection import Connection
@@ -89,7 +91,7 @@ class TaskScheduler:
     def __init__(self, args:argparse.Namespace) -> None:
         self.args:argparse.Namespace = args
         self.task_list = []
-        self.current_task = None
+        self.current_task_ids = []
         self.finish_flag = False
         self.connection:Optional[Connection] = None
         self.is_stopped = False
@@ -98,6 +100,7 @@ class TaskScheduler:
         self.global_logger = get_logger(self.now_path, 'bench_record.log')
         self.server_id_global = -1
         self.server_pass_list = defaultdict(list)
+        self.lock = threading.Lock()
 
     def pass_id_filter(self):
         # 1.获取 total_real_progress_file 文件数据
@@ -190,7 +193,7 @@ class TaskScheduler:
                 _task.task_name = task_name
                 _task.timeout = self.args.timeout
                 _task.model_name = ServerParser.extract_task_model_name(server_cmd)
-                _task.set_output_manager(OutputManager.from_task(self.args, _task))
+                _task.set_output_manager(OutputManager.from_task(self.args, _task, self.args.local_ip))
                 _task.global_logger = self.global_logger
                 task_list.append(_task)
             else:
@@ -203,7 +206,7 @@ class TaskScheduler:
                         _task.task_name = task_name
                         _task.timeout = self.args.timeout
                         _task.model_name = ServerParser.extract_task_model_name(server_cmd)
-                        _task.set_output_manager(OutputManager.from_task(self.args, _task))
+                        _task.set_output_manager(OutputManager.from_task(self.args, _task, self.args.local_ip))
                         _task.global_logger = self.global_logger
                         task_list.append(_task)
         log_msg_level(f'server task list len={len(task_list)}', self.global_logger)
@@ -261,7 +264,7 @@ class TaskScheduler:
                 output_path = os.path.join(self.now_path, f'merge_{name}')
                 with open(output_path, 'w', encoding='utf-8') as csv_file:
                     all_data.to_csv(csv_file, index=False)
-                self.global_logger.info(f"f'merge_{name}' store in {output_path}, len={len(all_data)}")
+                self.global_logger.info(f"merge_{name} store in {output_path}, len={len(all_data)}")
             except Exception as e:
                 self.global_logger.info(f"merge_result {name} exception {e}")
 
@@ -270,48 +273,98 @@ class TaskScheduler:
         signal.signal(signal.SIGINT, self.handle_termination)   # 处理Ctrl+C
         signal.signal(signal.SIGTERM, self.handle_termination)  # 处理kill命令
         try:
-            to_run_task_id = "0"
-            client_id = "0"
-            # if self.args.specify_task:
-            #     to_run_task_id, client_id = real_progress_manager.get_total_real_progress_to_run()
-
-            is_task_skip = True
             for index, task in enumerate(self.task_list):
                 self.global_logger.info(f"==================== Task ({index + 1}/{len(self.task_list)}) {task.task_name} ====================")
                 if self.finish_flag or self.is_stopped:
                     break
-
-                if index < (len(self.task_list) - 1):
-                    task.set_is_kill_abnormal(False)
-                else:
-                    task.set_is_kill_abnormal(True)
-
-                # 处理进程异常退出的情况
-                # 1.默认0,0  从第0个server第0个bench开始run
-                # 2.后续x,y  从第x个server第y个bench开始run
-                if is_task_skip:
-                    self.global_logger.info("current task need skip task id " + to_run_task_id + " current id " + str(task.task_id))
-                    if task.task_id < int(to_run_task_id):
-                        continue
-                    is_task_skip = False
-                    self.global_logger.info("current task need skip done.." )
-                # real_progress_manager.init(task)
                 task.set_real_progress_manager(self.real_progress_manager)
-                self.current_task = task
-                task.run(int(client_id))
-                # 此处需要再次初始化,防止跳过其他task的bench
-                client_id = "0"
-                self.current_task = None
+                self.current_task_ids = [index]
+                task.run()
+                self.current_task_ids = []
 
             if len(self.task_list) != 0:
-                self.real_progress_manager.write_to_run_args()
                 self.merge_result()
             self.connection.clean()
         except Exception as e:
-            if self.current_task is not None:
-                self.current_task.logger.exception(f'{e}')
+            if len(self.current_task_ids) > 0:
+                self.task_list[self.current_task_ids[0]].logger.exception(f'{e}')
             else:
                 self.global_logger.exception(f'{e}')
+
+    def run_single_task(self, task_index):
+        try:
+            if self.finish_flag or self.is_stopped:
+                return
+            task = self.task_list[task_index]
+            self.global_logger.info(f'## ====== [{task_index}] Start Task [{task.task_name}] on {task.get_nodes_ips()} ======')
+            task.set_real_progress_manager(self.real_progress_manager)
+            with self.lock:
+                self.current_task_ids.append(task_index)
+            if self.is_stopped:
+                return
+            task.run()
+        except Exception as e:
+            task.logger.exception(f'{e}')
+            task.stop_all(False)
+        with self.lock:
+            if task_index in self.current_task_ids:
+                self.current_task_ids.remove(task_index)
+
+    def run_parallel(self):
+        if len(self.task_list) <= 1 or len(self.connection.nodes_info) == 1:
+            self.run()
+            return
+
+        signal.signal(signal.SIGINT, self.handle_termination)   # 处理Ctrl+C
+        signal.signal(signal.SIGTERM, self.handle_termination)  # 处理kill命令
+        tasks_node_num = [task.get_node_num_need() for task in self.task_list]
+        task_groups = self.solve_task_grouping(tasks_node_num, len(self.connection.nodes_info))
+        for id, group in enumerate(task_groups):
+            current_round = [f'{self.task_list[sub[0]].task_name}_server{self.task_list[sub[0]].task_id}_{sub[1]}nodes' for sub in group]
+            self.global_logger.info(f'## Round {id}: {current_round}')
+        try:
+            with ThreadPoolExecutor(max_workers=len(self.connection.nodes_info)) as executor:
+                for groups in task_groups:
+                    current_group_futures = {}
+                    current_nodes_sum = 0
+                    for task_group in groups:
+                        task_index, task_node_num = task_group[0], task_group[1]
+                        self.task_list[task_index].set_node_used(current_nodes_sum, task_node_num)
+                        future = executor.submit(self.run_single_task, task_index)
+                        current_group_futures[future] = task_index
+                        current_nodes_sum += task_node_num
+
+                    for future in as_completed(current_group_futures):
+                        task_index = current_group_futures[future]
+                        self.global_logger.info(
+                            f'## ====== [{task_index}] End Task [{self.task_list[task_index].task_name}] on {self.task_list[task_index].get_nodes_ips()} ======')
+            if len(self.task_list) != 0:
+                self.merge_result()
+            self.connection.clean()
+        except Exception as e:
+            self.global_logger.exception(f'{e}')
+
+    def solve_task_grouping(self, tasks_node_num, max_nodes_num):
+        indexed_nums = list(enumerate(tasks_node_num))
+        sorted_indexed_nums = sorted(indexed_nums, key=lambda x: x[1], reverse=True)
+        groups = []
+        current_group = []
+        current_sum = 0
+
+        for sorted_node in sorted_indexed_nums:
+            node_num_need = sorted_node[1]
+            assert (node_num_need <= max_nodes_num, f"task {sorted_node[0]} need {node_num_need} node, out of max {max_nodes_num}")
+            if current_sum + node_num_need <= max_nodes_num:
+                current_group.append(sorted_node)
+                current_sum += node_num_need
+            else:
+                groups.append(current_group)
+                current_group = [sorted_node]
+                current_sum = node_num_need
+                
+        if current_group:
+            groups.append(current_group)
+        return groups
 
     def handle_termination(self, signal_num, frame):
         signal_name = signal.Signals(signal_num).name
@@ -320,14 +373,17 @@ class TaskScheduler:
         self.global_logger.info(f"Recv SIG {signal_name}, Stop...")
         self.is_stopped = True
         try:
-            # 停止当前任务
-            if isinstance(self.current_task, BaseTask):
-                try:
-                    self.current_task.stop_all(False)
-                    self.global_logger.info(f"Stop ({type(self.current_task).__name__}) success")
-                except Exception as e:
-                    self.global_logger.info(f"Stop ({type(self.current_task).__name__}) failed: {e}")
-                
+            with self.lock:
+                # 停止当前任务
+                for task_index in self.current_task_ids:
+                    if isinstance(self.task_list[task_index], BaseTask):
+                        try:
+                            self.task_list[task_index].stop_all(False)
+                            self.global_logger.info(f"Stop ({self.task_list[task_index].task_name}) success")
+                        except Exception as e:
+                            self.global_logger.info(f"Stop ({self.task_list[task_index].task_name}) failed: {e}")
+                    
+                self.current_task_ids = []
             # 清理连接
             self.connection.clean()
             
@@ -348,12 +404,16 @@ if __name__ == "__main__":
     parser.add_argument("--machine-config", type=str, help="JSON file describing the machine list")
     parser.add_argument("--image-tag", type=str, default=" ",help="docker image tag")
     parser.add_argument('--specify-test', nargs='*', choices=benchmark_type_list, default=benchmark_type_list, help='special benchmark type to run, default all')
+    parser.add_argument("--local-ip",type=str,required=True,help="default local ip")
     parser.add_argument("--port",type=int,default=20000,help="client port bind to recv msg")
     parser.add_argument("--timeout",type=int,default=1200,help="timeout in second for every task")
-    parser.add_argument("--local-ip",type=str,required=True,help="default local ip")
+    # parser.add_argument('--parallel', action='store_true', help='run benchmark task parallel')
     
     Args = parser.parse_args(sys.argv[1:])
 
     task_scheduler = TaskScheduler(Args)
     task_scheduler.generate_task()
+    # if Args.parallel:
+    #     task_scheduler.run_parallel()
+    # else:
     task_scheduler.run()

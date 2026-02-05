@@ -375,7 +375,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 ```plaintext
 {模型名}/
 　├── logs/
-　│　 └── {任务名}_server{任务编号}_node{节点}.log    # 实时日志
+　│　 └── {任务名}_server{任务编号}_node{节点}_{ip}.log # 实时日志
 　└── result/
 　　　└── {任务名}-server{任务编号}/                   # 单任务结果
 　　　 　　├── *.jsonl                                # 性能或精度测试结果
