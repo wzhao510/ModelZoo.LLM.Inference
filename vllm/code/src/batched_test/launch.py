@@ -16,6 +16,7 @@ import net_utils
 from tqdm import tqdm
 from ray_manager import RayClusterManager
 from gpu_manager import GPUManager
+from utils import cal_gpu_count
 
 
 @dataclass(kw_only=True)
@@ -204,14 +205,15 @@ class Scheduler:
     def _load_yaml_config(self, config_yaml: str) -> list[dict]:
         with open(config_yaml, "r") as f:
             config = yaml.safe_load(f)
+        
+        def sort_with_gpu(x):
+            return cal_gpu_count(x)
+        # sort with tp size. Grab resources via a greedy strategy.
+        config = sorted(config, key=sort_with_gpu, reverse=True)
         return config
 
     def _required_gpus(self, model_cfg: dict) -> int:
-        sc = model_cfg.get("serve_config") or {}
-        tp = int(sc.get("tp", 1) or 1)
-        pp = int(sc.get("pp", 1) or 1)
-        dp = int(sc.get("dp", 1) or 1)
-        return tp * pp * dp
+        return cal_gpu_count(model_cfg)
 
     def _parse_gpus_filter(self) -> set[int] | None:
         """Parse --gpus like '1,2,4' into a set of ints.

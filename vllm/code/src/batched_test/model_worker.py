@@ -16,6 +16,7 @@ import pandas as pd
 
 from gpu_manager import GPUManager
 from ray_manager import RayClusterManager
+from utils import cal_gpu_count
 
 CRITICAL_WORDS = ["EngineCore encountered an issue"]
 
@@ -83,11 +84,7 @@ class ModelConfigManager:
         return self.model_cfg.get(field_name, default)
 
     def calc_required_gpus(self) -> int:
-        serve_config = self.model_cfg.get("serve_config", {})
-        tp = serve_config.get("tp", 1)
-        pp = serve_config.get("pp", 1)
-        dp = serve_config.get("dp", 1)
-        return tp * pp * dp
+        return cal_gpu_count(self.model_cfg)
 
     def prepare_serve_cmd(self, host: str | None, port: int) -> list[str]:
         # Prepare command
@@ -622,3 +619,7 @@ class BenchSweepWorker(Worker):
 
     def _cleanup(self):
         super()._cleanup()
+
+    
+    def _print_status(self):
+        pass
