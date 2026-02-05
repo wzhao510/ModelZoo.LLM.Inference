@@ -30,6 +30,7 @@ class SchedularArgs:
     cluster_config: str | None = None
     infer: bool = False
     perf: bool = False
+    concurrency: int | None = None  # Max concurrent models. None=default(GPU count local, 1 on cluster)
 
     gpus: str = None  # comma-separated GPU counts to run (e.g., '1,2,4,8')
     tag: str | None = (
@@ -58,6 +59,7 @@ class SchedularArgs:
             resume_csv=args.resume_csv,
             infer=args.infer,
             perf=args.perf,
+            concurrency=args.concurrency,
             gpus=args.gpus,
             tag=args.tag,
             dump_selected=args.dump_selected,
@@ -161,6 +163,12 @@ class SchedularArgs:
             help="Specify this to run performance benchmark.",
         )
 
+        parser.add_argument(
+            "--concurrency",
+            type=int,
+            default=None,
+            help="Max number of models to run concurrently. Default: GPU count on local machine; 1 on cluster. Use 1 for serial.",
+        )
 
 stop_event = threading.Event()
 
@@ -180,7 +188,18 @@ class Scheduler:
             self.gpu_manager = GPUManager()
             max_workers = self.gpu_manager.get_gpu_count()
 
-        self.executor = ThreadPoolExecutor(max_workers=1)
+        self.executor = ThreadPoolExecutor(max_workers=max_workers)
+
+        # Concurrency gate: controls how many model runs can be in-flight simultaneously,
+        # without changing ThreadPoolExecutor worker count (to avoid side effects).
+        limit = args.concurrency if args.concurrency is not None else max_workers
+        if limit < 1:
+            raise ValueError("--concurrency must be >= 1")
+        self._gate = threading.BoundedSemaphore(limit)
+
+    def _run_with_gate(self, fn, *args, **kwargs):
+        with self._gate:
+            return fn(*args, **kwargs)
 
     def _load_yaml_config(self, config_yaml: str) -> list[dict]:
         with open(config_yaml, "r") as f:
@@ -201,9 +220,9 @@ class Scheduler:
           - If --gpus is not provided, run models requiring {1,2,4,8} GPUs by default.
           - If --gpus is provided, use the user-specified set.
         """
-        if self.args.gpus is None:
+        if not self.args.gpus:
             return {1, 2, 4, 8}
-
+        
         # If user provided empty string (rare), treat as no filter or default? Here we treat as default too.
         if str(self.args.gpus).strip() == "":
             return {1, 2, 4, 8}
@@ -376,7 +395,7 @@ class Scheduler:
                 last_resume=self.args.resume_csv,
                 gpu_manager=self.gpu_manager,
             )
-            future = self.executor.submit(worker.run, stop_event)
+            future = self.executor.submit(self._run_with_gate, worker.run, stop_event)
             futures.append(future)
 
         with open(csv_file_path, mode="w", newline="", encoding="utf-8") as f_csv:
@@ -427,7 +446,7 @@ class Scheduler:
             worker = BenchSweepWorker(
                 work_dir=bench_work_dir, model_cfg=cfg, gpu_manager=self.gpu_manager
             )
-            future = self.executor.submit(worker.run, stop_event)
+            future = self.executor.submit(self._run_with_gate, worker.run, stop_event)
             futures.append(future)
 
         for f in as_completed(futures):
@@ -462,3 +481,4 @@ if __name__ == "__main__":
 
     sche = Scheduler(SchedularArgs.from_cli_args(args))
     sche.run_all()
+

@@ -477,7 +477,7 @@
   extra_env:
 
 - name: Qwen2.5-7B-Instruct-W4A16-AWQ
-  model_path: /pde_ai/share/whzhou/modelsQ/Qwen2.5-7B-Instruct-W4A16-AWQ
+  model_path: /external/ai/share/whzhou/modelsQ/Qwen2.5-7B-Instruct-W4A16-AWQ
   serve_config:
     tp: 1
     dp: 1
