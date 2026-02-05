@@ -7,7 +7,7 @@ Used for batched e2e *inference* and *performance* benchmark.
 ## Basic Usage
 
 ```bash
-[UV=1] python launch.py [-h] [--work-dir WORK_DIR] [--model-config CONFIG_YAML_FILE] [--cluster-config CONFIG_YAML_FILE] [--infer] [--text-case LM_CASE_FILE] [--image-case IMAGE_CASE_FILE] [--resume-csv RESUME_CSV] [--perf] [--gpus] [--tag] [--dry-run] [--dump-selected]
+[UV=1] python launch.py [-h] [--work-dir WORK_DIR] [--model-config CONFIG_YAML_FILE] [--cluster-config CONFIG_YAML_FILE] [--infer] [--text-case LM_CASE_FILE] [--image-case IMAGE_CASE_FILE] [--resume-csv RESUME_CSV] [--perf] [--gpus] [--tag] [--dry-run] [--dump-selected] [--concurrency]
 ```
 
 - `--work-dir`: 
@@ -61,6 +61,9 @@ Used for batched e2e *inference* and *performance* benchmark.
 - `--dump-selected`
     Dump the currently selected model subset into a new YAML config file.
 
+- `--concurrency`
+    Max number of models to run concurrently. Default: GPU count on local machine; 1 on cluster. Use 1 for serial.
+
 > Note: set **UV=1** if you are using uv instead of pip.
 
 ## Enable cluster
@@ -90,9 +93,9 @@ Used for batched e2e *inference* and *performance* benchmark.
 
 > *The node is assumed to be a docker or the environments of which vllm could directly run on.*
 
-If using ray for multi-node tests, you need specify `--cluster-config` for scripts. The script would try to allocate nodes according to the model config's requirement by `TP * DP * PP`. And you need specify `--gpus` to filter the multi-node model. For example:`--gpus: 8, 16, 32`
+If using ray for multi-node tests, you need specify `--cluster-config` for scripts. The script would try to allocate nodes according to the model config's requirement by `TP * DP * PP`. And you need specify `--gpus` to filter the multi-node model. For example:`--gpus: 8, 16, 32`.
 
-If not using ray for multi-node tests, you need not specify `--cluster-config` and not specify  `--gpus` also for scripts, run models requiring {1,2,4,8} GPUs by default.
+If not using ray for multi-node tests, you need not specify `--cluster-config`  and not specify `--gpus` also for scripts, run models requiring {1,2,4,8} GPUs by default.
 
 For example, if a model needs :
 - 8 cards, script would trying allocated 1 nodes and launch ray on it.
@@ -192,3 +195,4 @@ model_test
 ### --dry-run
 
 Selection preview only
+
