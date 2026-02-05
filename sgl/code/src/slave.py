@@ -29,7 +29,7 @@ def do_sync_output_info(sock, op_content: MsgContent) -> None:
     output_manager = OutputManager(output_depends)
     global g_logger, g_log_file_path
     g_logger = output_manager.logger
-    g_log_file_path = output_manager.log_path
+    g_log_file_path = output_manager.log_file_path
     sock.send_string(f'sync output info success!')
 
 
@@ -49,13 +49,30 @@ def do_stop_cmd(sock, op_content: MsgContent) -> None:
         log_msg_level(f'Stop [{op_content.cmd}]', g_logger)
         kill_process_all(g_opcontent_map[op_content.cmd].handle, g_logger)
         sock.send_string(f"stop [{op_content.cmd}] success")
-        kill_local_defunct_process(g_logger)
+        if not op_content.is_benching:
+            kill_local_defunct_process(g_logger)
+        del g_opcontent_map[op_content.cmd]
     else:
         sock.send_string(f'[{op_content.cmd}] proc not exist!')
 
 
+def do_get_cmd_status(sock, op_content: MsgContent) -> None:
+    global g_logger, g_opcontent_map
+    if op_content.cmd not in g_opcontent_map.keys():
+        op_content.status = -1
+        log_msg_level(f"get cmd status failed, cmd[{op_content.cmd}] not exist", g_logger)
+        sock.send_string(f'{op_content.to_json()}')
+        return
+    
+    op_content.output = g_opcontent_map[op_content.cmd].output
+    op_content.status = g_opcontent_map[op_content.cmd].status
+    if op_content.status is not None:
+        del g_opcontent_map[op_content.cmd]
+    sock.send_string(f'{op_content.to_json()}')
+
+
 def do_check_output_flag(sock, op_content: MsgContent) -> None:
-    global g_logger
+    global g_logger, g_opcontent_map
     output_flags = op_content.info
     op_content.info = [None, None]
     if op_content.cmd in g_opcontent_map.keys() and g_opcontent_map[op_content.cmd].output is not None:
@@ -65,7 +82,16 @@ def do_check_output_flag(sock, op_content: MsgContent) -> None:
                 op_content.info[0] = flag_str
                 log_msg_level(f"******************************** check flag {flag_str} ********************************", g_logger)
                 break
-        op_content.info[1] = get_folder_size(g_log_file_path)
+        op_content.info[1] = get_file_size(g_log_file_path)
+    sock.send_string(f'{op_content.to_json()}')
+
+
+def do_get_server_args(sock, op_content: MsgContent) -> None:
+    global g_logger, g_opcontent_map
+    op_content.info = [None, None]
+    if op_content.cmd in g_opcontent_map.keys() and g_opcontent_map[op_content.cmd].output is not None:
+        output = "".join(g_opcontent_map[op_content.cmd].output)
+        op_content.info = match_server_args(output, op_content.cmd, g_logger)
     sock.send_string(f'{op_content.to_json()}')
 
 
@@ -81,7 +107,9 @@ g_do_msg_map = {
     MsgType.SYNC_OUTPUT_INFO: do_sync_output_info,
     MsgType.RUN_CMD: do_run_cmd,
     MsgType.STOP_CMD: do_stop_cmd,
+    MsgType.GET_CMD_STATUS: do_get_cmd_status,
     MsgType.CHECK_OUTPUT_FLAG: do_check_output_flag,
+    MsgType.GET_SERVER_ARGS: do_get_server_args,
     MsgType.EXIT: do_exit,
 }
 
@@ -119,4 +147,8 @@ while True:
         continue
 
     if op_content.type == MsgType.EXIT:
+        for cmd, op in g_opcontent_map.items():
+            log_msg_level(f'Stop [{cmd}]', g_logger)
+            kill_process_all(op.handle, g_logger)
+            kill_local_defunct_process(g_logger)
         break

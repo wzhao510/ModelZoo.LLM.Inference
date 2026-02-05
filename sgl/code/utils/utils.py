@@ -181,7 +181,9 @@ class MsgType(IntEnum):
     SYNC_OUTPUT_INFO = auto()
     RUN_CMD = auto()
     STOP_CMD = auto()
+    GET_CMD_STATUS = auto()
     CHECK_OUTPUT_FLAG = auto()
+    GET_SERVER_ARGS = auto()
     EXIT = auto()
 
 
@@ -198,7 +200,7 @@ class MsgContent:
     print_output: Optional[bool] = True
     ready_flag: Optional[List[str]] = None
     is_ready: Optional[bool] = False
-    status: Optional[int] = 0
+    status: Optional[int] = None
     is_master: Optional[bool] = False
     thread: Optional[None] = None
     is_benching: Optional[bool] = False # 用于区别主节点的server/bench调用
@@ -313,6 +315,7 @@ def check_port_in_use(logger):
             log_msg_level(f'{conn.laddr.ip}:{conn.laddr.port} pid={conn.pid}', logger)
 
 def check_gpu_in_use(logger) -> str:
+    printenv(logger)
     check_port_in_use(logger)
     get_python_proc(logger)
     _, mem_used = get_gpu_mem_used(logger)
@@ -378,6 +381,12 @@ def get_folder_size(folder_path):
     return total_size
 
 
+def get_file_size(file_path):
+    if os.path.exists(file_path):
+        return os.path.getsize(file_path)
+    return 0
+
+
 def convert_str_to_env_dict(env_strs: List[str]):
     if env_strs is None or len(env_strs) == 0:
         return {}
@@ -388,3 +397,12 @@ def convert_str_to_env_dict(env_strs: List[str]):
             continue
         env_dict[env_str[:position]] = env_str[position+1:]
     return env_dict
+
+
+def match_server_args(outputs, cmd, logger):
+    match = re.search(r'server_args=ServerArgs\((.*?)\)',  outputs, re.DOTALL)
+    if match:
+        return [match.group(0), match.group(1)]
+    else:
+        log_msg_level(f"未找到 server_args=ServerArgs(...) 这一行, cmd:{cmd}", logger)
+        return [None, None]

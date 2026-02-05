@@ -7,6 +7,7 @@ import pandas as pd
 import json
 import copy
 import dataclasses
+import threading
 
 if TYPE_CHECKING:
     from src.task import TaskOnline, TaskOffline
@@ -26,6 +27,7 @@ class OutputDepends:
     server_full_cmd: Optional[str] = ''
     model_name: Optional[str] = ''
     node_id: int = 0
+    node_ip: Optional[str] = ''
     output_path: Optional[str] = ''
     image_tag: Optional[str] = ''
     now_time: Optional[str] = ''
@@ -48,160 +50,106 @@ class OutputDepends:
 class RealProgressManager:
     def __init__(self, args:argparse.Namespace) -> None:
         self.args = args
-        self.task = None
-        self.task_full_name = ''
-        self.fail_reason = 'fail'
         self.total_real_progress_path = os.path.join(self.args.output_path, f"total_real_progress_file.json")
-        self.total_real_progress_data = {"to_run": "0,0", "docker_tag": self.args.image_tag, "tasks": list()}
-
-        self.online_task_content = {}
-        self.offline_task_content = {}
+        self.total_real_progress_data = {"docker_tag": self.args.image_tag, "tasks": list()}
         self.now_time_path = os.path.join(self.args.output_path, NOW_TIME)
-
-    def init(self, task):
-        self.task = task
-        self.task_full_name = f'{task.task_name.replace("-", "_")}_server{task.task_id}'
-        self.online_task_content = {"launch_mode": "online",
-                                    "simple_param": self.task_full_name,
-                                    "server_id": f"{self.task.task_id}",
-                                    "cmd": self.task.server_full_cmd,
-                                    "client_test": list()}
-        self.offline_task_content = {"launch_mode": "offline",
-                                     "simple_param": self.task_full_name,
-                                     "server_id": f"{self.task.task_id}",
-                                     "cmd": self.task.server_full_cmd,
-                                     "status": "",
-                                     "times": 0}
-        self.create_real_progress_file()
-        self.write_real_progress_start()
-        self.fail_reason = "Unknown Error"
-
-    def create_real_progress_file(self) -> None:
-        self.real_progress_data = {"to_run": "0,0", "docker_tag": self.args.image_tag, "tasks": list()}
+        self.lock = threading.Lock()
         if not os.path.exists(self.total_real_progress_path):
             create_file(self.total_real_progress_path)
 
-    def write_real_progress_start(self):
-        # 因在线和离线的结构不同, 故在此处进行不同类型的处理
-        if self.task.launch_mode == TaskLaunchMode.online:
-            is_have_task = False
-            for task in self.total_real_progress_data['tasks']:
-                if task["server_id"] == f"{self.task.task_id}":
-                    is_have_task = True
-                    break
-            if not is_have_task:
-                self.total_real_progress_data['tasks'].append(self.online_task_content)
-        elif self.task.launch_mode == TaskLaunchMode.offline:
-            is_same = False
+    def init_task_content(self, task):
+        task_full_name = f'{task.task_name.replace("-", "_")}_server{task.task_id}'
+        online_task_content = {"launch_mode": "online",
+                                    "simple_param": task_full_name,
+                                    "server_id": f"{task.task_id}",
+                                    "cmd": task.server_full_cmd,
+                                    "client_test": list()}
+        offline_task_content = {"launch_mode": "offline",
+                                     "simple_param": task_full_name,
+                                     "server_id": f"{task.task_id}",
+                                     "cmd": task.server_full_cmd,
+                                     "status": "",
+                                     "times": 0}
+        with self.lock:
+            # 因在线和离线的结构不同, 故在此处进行不同类型的处理
+            if task.launch_mode == TaskLaunchMode.online:
+                is_have_task = False
+                for task_content in self.total_real_progress_data['tasks']:
+                    if task_content["server_id"] == f"{task.task_id}":
+                        is_have_task = True
+                        break
+                if not is_have_task:
+                    self.total_real_progress_data['tasks'].append(online_task_content)
+            elif task.launch_mode == TaskLaunchMode.offline:
+                is_same = False
+                for task_content in self.total_real_progress_data['tasks']:
+                    if task_content["server_id"] == f"{task.task_id}":
+                        is_same = True
+                        break
+                if not is_same:
+                    self.total_real_progress_data['tasks'].append(offline_task_content)
+            self._write_real_progress_config()
+
+    def write_real_progress_bench_serving(self, task_id, client_id, cmd):
+        with self.lock:
             for cur_task in self.total_real_progress_data['tasks']:
-                if cur_task["server_id"] == f"{self.task.task_id}":
-                    is_same = True
-                    break
-            if not is_same:
-                self.total_real_progress_data['tasks'].append(self.offline_task_content)
-            self.total_real_progress_data['to_run'] = "%s,%s" % (f"{self.task.task_id+1}", "0")
+                if cur_task["server_id"] != str(task_id):
+                    continue
 
-        self.write_real_progress_config()
+                is_same = False
+                for cur_client in cur_task["client_test"]:
+                    if cur_client["id"] == str(client_id):
+                        is_same = True
+                        break
+                if not is_same:
+                    data = {"id": str(client_id),
+                            "cmd": cmd,
+                            "status": "",
+                            "times": 0}
+                    cur_task["client_test"].append(copy.deepcopy(data))
+                break
+            self._write_real_progress_config()
 
-    def write_real_progress_bench_serving(self, client_id, cmd, is_svr_start=True):
-        id = self.task.task_id
-        c_id = client_id + 1
-        if not is_svr_start:
-            id = self.task.task_id + 1
-            c_id = client_id
+    def write_real_progress_result(self, result_flag, task, client_id = 0):
+        with self.lock:
+            if task.launch_mode is TaskLaunchMode.online:
+                self._process_online_real_progress_result(result_flag, task, client_id)
+            elif task.launch_mode is TaskLaunchMode.offline:
+                self._process_offline_real_progress_result(result_flag, task)
 
-        if (self.task.bench_total_num == client_id+1):
-            self.total_real_progress_data['to_run'] = "%s,%s" % (str(self.task.task_id + 1), "0")
-        else:
-            self.total_real_progress_data['to_run'] = "%s,%s" % (str(id), str(c_id))
+            self._write_real_progress_config()
 
-        if is_svr_start:
-            self.total_real_progress_data = self.process_real_progress_bench_serving(self.total_real_progress_data, cmd, client_id)
-
-        self.write_real_progress_config()
-
-    def process_real_progress_bench_serving(self, content, cmd, client_id):
-        for cur_task in content['tasks']:
-            if cur_task["server_id"] != str(self.task.task_id):
-                continue
-
-            is_same = False
-            for cur_client in cur_task["client_test"]:
-                if cur_client["id"] == str(client_id):
-                    is_same = True
-                    break
-            if not is_same:
-                data = {"id": str(client_id),
-                        "cmd": cmd,
-                        "status": "",
-                        "times": 0}
-                cur_task["client_test"].append(copy.deepcopy(data))
-            break
-        return content
-
-    def write_real_progress_result(self, result_flag, i):
-        if self.task.launch_mode is TaskLaunchMode.online:
-            self.total_real_progress_data = self.process_online_real_progress_result(result_flag, self.total_real_progress_data, i)
-        elif self.task.launch_mode is TaskLaunchMode.offline:
-            self.total_real_progress_data = self.process_offline_real_progress_result(result_flag, self.total_real_progress_data)
-
-        self.write_real_progress_config()
-
-    def process_online_real_progress_result(self, result_flag, data_content, i):
-        for task_content in data_content["tasks"]:
-            if task_content["server_id"] != str(self.task.task_id):
+    def _process_online_real_progress_result(self, result_flag, task, client_id):
+        for task_content in self.total_real_progress_data["tasks"]:
+            if task_content["server_id"] != str(task.task_id):
                 continue
             for client_content in task_content["client_test"]:
-                if client_content["id"] != str(i):
+                if client_content["id"] != str(client_id):
                     continue
                 if result_flag == 'pass':
                     client_content["status"] = "pass"
                 else:
-                    client_content["status"] = self.fail_reason # 'fail'
+                    client_content["status"] = task.failed_reason
                 client_content["times"] += 1
                 break
             break
-        return data_content
 
-    def process_offline_real_progress_result(self, result_flag, data_content):
-        for task_content in data_content["tasks"]:
-            if task_content["server_id"] != str(self.task.task_id):
+    def _process_offline_real_progress_result(self, result_flag, task):
+        for task_content in self.total_real_progress_data["tasks"]:
+            if task_content["server_id"] != str(task.task_id):
                 continue
             if result_flag == 'pass':
                 task_content['status'] = "pass"
             else:
-                task_content['status'] = self.fail_reason
+                task_content['status'] = task.failed_reason
             task_content['times'] += 1
             break
-        return data_content
 
-    def write_real_progress_config(self):
+    def _write_real_progress_config(self):
         if self.total_real_progress_path is None:
             return
         with open(self.total_real_progress_path, 'w') as f1:
             json.dump(self.total_real_progress_data, f1, indent=4, ensure_ascii=False)
-
-    def get_total_real_progress_to_run(self):
-        to_run_config = ["0", "0"]
-        if not os.path.exists(self.total_real_progress_path):
-            return to_run_config[0], to_run_config[1]
-
-        with open(self.total_real_progress_path, "r+") as f:
-            if os.path.getsize(self.total_real_progress_path) == 0:
-                self.total_real_progress_data = {"to_run": "0,0", "docker_tag": self.args.image_tag, "tasks": []}
-                json.dump(self.total_real_progress_data, f, indent=4, ensure_ascii=False)
-            else:
-                self.total_real_progress_data = json.load(f)
-            to_run_config = self.total_real_progress_data['to_run'].split(",")
-
-        return to_run_config[0], to_run_config[1]
-
-    def write_to_run_args(self, task_id=0, client_id=0):
-        self.total_real_progress_data['to_run'] = "%s,%s" % (str(task_id), str(client_id))
-        self.write_real_progress_config()
-
-    def set_fail_reason(self, reason):
-        self.fail_reason = reason
 
 
 class OutputManager:
@@ -212,7 +160,7 @@ class OutputManager:
         self.task_full_name = f'{self.output_depends.task_name.replace("-", "_")}_server{self.output_depends.task_id}'
 
         self.log_path = os.path.join(self.model_path, "logs")
-        self.log_file_name = f"{self.task_full_name}_node{self.output_depends.node_id}.log"
+        self.log_file_name = f"{self.task_full_name}_node{self.output_depends.node_id}_{self.output_depends.node_ip}.log"
         self.log_file_path = os.path.join(self.log_path, self.log_file_name)
         self.result_path = os.path.join(self.model_path, "result", self.task_full_name)
         if not os.path.exists(self.result_path):
@@ -222,7 +170,7 @@ class OutputManager:
         self.logger = get_logger(self.log_path, self.log_file_name)
         
     @classmethod
-    def from_task(cls, args:argparse.Namespace, task: Union["TaskOnline","TaskOffline"]):
+    def from_task(cls, args:argparse.Namespace, task: Union["TaskOnline","TaskOffline"], local_ip: str):
         return cls(OutputDepends(
             task_id=task.task_id,
             task_name=task.task_name,
@@ -230,6 +178,7 @@ class OutputManager:
             server_cmd=task.server_cmd,
             model_name=task.model_name,
             node_id=0,
+            node_ip=f'{local_ip}',
             output_path=args.output_path,
             image_tag=args.image_tag,
             now_time=NOW_TIME
