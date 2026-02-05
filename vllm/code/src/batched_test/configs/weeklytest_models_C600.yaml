@@ -1,39 +1,3 @@
-- name: "DeepSeek-R1-Distill-Llama-70B"
-  model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Llama-70B/"
-  serve_config:
-    tp: 4
-    dp: 1
-    pp: 1
-    extra_args:
-      --dtype: "bfloat16"
-      --gpu-memory-utilization: 0.9
-  infer_type:
-    - text-only
-  benchmark:
-    bench_param: "configs/bench_params/bench_mainstream.json"
-    ignore_eos: true
-    sweep_num_runs: 1
-  extra_env:
-
-
-- name: "DeepSeek-R1-Distill-Llama-8B"
-  model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Llama-8B/"
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-      --dtype: "bfloat16"
-      --gpu-memory-utilization: 0.95
-  infer_type:
-    - text-only
-  benchmark:
-    bench_param: "configs/bench_params/bench_mainstream.json"
-    ignore_eos: true
-    sweep_num_runs: 1
-  extra_env:
-
-
 - name: "GLM4.6-W8A8"
   model_path: "/mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.6-W8A8/"
   serve_config:
@@ -43,24 +7,6 @@
     extra_args:
       --dtype: "bfloat16"
       --gpu-memory-utilization: 0.9
-  infer_type:
-    - text-only
-  benchmark:
-    bench_param: "configs/bench_params/bench_mainstream.json"
-    ignore_eos: true
-    sweep_num_runs: 1
-  extra_env:
-
-
-- name: "Qwen3-8B"
-  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-8B/"
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-      --dtype: "bfloat16"
-      --gpu-memory-utilization: 0.95
   infer_type:
     - text-only
   benchmark:
@@ -88,19 +34,72 @@
   extra_env:
 
 
-- name: "Qwen3-14B"
-  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B/"
+- name: "InternVL3-78B"
+  model_path: "/mxstorage/pde_ai/models/llm/Internlm/InternVL3-78B/"
   serve_config:
-    tp: 1
+    tp: 8
     dp: 1
     pp: 1
     extra_args:
       --dtype: "bfloat16"
-      --gpu-memory-utilization: 0.95
+      --gpu-memory-utilization: 0.9
+  infer_type:
+    - single-image
+  benchmark:
+    bench_param: "configs/bench_params/bench_common.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+- name: "Qwen2.5-VL-72B"
+  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen2.5-VL-72B-Instruct/"
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "bfloat16"
+      --gpu-memory-utilization: 0.9
+  infer_type:
+    - single-image
+  benchmark:
+    bench_param: "configs/bench_params/bench_common.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+
+- name: "DeepSeek-R1-Distill-Llama-70B"
+  model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Llama-70B/"
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "bfloat16"
+      --gpu-memory-utilization: 0.9
   infer_type:
     - text-only
   benchmark:
     bench_param: "configs/bench_params/bench_mainstream.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+
+- name: "Mixtral-8x7B-V0.1"
+  model_path: "/mxstorage/pde_ai/models/llm/Mistral/Mixtral-8x7B-v0.1/"
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "float16"
+      --gpu-memory-utilization: 0.9
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_common.json"
     ignore_eos: true
     sweep_num_runs: 1
   extra_env:
@@ -133,6 +132,60 @@
     extra_args:
       --dtype: "bfloat16"
       --gpu-memory-utilization: 0.9
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_mainstream.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+
+- name: "DeepSeek-R1-Distill-Llama-8B"
+  model_path: "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Llama-8B/"
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "bfloat16"
+      --gpu-memory-utilization: 0.95
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_mainstream.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+
+- name: "Qwen3-8B"
+  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-8B/"
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "bfloat16"
+      --gpu-memory-utilization: 0.95
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_mainstream.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+
+- name: "Qwen3-14B"
+  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B/"
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "bfloat16"
+      --gpu-memory-utilization: 0.95
   infer_type:
     - text-only
   benchmark:
@@ -176,58 +229,3 @@
     ignore_eos: true
     sweep_num_runs: 1
   extra_env:
-
-
-- name: "InternVL3-78B"
-  model_path: "/mxstorage/pde_ai/models/llm/Internlm/InternVL3-78B/"
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-      --dtype: "bfloat16"
-      --gpu-memory-utilization: 0.9
-  infer_type:
-    - single-image
-  benchmark:
-    bench_param: "configs/bench_params/bench_common.json"
-    ignore_eos: true
-    sweep_num_runs: 1
-  extra_env:
-
-
-- name: "Mixtral-8x7B-V0.1"
-  model_path: "/mxstorage/pde_ai/models/llm/Mistral/Mixtral-8x7B-v0.1/"
-  serve_config:
-    tp: 4
-    dp: 1
-    pp: 1
-    extra_args:
-      --dtype: "float16"
-      --gpu-memory-utilization: 0.9
-  infer_type:
-    - text-only
-  benchmark:
-    bench_param: "configs/bench_params/bench_common.json"
-    ignore_eos: true
-    sweep_num_runs: 1
-  extra_env:
-
-- name: "Qwen2.5-VL-72B"
-  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen2.5-VL-72B-Instruct/"
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-      --dtype: "bfloat16"
-      --gpu-memory-utilization: 0.9
-  infer_type:
-    - single-image
-  benchmark:
-    bench_param: "configs/bench_params/bench_common.json"
-    ignore_eos: true
-    sweep_num_runs: 1
-  extra_env:
-
-
