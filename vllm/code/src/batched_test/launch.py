@@ -3,9 +3,11 @@
 
 import argparse
 from dataclasses import dataclass
+from pathlib import Path
 import threading
 from typing import ClassVar
 import os
+import pandas as pd
 import yaml
 import csv
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -448,12 +450,19 @@ class Scheduler:
             worker = BenchSweepWorker(
                 work_dir=bench_work_dir, model_cfg=cfg, gpu_manager=self.gpu_manager
             )
-            future = self.executor.submit(self._run_with_gate, worker.run, stop_event)
+            future = self.executor.submit(self._run_with_gate, worker.run, stop_event, 3600 if self.args.concurrency == 1 else 14400)
             futures.append(future)
 
         for f in as_completed(futures):
             result = f.result()
             all_results.append(result)
+        
+        # deal with the result and create the bench_tasks_result.csv
+        df = pd.DataFrame(all_results)
+        df = df[['task_name', 'status', 'log_dir', 'error']]
+        csv_path = Path(bench_work_dir) / "bench_tasks_result.csv"
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(csv_path, index=False, encoding='utf-8')
 
     def run_all(self):
         self.record_environment()

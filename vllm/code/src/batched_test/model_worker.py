@@ -189,6 +189,7 @@ class ModelConfigManager:
             output_dir,
             "--num-runs",
             str(bench_cfg.get("sweep_num_runs", "3")),
+            "--show-stdout",
         ]
 
         return sweep_cmd
@@ -566,18 +567,39 @@ class BenchSweepWorker(Worker):
 
         self.serve_cfg = model_cfg.get("serve_config", {})
         self.model_tag = f"{model_cfg['name']}_tp{self.serve_cfg.get('tp', 1)}_pp{self.serve_cfg.get('pp', 1)}_dp{self.serve_cfg.get('dp', 1)}"
+        self.log_file = os.path.join(self.work_dir, f"{self.model_tag}_serve.log")
 
-    def run(self, stop_event: threading.Event):
+    def run(self, stop_event: threading.Event, alloc_time_out: int = 14400):
         self.stop_event = stop_event
-        try:
-            self._wait_and_allocate_gpus()
-            self._launch_bench_sweep()
 
+        result = {
+            "task_name": self.model_tag,
+            "log_dir": None,
+            "status": "unknown",
+            "error": None
+        }
+        try:
+            self._wait_and_allocate_gpus(timeout=alloc_time_out)
+            self._launch_bench_sweep()
+            print(f"[{self.model_cfg['name']}] {'Completed!'.center(90, '-')}")
+
+            result["log_dir"] = self.log_file
+            result["status"] = "success"
+
+        except RuntimeError as e:
+            self.warp_failure(str(e))
+            result["status"] = "error"
+            result["error"] = f"{type(e)}: {str(e)}"
+            result["log_dir"] = self.log_file
+        
         except Exception as e:
-            return self.warp_failure(str(e))
+            self.warp_failure(str(e))
+            result["status"] = "error"
+            result["error"] = f"{type(e)}: {str(e)}"
 
         finally:
             self._cleanup()
+            return result
 
     def _launch_bench_sweep(self):
         result_dir = os.path.join(self.work_dir, self.model_tag)
@@ -594,9 +616,7 @@ class BenchSweepWorker(Worker):
             self.gpu_manager.start_ray_serve(self.related_gpu_ids, extra_env)
 
         # Log the process output
-        log_file = net_utils.prepare_dir(
-            os.path.join(self.work_dir, f"{self.model_tag}_serve.log")
-        )
+        log_file = net_utils.prepare_dir(self.log_file)
 
         with open(log_file, "a") as f:
             f.write(self.model_cfg["name"])
@@ -611,11 +631,14 @@ class BenchSweepWorker(Worker):
             cmd=sweep_cmd, env={**os.environ, **extra_env}, log_file=log_file
         )
 
-        self.sweep_process.wait()
+        returncode = self.sweep_process.wait()
+        if returncode != 0:
+            raise RuntimeError(f"[{self.model_cfg['name']}] vllm bench sweep serve encounter an error, return code {returncode}. Please check the log: {log_file}")
 
     def warp_failure(self, e: str):
         # Implement failure handling for performance testing here
-        print(f"[{self.model_cfg['name']}] Benchmark failed: {e}")
+        print(f"[{self.model_cfg['name']}] {'Benchmark failed:'.center(100, '-')}")
+        print(f"[{self.model_cfg['name']}] {e.center(100)}")
 
     def _cleanup(self):
         super()._cleanup()
