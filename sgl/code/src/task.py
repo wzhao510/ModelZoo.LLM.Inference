@@ -441,11 +441,11 @@ class TaskOnline(BaseTask):
                 result = self.current_bench_op.output
 
                 if status == 0:
-                    self.real_progress_manager.write_real_progress_result('pass', self, i)
+                    self.real_progress_manager.write_real_progress_result('pass', self, bench_id)
                     self.output_manager.write_client_result(bench_cmd, benchmark, result)
                     self.output_manager.extract_result_metrics(bench_cmd, benchmark, self.server_args_str, self.server_args_dict)
                 else:
-                    self.real_progress_manager.write_real_progress_result('fail', self, i)
+                    self.real_progress_manager.write_real_progress_result('fail', self, bench_id)
                     self.output_manager.write_client_result(bench_cmd, benchmark, result, False)
 
                 if self.is_stopped:
