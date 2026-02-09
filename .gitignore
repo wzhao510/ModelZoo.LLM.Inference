@@ -1,6 +1,6 @@
 .vscode/
 __pycache__/
-output/
+outputs/
 ceval
 exact_match
 *.sw?

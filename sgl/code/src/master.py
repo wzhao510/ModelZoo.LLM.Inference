@@ -53,6 +53,7 @@ class ServerParser:
             for cmd_name in server_cmd.split(';'):
                 if server_cmds is None or cmd_name.strip() not in server_cmds.keys():
                     raise RuntimeError(f"Task[{task['task_name']}] launch server cmd{cmd_name.strip()} not set!")
+                log_msg_level(f"[{task_name}]", logger)
                 server_list.extend(ServerParser.online_server(server_cmds[cmd_name.strip()], logger=logger))
         else:
             raise RuntimeError(f"Task[{task_name}] launch server cmd only support str or list!")
@@ -74,17 +75,21 @@ class ServerParser:
         return parts[-1][1]
 
     @staticmethod
-    def merge_task_envs(environments, task_envs):
+    def merge_task_envs(environments, task_envs, logger):
         default_envs = get_json_config_default(environments, 'default_envs', [])
         if len(task_envs) == 0:
-            return convert_str_to_env_dict(default_envs)
+            env = convert_str_to_env_dict(default_envs)
+            log_msg_level(env, logger)
+            return env
         new_env = []
         for env_value in task_envs:
             if env_value in environments.keys():
                 new_env.extend(environments[env_value])
                 continue
             new_env.append(env_value)
-        return convert_str_to_env_dict(new_env)
+        new_env = convert_str_to_env_dict(new_env)
+        log_msg_level(new_env, logger)
+        return new_env
     
 
 class TaskScheduler:
@@ -157,7 +162,7 @@ class TaskScheduler:
         task_list = []
         server_list = ServerParser.get_server_list(config, task_name, task_config, self.global_logger)
         launch_mode = get_json_config_default(task_config, 'launch_mode', 'online')
-        envs = ServerParser.merge_task_envs(environments, get_json_config_default(task_config, 'environment', []))
+        envs = ServerParser.merge_task_envs(environments, get_json_config_default(task_config, 'environment', []), self.global_logger)
         dist_port = get_json_config_default(task_config, 'dist_port', DEFAULT_DIST_PORT)
         server_port = get_json_config_default(task_config, 'server_port', DEFAULT_SERVER_PORT)
 
@@ -209,7 +214,6 @@ class TaskScheduler:
                         _task.set_output_manager(OutputManager.from_task(self.args, _task, self.args.local_ip))
                         _task.global_logger = self.global_logger
                         task_list.append(_task)
-        log_msg_level(f'server task list len={len(task_list)}', self.global_logger)
         return task_list
 
     def generate_task(self) -> None:
