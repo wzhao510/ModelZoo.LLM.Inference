@@ -93,7 +93,7 @@ class ModelConfigManager:
             "ray"
             if (
                 serve_config.get("distributed_executor_backend") == "ray"
-                or self.calc_required_gpus() >= 8
+                # or self.calc_required_gpus() >= 8
             )
             else "mp"
         )
