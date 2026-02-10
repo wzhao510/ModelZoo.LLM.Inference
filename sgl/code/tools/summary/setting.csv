@@ -1,0 +1,11 @@
+SETTING,VALUE,CHOICES,EXLAINATION
+ALL_RUN,custom:random,random/ceval/mmlu/custom:random;mmlu,若非custom，则所有模型都执行对应的value任务;若为custom，则只执行model.csv中RUN列为1的模型，bench的类型根据custom:random;ceval来，也可以不加则不替换，用默认config的
+DATE,2026-02-07,,
+CONTAINER_IMAGE,sw-harbor-lt.mxcr.io/ai-release/maca/sglang:0.5.7-maca.ai3.3.0.302-torch2.8-py310-ubuntu22.04-amd64,,
+LOCAL_IP,10.2.179.32,,
+RUN_USER,m01305,,
+INCREMENTAL_MODE,True,True/False,
+PARALLEL,True,True/False,可以同时执行多个任务
+PULL_IMAGES,True,True/False,
+RM_EXIST_DOCKER,False,True/False,每次都重新新建容器（原有容器的修改会丢失）
+CONFIG_REUSE,False,True/False,跳过config的生成、复制，直接复用已经有的config（方便手动更改config）
