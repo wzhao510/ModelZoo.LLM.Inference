@@ -17,7 +17,7 @@ from itertools import product
 from collections import defaultdict
 import pandas as pd
 
-
+MODEL_SERIES=['Qwen', 'DeepSeek', 'kimi', 'GLM']
 DEFAULT_SERVER_PORT = 30000
 DEFAULT_DIST_PORT = 5000
 
@@ -37,8 +37,7 @@ class ServerParser:
             for param in combo:
                 full_command += f" {param.strip()}" if full_command != "" else f"{param.strip()}"
             full_command = full_command.strip()
-
-            log_msg_level(full_command, logger)
+            log_msg_level(f"\t\t|___ {full_command}", logger)
             launch_server_commands.append(full_command)
         return launch_server_commands
 
@@ -52,8 +51,8 @@ class ServerParser:
             server_cmds = get_json_config_default(config, 'server_cmds', None)
             for cmd_name in server_cmd.split(';'):
                 if server_cmds is None or cmd_name.strip() not in server_cmds.keys():
-                    raise RuntimeError(f"Task[{task['task_name']}] launch server cmd{cmd_name.strip()} not set!")
-                log_msg_level(f"[{task_name}]", logger)
+                    raise RuntimeError(f"Task[{task_name}] launch server cmd{cmd_name.strip()} not set!")
+                log_msg_level(f"|—— {task_name}", logger)
                 server_list.extend(ServerParser.online_server(server_cmds[cmd_name.strip()], logger=logger))
         else:
             raise RuntimeError(f"Task[{task_name}] launch server cmd only support str or list!")
@@ -67,9 +66,9 @@ class ServerParser:
             return unknown_model_name
         path = Path(model_path.group(1))
         parts = path.parts
-        model_str = ['Qwen', 'DeepSeek', 'kimi']
+        model_str = MODEL_SERIES
         for part in enumerate(parts[::-1]):
-            for model in model_str:
+            for model in MODEL_SERIES:
                 if model.lower() in part[1].lower():
                     return part[1]
         return parts[-1][1]
@@ -79,7 +78,7 @@ class ServerParser:
         default_envs = get_json_config_default(environments, 'default_envs', [])
         if len(task_envs) == 0:
             env = convert_str_to_env_dict(default_envs)
-            log_msg_level(env, logger)
+            log_msg_level(f"\t\t|___ {env}", logger)
             return env
         new_env = []
         for env_value in task_envs:
@@ -88,7 +87,7 @@ class ServerParser:
                 continue
             new_env.append(env_value)
         new_env = convert_str_to_env_dict(new_env)
-        log_msg_level(new_env, logger)
+        log_msg_level(f"\t\t|___ {new_env}", logger)
         return new_env
     
 
@@ -242,7 +241,7 @@ class TaskScheduler:
                 continue
             
             for name, task_config in config['tasks'].items():
-                self.task_list.extend(self.parse_task(config, name, task_config, environments))           
+                self.task_list.extend(self.parse_task(config, name, task_config, environments))    
 
     def merge_result(self):
         result_files = {}        
