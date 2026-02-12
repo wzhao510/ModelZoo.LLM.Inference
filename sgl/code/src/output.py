@@ -333,7 +333,7 @@ class OutputManager:
             result_file_jsonl = os.path.join(
                 self.result_path, f"{benchmark.get_benchmark_args_str(command)}.jsonl"
             )
-            ret_cmd = f'{ret_cmd} {output_file_param} {result_file_jsonl}'
+            ret_cmd = f'{ret_cmd} {output_file_param} "{result_file_jsonl}"'
         return ret_cmd
 
     def write_client_result(self, command: str, benchmark: Benchmark, result, is_pass=True) -> None:
