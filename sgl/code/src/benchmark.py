@@ -183,6 +183,8 @@ class PerfBenchmark(Benchmark):
             'Input token throughput (tok/s)': r'Input token throughput \(tok/s\):\s+(\d+\.\d+|\d+)',
             'Output token throughput (tok/s)': r'Output token throughput \(tok/s\):\s+(\d+\.\d+|\d+)',
             'Total token throughput (tok/s)': r'Total token throughput \(tok/s\):\s+(\d+\.\d+|\d+)',
+            'Mean TTFT (ms)': r'Mean TTFT \(ms\):\s+(\d+\.\d+|\d+)',
+            'Mean TPOT (ms)': r'Mean TPOT \(ms\):\s+(\d+\.\d+|\d+)',
             'Concurrency': r'(?<!Max request )Concurrency:\s+(\d+\.\d+|\d+)',
             'Accept length': r'Accept length:\s+(\d+\.\d+|\d+)',
             'Mean E2E Latency (ms)': r'Mean E2E Latency \(ms\):\s+(\d+\.\d+|\d+)',
