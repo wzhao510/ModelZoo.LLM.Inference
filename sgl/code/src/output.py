@@ -193,17 +193,17 @@ class OutputManager:
                         'Model':[self.output_depends.model_name],
                         'Torch Compile':[],
                         'Cache': [],
-                        'chunked-prefix-cache':[],
-                        'NextN': [],
+                        'speculative-algorithm': [],
                         'speculative-num-steps':[],
                         'speculative-eagle-topk':[],
                         'speculative-num-draft-tokens':[],
                         'Cuda Graph': [],
+                        'cuda_graph_max_bs':[],
                         'flash_comm': [],
+                        'chunked-prefix-cache':[],
                         'Att Backend': [],
                         'dtype':[],
                         'Parallelism': [],
-                        'cuda_graph_max_bs':[],
                         'chunked_prefill_size':[],
                         'mem_frac':[],
                         'embedding_tp_size':[],
@@ -215,13 +215,15 @@ class OutputManager:
                     value.append(None)
                 else:
                     value.append("HiCache" if re.search(r"--enable-hierarchical-cache+", command) else "RadixCache")
-            if key == 'chunked-prefix-cache':
-                value.append('OFF' if re.search(r"--disable-chunked-prefix-cache+", command) else 'ON')
             elif key == 'Torch Compile':
                 value.append("ON" if re.search(r"--enable-torch-compile+", command) else "OFF")
-            elif key == 'NextN':
-                value.append("ON" if re.search(r'--speculative-algorithm\s+NEXTN', command) else "OFF")
 
+            # Speculative decoding
+            elif key == 'speculative-algorithm':
+                if re.search(r"--speculative-algorithm\s+(\S+)", command):
+                    value.append(re.search(r"--speculative-algorithm\s+(\S+)", command).group(1))
+                else:
+                    value.append(None)
             elif key == 'speculative-num-steps':
                 RE_match = re.search(r"--speculative-num-steps\s+(\d+)",command)
                 if RE_match:
@@ -241,8 +243,17 @@ class OutputManager:
                 else:
                     value.append(None)
 
+
             elif key == 'Cuda Graph':
                 value.append("OFF" if re.search(r"--disable-cuda-graph+", command) else "ON")
+            elif key == 'cuda_graph_max_bs':
+                RE_match = re.search(r"--cuda-graph-max-bs\s+(\d+)",command)
+                if RE_match:
+                    value.append(RE_match.group(1))
+                else:
+                    value.append(None)
+            if key == 'chunked-prefix-cache':
+                value.append('OFF' if re.search(r"--disable-chunked-prefix-cache+", command) else 'ON')
             elif key == 'flash_comm':
                 value.append("ON" if re.search(r"--enable-flash-comm", command) else "OFF")
             elif key == 'Att Backend':
@@ -258,13 +269,6 @@ class OutputManager:
                     value.append(re.search(r"--dtype\s+(\S+)", command).group(1))
                 else:
                     value.append('default')
-
-            elif key == 'cuda_graph_max_bs':
-                RE_match = re.search(r"--cuda-graph-max-bs\s+(\d+)",command)
-                if RE_match:
-                    value.append(RE_match.group(1))
-                else:
-                    value.append(None)
             
             elif key == 'embedding_tp_size':
                 RE_match = re.search(r"--embedding-tp-size\s+(\d+)", command)
