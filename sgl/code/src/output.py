@@ -332,7 +332,7 @@ class OutputManager:
         output_dir_param, output_file_param = benchmark.get_output_str(command)
         ret_cmd = command
         if output_dir_param != '':
-            ret_cmd = f'{ret_cmd} {output_dir_param} {self.result_path}'
+            ret_cmd = f'{ret_cmd} {output_dir_param} "{self.result_path}"'
         if output_file_param != '':
             result_file_jsonl = os.path.join(
                 self.result_path, f"{benchmark.get_benchmark_args_str(command)}.jsonl"
