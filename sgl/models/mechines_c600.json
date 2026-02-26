@@ -25,13 +25,23 @@
           "MACA_SMALL_PAGESIZE_ENABLE=1",
           "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP=1",
           "TRITON_ENABLE_MACA_CHAIN_DOT_OPT=1",
-	  "MACA_DIRECT_DISPATCH=1",
+          "MACA_DIRECT_DISPATCH=1",
           "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM=1",
           "MACA_QUEUE_SCHEDULE_POLICY=1"
       ],
       "mmlu_envs" : [
           "TIKTOKEN_CACHE_DIR=/models/"
       ]
-    }
-  }
+    },
+    "replacements": {
+      "random-dataset-path": "/models/ShareGPT_V3_unfiltered_cleaned_split.json",
+      "mmlu-data-path": "/models/acc/mmlu/data",
+      "ceval-data-path": "/workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl",
   
+      "DeepSeek-R1-W8A8-model-path": "/models/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model",
+      "DeepSeek-R1-W8A8-draft-model-path": "/models/DeepSeek-R1-NextN-Channel-INT8",
+
+      "Qwen3-235B-model-path": "/models/Qwen3-235B-A22B",
+      "Qwen3-235B-W8A8-model-path": "/models/models/Qwen3-235B-A22B_w8a8"
+    }
+}

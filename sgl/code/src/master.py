@@ -138,7 +138,7 @@ class TaskScheduler:
         self.global_logger.info("current server_pass_list after filter:")
         self.global_logger.info(self.server_pass_list)
     
-    def is_valid_task_config(self, config_path):
+    def is_valid_task_config(self, config_path, replacements):
         """
         检查是否为有效的task配置文件
         条件 1. 是有效的JSON文件 2. 包含'tasks'字段
@@ -146,7 +146,7 @@ class TaskScheduler:
         if not config_path.lower().endswith(('.json')):
             return False, 0
         try:
-            config = read_json(config_path)
+            config = read_json(config_path, replacements)
             # 检查是否包含必要的tasks字段
             if 'tasks' in config and isinstance(config['tasks'], dict):
                 return True,config
@@ -221,6 +221,7 @@ class TaskScheduler:
         self.connection = Connection(machines['machine_info'], self.args.port, self.args.local_ip, logger=self.global_logger)
         self.connection.connect()
         environments = get_json_config_default(machines, 'environments', {})
+        replacements = get_json_config_default(machines, 'replacements', {})
 
         # 处理目录和文件混合的情况
         expanded_config_paths = []
@@ -236,7 +237,7 @@ class TaskScheduler:
                 expanded_config_paths.append(config_path) if config_path not in expanded_config_paths else None
 
         for config_path in expanded_config_paths:
-            is_valid_task_config,config=self.is_valid_task_config(config_path)
+            is_valid_task_config, config=self.is_valid_task_config(config_path, replacements)
             if not is_valid_task_config:
                 continue
             

@@ -2,44 +2,44 @@
     "server_cmds": {
         "server_cmd_tp2dp8mtp213": [
             ["python3 -m sglang.launch_server --trust-remote-code"],
-            ["--model-path /models/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model"],
+            ["--model-path ${DeepSeek-R1-W8A8-model-path}"],
             ["--disable-radix-cache"],
             ["--attention-backend flashinfer"],
             ["--tp 16 --dp 8 --enable-dp-attention --enable-dp-lm-head"],
-            [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"]
+            [" --speculative-algorithm NEXTN --speculative-draft-model-path ${DeepSeek-R1-W8A8-draft-model-path} --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"]
         ],
         "server_cmd_tp16mtp314": [
             ["python3 -m sglang.launch_server --trust-remote-code"],
-            ["--model-path /models/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model"],
+            ["--model-path ${DeepSeek-R1-W8A8-model-path}"],
             ["--disable-radix-cache"],
             ["--attention-backend flashinfer"],
             ["--tp 16"],
-            [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 3 --speculative-eagle-topk 1 --speculative-num-draft-tokens 4 --quantization w8a8_int8"]
+            [" --speculative-algorithm NEXTN --speculative-draft-model-path ${DeepSeek-R1-W8A8-draft-model-path} --speculative-num-steps 3 --speculative-eagle-topk 1 --speculative-num-draft-tokens 4 --quantization w8a8_int8"]
         ],
         "server_cmd_tp4dp4mtp213": [
             ["python3 -m sglang.launch_server --trust-remote-code"],
-            ["--model-path /models/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model"],
+            ["--model-path ${DeepSeek-R1-W8A8-model-path}"],
             ["--disable-radix-cache"],
             ["--attention-backend flashinfer"],
             ["--tp 16 --dp 4 --enable-dp-attention --enable-dp-lm-head"],
-            [" --speculative-algorithm NEXTN --speculative-draft-model-path /models/DeepSeek-R1-NextN-Channel-INT8 --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"]
+            [" --speculative-algorithm NEXTN --speculative-draft-model-path ${DeepSeek-R1-W8A8-draft-model-path} --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"]
         ]
     },
     "benchmark_cmds": {
         "random": {
-            "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json ",
+            "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path ${random-dataset-path} ",
             "input_output_len": ["3072/1024"],
             "max_concurrency": ["1", "16", "32", "64", "128"],
             "num_prompt_times": 5
         },
         "ceval": {
             "type": "ceval",
-            "command_base": "python3  run_ceval_client.py --model /models/DeepSeek/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model  --test_jsonl /workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl --batch_size 64 --timeout 1800 "
+            "command_base": "python3  run_ceval_client.py --model ${DeepSeek-R1-W8A8-model-path} --test_jsonl ${ceval-data-path} --batch_size 64 --timeout 1800 "
         },
         "mmlu": {
             "type": "mmlu",
             "environment": ["mmlu_envs"],
-            "command_base": "python3 bench_sglang.py --data_dir /models/acc/mmlu/data --nsub 60"
+            "command_base": "python3 bench_sglang.py --data_dir ${mmlu-data-path} --nsub 60"
         }
     },
     "tasks": {

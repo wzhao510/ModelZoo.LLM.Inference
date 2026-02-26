@@ -99,6 +99,9 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
       "MACA_DIRECT_DISPATCH=1",
       "MCDBG_GRAPH_LAUNCH_QUEUE_POLICY=3",
       "MACA_GRAPH_LAUNCH_QUEUE_POLICY=3"
+    ],
+    "mmlu_envs" : [
+        "TIKTOKEN_CACHE_DIR=/models/"
     ]
   }
 }
@@ -106,6 +109,55 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 这里可以配置多组环境变量，以组名区分，如default_envs、specific_scenario_envs，不同的任务可以通过在task和benchmark配置中的**environment**字段添加组名（如specific_scenario_envs）来直接引用对应的环境变量。
 
 注意：**default_envs**是针对当前版本提供的默认服务启动参数的最优环境变量；如果变更服务启动参数，比如由TP切分改为DP切分，当前的默认的环境变量可能不是最优，可以尝试使用**specific_scenario_envs**，当前版本测试发现对于DeepSeek TP并行和 Qwen3 235B PP并行，**specific_scenario_envs**环境变量是最优的
+
+- **replacements：公共变量替换**
+
+鉴于模型路径、精度测试数据路径和测试集路径在不同的机器上路径不同，故在sgl/models/mechines.json中提供公共变量替换功能，如下：
+
+```json
+{
+    ......
+    "replacements": {
+        "random-dataset-path": "/models/ShareGPT_V3_unfiltered_cleaned_split.json",
+        "mmlu-data-path": "/models/acc/mmlu/data",
+        "ceval-data-path": "/workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl",
+
+        "DeepSeek-R1-W8A8-model-path": "/models/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model",
+        "DeepSeek-R1-W8A8-draft-model-path": "/models/DeepSeek-R1-NextN-Channel-INT8"
+        ......
+  }
+    ......
+}
+```
+在config.json中只需要通过 **${xx}** 引用即可，运行时会自动替换此变量：
+
+```json
+{
+    "server_cmds": {
+        "server_cmd": [
+            ["python3 -m sglang.launch_server --trust-remote-code"],
+            ["--model-path ${DeepSeek-R1-W8A8-model-path}"],
+            ......
+        ]
+    }
+    ......
+}
+```
+替换后：
+```json
+{
+    "server_cmds": {
+        "server_cmd": [
+            ["python3 -m sglang.launch_server --trust-remote-code"],
+            ["--model-path /models/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model"],
+            ......
+        ]
+    }
+    ......
+}
+```
+
+注意这个变量替换只会替换task指定的config.json中的变量，不会替换mechines.json本身的变量
 
 
 ## 2.2 测试通用配置说明
@@ -298,7 +350,16 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 | 参数     | 说明                                                         |
 | -------- | ------------------------------------------------------------ |
 | nsub     | 学科数，默认60                                               |
-| data_dir | 如果使用mmlu数据集进行精度测试，需要准备data数据，请从https://people.eecs.berkeley.edu/~hendrycks/data.tar下载、解压, 使用此路径。此外，如果是离线环境还需要从https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken下载"cl100k_base.tiktoken"文件，放到容器内任意路径下，并且将cl100k_base.tiktoken文件重命名为9b5ad71b2ce5302211f9c61530b329a4922fc6a4(注：此目录名称为tiktoken下载的http链接的hash，如果后续下载链接有变更，则调整此目录名)，同时需要在任务配置信息中增加环境变量 TIKTOKEN_CACHE_DIR 设置为上述任意路径的绝对全路径，如下：
+| data_dir | 如果使用mmlu数据集进行精度测试，需要准备data数据，请从https://people.eecs.berkeley.edu/~hendrycks/data.tar下载、解压, 使用此路径。此外，如果是离线环境还需要从https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken下载"cl100k_base.tiktoken"文件，放到容器内任意路径下，并且将cl100k_base.tiktoken文件重命名为9b5ad71b2ce5302211f9c61530b329a4922fc6a4(注：此目录名称为tiktoken下载的http链接的hash，如果后续下载链接有变更，则调整此目录名)，然后直接将sgl/models/mechines.json中的 TIKTOKEN_CACHE_DIR 设置为上述任意路径的绝对全路径既可以，如下：
+```json
+    "environments": {
+      ......
+      "mmlu_envs" : [
+          "TIKTOKEN_CACHE_DIR={下载cl100k_base.tiktoken的所在的路径的绝对全路径}"
+      ]
+    },
+```
+或者在任务的benchmark配置信息中增加环境变量：
 ```json
     ......
     "environment": [

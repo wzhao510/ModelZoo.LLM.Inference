@@ -1,14 +1,14 @@
 {
   "machine_info": [
     {
-        "ip": "192.168.3.54",
-        "ifname":"bond0",
-        "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3"
+        "ip": "10.2.179.32",
+        "ifname":"ens31f0",
+        "ib_hcas": "mlx5_0,mlx5_1,mlx5_2"
     },
     {
-        "ip": "192.168.3.77",
-        "ifname":"bond0",
-        "ib_hcas": "mlx5_0,mlx5_1,mlx5_2,mlx5_3"
+        "ip": "10.2.179.33",
+        "ifname":"ens31f0",
+        "ib_hcas": "mlx5_0,mlx5_1,mlx5_2"
     }
   ],
   "environments": {
@@ -31,5 +31,28 @@
     "mmlu_envs" : [
         "TIKTOKEN_CACHE_DIR=/models/"
     ]
+  },
+  "replacements": {
+    "random-dataset-path": "/models/ShareGPT_V3_unfiltered_cleaned_split.json",
+    "mmlu-data-path": "/models/acc/mmlu/data",
+    "ceval-data-path": "/workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl",
+
+    "DeepSeek-R1-AWQ-model-path": "/models/DeepSeek-R1-AWQ",
+    "DeepSeek-R1-Distill-Qwen-1.5B-model-path": "/models/DeepSeek-R1-Distill-Qwen-1.5B",
+    "DeepSeek-R1-W8A8-model-path": "/models/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model",
+    "DeepSeek-R1-W8A8-draft-model-path": "/models/DeepSeek-R1-NextN-Channel-INT8",
+    "DeepSeek-R1-BF16-model-path": "/models/DeepSeek-V3-BF16",
+    "DeepSeek-R1-BF16-draft-model-path": "/models/DeepSeek-V3-BF16-NextN",
+
+    "Qwen3-14B-model-path": "/models/Qwen3-14B",
+    "Qwen3-30B-model-path": "/models/Qwen3-30B-A3B",
+    "Qwen3-30B-W8A8-model-path": "/models/Qwen3-30B-A3B-GPTQ-W8A8",
+    "Qwen3-32B-model-path": "/models/Qwen3-32B",
+    "Qwen3-235B-model-path": "/models/Qwen3-235B-A22B",
+    "Qwen3-235B-W8A8-model-path": "/models/models/Qwen3-235B-A22B_w8a8",
+    "Qwen3-Coder-480B-int8-model-path": "/models/Qwen3-Coder-480B-A35B-Instruct-int8",
+    "Qwen3-Next-80B-model-path": "/models/Qwen3-Next-80B-A3B-Instruct",
+    "Qwen3-Next-80B-W8A8-model-path": "/models/Qwen3-Next-80B-A3B-Instruct-W8A8",
+    "Kimi-K2-W8A8-model-path": "/models/unsloth_Kimi-K2-Instruct-W8A8"
   }
 }
