@@ -111,6 +111,25 @@ def find_summary_csv(root: 'Path') -> 'Path':
     return matches[0]
 
 
+def get_performence_dir(base_path: 'Path') -> 'Path':
+    pattern = re.compile(r'^\d{8}_\d{4}$')
+    
+    # 获取第一层子目录（仅目录，不含文件）
+    matched_dirs = [
+        p for p in base_path.iterdir() 
+        if p.is_dir() and pattern.match(p.name)
+    ]
+    
+    # 验证数量
+    if len(matched_dirs) == 0:
+        raise ValueError(f"No directory with format 'YYYYMMDD_HHMM' found in {base_path}")
+    elif len(matched_dirs) > 1:
+        names = [d.name for d in matched_dirs]
+        raise ValueError(f"Multiple matching directories found (expected exactly one): {names}")
+    
+    return matched_dirs[0]
+
+
 def get_summary_df(csv_dir: 'Path') -> 'pd.DataFrame':
     if not csv_dir.exists():
         raise FileNotFoundError(f"The summary csv is not existed! file: {csv_dir.resolve()}")
@@ -363,7 +382,6 @@ def main(res_dir: Path, local_db_url: 'str', device_type: 'str'):
     BaseLocal.metadata.create_all(engine_local)
     logging.debug("The tables of local DB are already checked/created.")
 
-    res_dir = get_date_dir(res_dir)
     df_bench_result = pd.read_csv(res_dir / "performance" / "bench_tasks_result.csv")
     total_tasks_len = df_bench_result["status"].size
     runtime_pass_tasks_len = (df_bench_result["status"] == "success").sum()
@@ -411,7 +429,7 @@ if __name__ == "__main__":
     parser = create_parser()
     args = parser.parse_args()
 
-    res_dir: Path = args.res_dir
+    res_dir = get_performence_dir(args.res_dir)
     db_dir: Path = args.db_dir
 
     
