@@ -116,21 +116,33 @@ class PerfBenchmark(Benchmark):
 
                 continue
 
-            for index, concurrency in enumerate(max_concurrency):
-                cur_num_prompt = None
-                if isinstance(num_prompt_times, list):
-                    if index < len(num_prompt_times):
-                        cur_num_prompt = int(num_prompt_times[index])
+            if max_concurrency is None:
+                for index, num_prompt in enumerate(num_prompts):
+                    cur_num_prompt_times = None
+                    if isinstance(num_prompt_times, list):
+                        if index < len(num_prompt_times):
+                            cur_num_prompt_times = int(num_prompt_times[index])
+                        else:
+                            cur_num_prompt_times = 1
                     else:
-                        cur_num_prompt = 1
-                else:
-                    cur_num_prompt = int(num_prompt_times)  
+                        cur_num_prompt_times = int(num_prompt_times)
+                    self.cmd_list.extend([f"{command_base_str} --num-prompts {num_prompt}"] * cur_num_prompt_times)
+            else:
+                for index, concurrency in enumerate(max_concurrency):
+                    cur_num_prompt = None
+                    if isinstance(num_prompt_times, list):
+                        if index < len(num_prompt_times):
+                            cur_num_prompt = int(num_prompt_times[index])
+                        else:
+                            cur_num_prompt = 1
+                    else:
+                        cur_num_prompt = int(num_prompt_times)  
 
-                if cur_num_prompt is None or cur_num_prompt <= 0:
-                    self.cmd_list.append(f"{command_base_str} --num-prompts {concurrency}")
-                    continue
-                cur_num_prompt = cur_num_prompt * int(concurrency)
-                self.cmd_list.append(f"{command_base_str} --num-prompts {cur_num_prompt} --max-concurrency {concurrency}")
+                    if cur_num_prompt is None or cur_num_prompt <= 0:
+                        self.cmd_list.append(f"{command_base_str} --num-prompts {concurrency}")
+                        continue
+                    cur_num_prompt = cur_num_prompt * int(concurrency)
+                    self.cmd_list.append(f"{command_base_str} --num-prompts {cur_num_prompt} --max-concurrency {concurrency}")
             
 
         if len(config['input_output_len']) == 0:

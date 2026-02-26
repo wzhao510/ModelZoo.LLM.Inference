@@ -2,7 +2,7 @@
     "server_cmds": {
         "server_cmd": [
             ["python3 -m sglang.launch_server --trust-remote-code "],
-            ["--model-path /models/Qwen3-Next-80B-A3B-Instruct-W8A8"],
+            ["--model-path ${Qwen3-Next-80B-W8A8-model-path}"],
             ["--cuda-graph-max-bs 128 --max-running-requests 128"],
             ["--mamba-ssm-dtype bfloat16 "],
             ["--disable-radix-cache --disable-chunked-prefix-cache"],
@@ -14,19 +14,19 @@
     },
     "benchmark_cmds": {
         "random": {
-            "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json ",
+            "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path ${random-dataset-path} ",
                 "input_output_len": ["3072/1024"],
                 "max_concurrency": ["1", "16", "32", "64", "128", "256"],
                 "num_prompt_times": 5
         },
         "ceval": {
             "type": "ceval",
-            "command_base": "python3  run_ceval_client.py --model /models/Qwen3-Next-80B-A3B-Instruct-W8A8  --test_jsonl /workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl --batch_size 64 --timeout 1800 "
+            "command_base": "python3  run_ceval_client.py --model ${Qwen3-Next-80B-W8A8-model-path}  --test_jsonl ${ceval-data-path} --batch_size 64 --timeout 1800 "
         },
         "mmlu": {
             "type": "mmlu",
             "environment": ["mmlu_envs"],
-            "command_base": "python3 bench_sglang.py --data_dir /models/acc/mmlu/data --nsub 60"
+            "command_base": "python3 bench_sglang.py --data_dir ${mmlu-data-path} --nsub 60"
         }
     },
     "tasks": {

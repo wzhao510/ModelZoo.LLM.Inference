@@ -400,10 +400,9 @@ class TaskOnline(BaseTask):
         if self.is_stopped:
             return
 
-        #for i, one_bench in enumerate(self.bench_serving):
         bench_id = -1
         for benchmark in self.bench_serving:
-            for i, bench_cmd in enumerate(benchmark.cmd_list):
+            for bench_cmd in benchmark.cmd_list:
                 bench_id += 1
                 if self.is_stopped:
                     self.logger.error(f'bench stop success0')

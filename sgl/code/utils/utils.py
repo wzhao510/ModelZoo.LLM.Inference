@@ -96,11 +96,19 @@ def create_file(filename):
     print(f"File {filename} has been created or already exists.")
 
 
-def read_json(json_file):
+def read_json(json_file, replacements = None):
     with open(json_file, 'r') as f:
         config_str = f.read()
     json_str = re.sub(r'^[ \t]*//.*(?:\r?\n)?', '', config_str, flags=re.MULTILINE)
     json_str = re.sub('/\*.*?\*/', '', json_str, flags=re.S)
+
+    if replacements is not None:
+        # 替换 ${var_name} 格式的占位符
+        def replace_var(match):
+            var_name = match.group(1)
+            return str(replacements[var_name] if var_name in replacements.keys() else match.group(0))
+        pattern = r'\$\{([^}]+)\}'
+        json_str = re.sub(pattern, replace_var, json_str)
     config = json.loads(json_str)
     return config
 
