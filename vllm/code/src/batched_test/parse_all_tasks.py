@@ -338,6 +338,20 @@ def info_complement(row: 'pd.Series', device_type: 'str', SessionLocal, SessionR
 
     return pd.Series(new_cols)
 
+def get_date_dir(path:str):
+    d_list = [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
+    dir_pattern = r"(\d{4})(\d{2})(\d{2})[_](\d{2})(\d{2})"
+    dir_path = ''
+    for d in d_list:
+        matched = re.search(dir_pattern, d)
+        if matched:
+            print(f"found date_dir: {d} in {path}")
+            dir_path = os.path.join(path, d)
+            break
+    if dir_path:
+        return dir_path
+    else:
+        raise ValueError("Not found result dir in format 'YYYYMMDD_HHmm'  in path {path}")
 
 # ----------------------------- 主逻辑 -----------------------------
 def main(res_dir: Path, local_db_url: 'str', device_type: 'str'):
@@ -349,6 +363,7 @@ def main(res_dir: Path, local_db_url: 'str', device_type: 'str'):
     BaseLocal.metadata.create_all(engine_local)
     logging.debug("The tables of local DB are already checked/created.")
 
+    res_dir = get_date_dir(res_dir)
     df_bench_result = pd.read_csv(res_dir / "performance" / "bench_tasks_result.csv")
     total_tasks_len = df_bench_result["status"].size
     runtime_pass_tasks_len = (df_bench_result["status"] == "success").sum()
