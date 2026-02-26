@@ -9,7 +9,7 @@ from typing import Dict, List, Tuple, Union
 import pandas as pd
 import sqlite3
 import argparse
-from datetime import datetime, timedelta, timezone
+from tabulate import tabulate
 from sqlalchemy import JSON, Double, Integer, and_, create_engine, Column, String, Float, DateTime, func, or_, select, over, desc, asc, tuple_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, scoped_session
@@ -76,7 +76,7 @@ class DailyPerformance(BaseRemote):
 
 
 def create_engines(local_db_url: 'str'):
-    logging.info(f"数据库 URL: {local_db_url}")
+    logging.info(f"Database URL: {local_db_url}")
 
     engine_local = create_engine(local_db_url, echo=False, future=True)
     # 远程 URL 请根据实际情况修改
@@ -141,6 +141,9 @@ def get_summary_df(csv_dir: 'Path') -> 'pd.DataFrame':
         for col in df_summary.columns
         if 'input_len' in col or 'output_len' in col
     }
+
+    df_summary['date'] = pd.to_datetime(df_summary['date'], format='%Y%m%d-%H%M%S')
+    df_summary['start_time'] = df_summary['date'] - pd.to_timedelta(df_summary['duration'], unit='s')
 
     # 执行重命名
     df_summary.rename(columns=rename_map, inplace=True)
@@ -246,19 +249,19 @@ def update_local_best(best_list: 'List[LocalBestPerformance]', SessionLocal):
         sess_local.commit()
 
 
-def _parse_time(t: 'Union[datetime, str]') -> 'datetime':
-    if isinstance(t, str):
-        dt = datetime.strptime(t, "%Y%m%d-%H%M%S")
-        tz_beijing = timezone(timedelta(hours=8))
-        dt_aware = dt.replace(tzinfo=tz_beijing)
+# def _parse_time(t: 'Union[datetime, str]') -> 'datetime':
+#     if isinstance(t, str):
+#         dt = datetime.strptime(t, "%Y%m%d-%H%M%S")
+#         tz_beijing = timezone(timedelta(hours=8))
+#         dt_aware = dt.replace(tzinfo=tz_beijing)
     
-        return dt
-    else:
-        logging.info(f"parse time: {type(t)}")
-        return t
+#         return dt
+#     else:
+#         logging.info(f"parse time: {type(t)}")
+#         return t
 
 
-def process_performance(model_info: 'TaskInfo', df: 'pd.DataFrame', device_type: 'str', SessionLocal, SessionRemote) -> 'Tuple[bool, str, List[int]]':
+def process_performance(model_info: 'TaskInfo', df: 'pd.DataFrame', threshold: 'float', device_type: 'str', SessionLocal, SessionRemote) -> 'Tuple[bool, str, List[int]]':
     model_name = model_info.model_name
     tp, pp, dp = (model_info.tp, model_info.pp, model_info.dp)
 
@@ -290,16 +293,16 @@ def process_performance(model_info: 'TaskInfo', df: 'pd.DataFrame', device_type:
         final_best = max(current_tps, history_tps)
 
         # 数据不存在或者是远程存在，但是本地没有，都需要更新到本地
-        if final_best > history_tps or remote_best.get(key, None):
+        if final_best >= history_tps or remote_best.get(key, None):
             the_best: 'LocalBestPerformance' = LocalBestPerformance(
                 model_name = model_name, tp = tp, pp = pp, dp = dp,
                 concurrency = r['max_concurrency'], input = r['input_len'],
                 output = r['output_len'], best_tps = final_best,
-                update_date = _parse_time(history[1])
+                update_date = r['date']
             )
             to_merge.append(the_best)
         
-        if current_tps < final_best * 0.9:
+        if current_tps < final_best * (1 - threshold):
             failed_indices.append(idx)
 
     update_local_best(to_merge, SessionLocal)
@@ -312,7 +315,7 @@ def process_performance(model_info: 'TaskInfo', df: 'pd.DataFrame', device_type:
 
 
 
-def info_complement(row: 'pd.Series', device_type: 'str', SessionLocal, SessionRemote) -> 'pd.Series':
+def info_complement(row: 'pd.Series', threshold: 'float', device_type: 'str', SessionLocal, SessionRemote) -> 'pd.Series':
     new_cols = {}
 
     # 处理model_name
@@ -341,10 +344,14 @@ def info_complement(row: 'pd.Series', device_type: 'str', SessionLocal, SessionR
         task_info = TaskInfo(model_name=model_name, tp=tp, pp=pp, dp=dp)
         df_summary = get_summary_df(new_cols["summary_dir"])
 
-        ispass, cases_status, failed_indices = process_performance(task_info, df_summary, device_type, SessionLocal=SessionLocal, SessionRemote=SessionRemote)
+        ispass, cases_status, failed_indices = process_performance(task_info, df_summary, threshold, device_type, SessionLocal=SessionLocal, SessionRemote=SessionRemote)
 
         new_cols["cases_status"] = cases_status
         new_cols["failed_indices"] = failed_indices
+        new_cols["benchmark_start"] = df_summary["start_time"].min()
+        new_cols["benchmark_end"] = df_summary["date"].max()
+        new_cols["actual_duration (s)"] = df_summary["duration"].sum()
+        new_cols["whole_duration (s)"] = (new_cols['benchmark_end'] - new_cols['benchmark_start']).total_seconds()
 
         if ispass:
             new_cols["note"] = "pass"
@@ -357,23 +364,9 @@ def info_complement(row: 'pd.Series', device_type: 'str', SessionLocal, SessionR
 
     return pd.Series(new_cols)
 
-def get_date_dir(path:str):
-    d_list = [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
-    dir_pattern = r"(\d{4})(\d{2})(\d{2})[_](\d{2})(\d{2})"
-    dir_path = ''
-    for d in d_list:
-        matched = re.search(dir_pattern, d)
-        if matched:
-            print(f"found date_dir: {d} in {path}")
-            dir_path = os.path.join(path, d)
-            break
-    if dir_path:
-        return dir_path
-    else:
-        raise ValueError("Not found result dir in format 'YYYYMMDD_HHmm'  in path {path}")
 
 # ----------------------------- 主逻辑 -----------------------------
-def main(res_dir: Path, local_db_url: 'str', device_type: 'str'):
+def main(res_dir: Path, local_db_url: 'str', device_type: 'str', threshold: 'float'):
     # 创建 engine 和 session
     engine_local, engine_remote = create_engines(local_db_url)
     SessionLocal, SessionRemote = create_sessions(engine_local, engine_remote)
@@ -386,10 +379,29 @@ def main(res_dir: Path, local_db_url: 'str', device_type: 'str'):
     total_tasks_len = df_bench_result["status"].size
     runtime_pass_tasks_len = (df_bench_result["status"] == "success").sum()
 
-    new_cols = df_bench_result.apply(info_complement, axis=1, args=(device_type, SessionLocal, SessionRemote))
+    new_cols = df_bench_result.apply(info_complement, axis=1, args=(threshold, device_type, SessionLocal, SessionRemote))
     df_bench_result[new_cols.columns] = new_cols
 
-    logging.info(f"Execute succefully: {runtime_pass_tasks_len} / {total_tasks_len} (success / total)")
+    performence_pass_num = (df_bench_result["note"] == "pass").sum()
+    df_not_pass = df_bench_result[df_bench_result["note"] != "pass"][["model_name", "note", "cases_status", "failed_indices"]]
+    
+    logging.info("+" * 100)
+    logging.info("=" * 100)
+    logging.info(f"Execute succefully: {performence_pass_num} | {runtime_pass_tasks_len} | {total_tasks_len} (pass | run success | total)")
+    if len(df_not_pass) > 0:
+        logging.info("tasks not pass:")
+        print(tabulate(
+            df_not_pass,
+            headers='keys',
+            tablefmt='psql',
+            showindex=False,
+            stralign='left',
+            numalign='left',
+            missingval='None'
+        ))
+    logging.info("=" * 100)
+    logging.info("+" * 100)
+
 
     report_file = res_dir / "report.csv"
     df_bench_result.to_csv(report_file, index=False, encoding='utf-8')
@@ -422,6 +434,13 @@ def create_parser():
         help="The device type of current dailytest"
     )
 
+    parser.add_argument(
+        "--threshold",
+        default=0.1,
+        type=Float,
+        help="The threshold at which performance rollback is allowed."
+    )
+
     return parser
 
 
@@ -440,4 +459,4 @@ if __name__ == "__main__":
         raise ValueError(f"--db-dir can only accept a directory not a file. provided: {db_dir}")
     
     db_url = "sqlite:///" + str(db_dir.resolve() / LOCAL_DB_NAME)
-    main(res_dir, db_url, args.device_type)
+    main(res_dir, db_url, args.device_type, args.threshold)
