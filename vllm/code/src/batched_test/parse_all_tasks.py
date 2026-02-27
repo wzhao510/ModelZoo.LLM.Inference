@@ -437,7 +437,7 @@ def create_parser():
     parser.add_argument(
         "--threshold",
         default=0.1,
-        type=Float,
+        type=float,
         help="The threshold at which performance rollback is allowed."
     )
 
