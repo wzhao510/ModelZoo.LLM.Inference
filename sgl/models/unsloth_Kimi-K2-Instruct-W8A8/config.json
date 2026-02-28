@@ -7,7 +7,7 @@
             ["--disable-radix-cache --disable-chunked-prefix-cache"],
             ["--quantization w8a8_int8"],
             ["--attention-backend flashinfer"],
-            ["--tp 32 --dp 8 --enable-dp-attention "],
+            ["--tp 8 --pp-size 3 "],
             ["--mem-fraction-static 0.83"]
         ]
     },
