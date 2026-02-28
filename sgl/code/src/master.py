@@ -17,7 +17,7 @@ from itertools import product
 from collections import defaultdict
 import pandas as pd
 
-MODEL_SERIES=['Qwen', 'DeepSeek', 'kimi', 'GLM']
+MODEL_SERIES=['Qwen', 'DeepSeek', 'Kimi', 'GLM', 'MiniMax']
 DEFAULT_SERVER_PORT = 30000
 DEFAULT_DIST_PORT = 5000
 
