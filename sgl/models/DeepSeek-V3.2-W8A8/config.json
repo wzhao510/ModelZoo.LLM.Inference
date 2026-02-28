@@ -1,0 +1,35 @@
+{
+    "server_cmds": {
+        "server_cmd": [
+            ["python3 -m sglang.launch_server --trust-remote-code"],
+            ["--model-path ${DeepSeek-V3.2-W8A8-model-path}"],
+            ["--disable-radix-cache --disable-chunked-prefix-cache"],
+            ["--tp 16 --dp 8 --enable-dp-attention --enable-dp-lm-head"],
+            ["--mem-fraction-static 0.86"]
+        ]
+    },
+    "benchmark_cmds": {
+        "random": {
+            "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path ${random-dataset-path} ",
+                "input_output_len": ["3072/1024"],
+                "max_concurrency": ["1", "16", "32", "64", "128", "256"],
+                "num_prompt_times": 5
+        },
+        "ceval": {
+            "type": "ceval",
+            "command_base": "python3  run_ceval_client.py --model ${DeepSeek-V3.2-W8A8-model-path}  --test_jsonl ${ceval-data-path} --batch_size 64 --timeout 1800 "
+        },
+        "mmlu": {
+            "type": "mmlu",
+            "environment": ["mmlu_envs"],
+            "command_base": "python3 bench_sglang.py --data_dir ${mmlu-data-path} --nsub 60"
+        }
+    },
+    "tasks": {
+        "DeepSeek-V3.2-W8A8" : {
+            "launch_server": "server_cmd",
+            "benchmark": "random;ceval;mmlu"
+        }
+    }
+}
+
