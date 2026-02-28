@@ -535,7 +535,7 @@ python3 -m src.slave --local-ip 192.168.1.10 --port 20005
 --port：从节点监听的端口后，必须和主节点一致，默认是20000
 
 # 在主节点执行， port 可自定义（保持主从一致），可不配置，默认20000
-python3 -m src.master --output-path ../outputs/ --tasks-config ../models/DeepSeek-R1-W8A8/config.json --machine-config ../models/mechines.json --port 20005
+python3 -m src.master --output-path ../outputs/ --tasks-config ../models/DeepSeek-R1-W8A8/config.json --machine-config ../models/mechines.json --port 20005 --local-ip 192.168.1.2
 
 
 # 参数说明：
