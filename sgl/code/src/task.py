@@ -358,7 +358,7 @@ class TaskOnline(BaseTask):
                     output = MsgContent.from_json(message)
                     self.server_args_str, args_str = output.info[0], output.info[1]
                     self.server_args_dict = self.convert_server_args_to_dict(args_str)
-                self.bench_test(client_id)
+            self.bench_test(client_id)
 
             # 判断运行过程中是否出现错误,导致测试中断
             # 1.未出现错误中断,退出
@@ -397,16 +397,16 @@ class TaskOnline(BaseTask):
         return True
 
     def bench_test(self, client_id=0):
-        if self.is_stopped:
-            return
+        # if self.is_stopped:
+        #     return
 
         bench_id = -1
         for benchmark in self.bench_serving:
             for bench_cmd in benchmark.cmd_list:
                 bench_id += 1
-                if self.is_stopped:
-                    self.logger.error(f'bench stop success0')
-                    return
+                # if self.is_stopped:
+                #     self.logger.error(f'bench stop success0')
+                #     return
 
                 # 此处判断如果上次bench中断,则跳过之前已经跑过的bench client
                 if bench_id < self.current_bench_id:
@@ -435,23 +435,25 @@ class TaskOnline(BaseTask):
 
                 self.current_bench_id = bench_id + 1
                 self.real_progress_manager.write_real_progress_bench_serving(self.task_id, bench_id, bench_cmd)
-                self.connection.run_cmd(self.nodes_used[0], self.current_bench_op, self.logger, self.wake_up_event)
+                if not self.is_stopped:
+                    self.connection.run_cmd(self.nodes_used[0], self.current_bench_op, self.logger, self.wake_up_event)
                 status = self.current_bench_op.status
                 result = self.current_bench_op.output
 
                 if status == 0:
                     self.real_progress_manager.write_real_progress_result('pass', self, bench_id)
                     self.output_manager.write_client_result(bench_cmd, benchmark, result)
-                    self.output_manager.extract_result_metrics(bench_cmd, benchmark, self.server_args_str, self.server_args_dict)
                 else:
                     self.real_progress_manager.write_real_progress_result('fail', self, bench_id)
                     self.output_manager.write_client_result(bench_cmd, benchmark, result, False)
 
-                if self.is_stopped:
-                    self.logger.error(f'bench stop success1')
-                    if self.current_bench_id == len(self.bench_serving):
-                        self.is_bench_finish = True
-                    return
+                self.output_manager.extract_result_metrics(bench_cmd, benchmark, self.server_args_str, self.server_args_dict)
+
+                # if self.is_stopped:
+                #     self.logger.error(f'bench stop success1')
+                #     if self.current_bench_id == len(self.bench_serving):
+                #         self.is_bench_finish = True
+                #     return
 
                 self.current_bench_op = None
 

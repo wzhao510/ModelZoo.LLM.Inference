@@ -48,6 +48,39 @@ class HandlerFilter(logging.Filter):
             return record.exclude_handler_names not in self.handler_names
         return True
 
+def align_metrics_for_dataframe(metrics):
+    """
+    对齐metrics中所有列表的长度，空位置用空字符串填充，保证生成DataFrame时无长度错误
+    :param metrics: 原始metrics字典（不同key对应列表长度可能不同，可能包含None值）
+    :return: 对齐后的metrics字典
+    """
+    if not metrics:
+        return {}
+    
+    # 1. 计算所有列表的最大长度（兼容 None 值）
+    def get_length(v):
+        if v is None:
+            return 0
+        if isinstance(v, list):
+            return len(v)
+        return 1  # 非列表值视为长度为1
+    
+    max_length = max(get_length(value) for value in metrics.values())
+    
+    # 2. 遍历每个key，对齐列表长度（兼容 None 值）
+    aligned_metrics = {}
+    for key, value in metrics.items():
+        # 先把 value 标准化为列表
+        if value is None:
+            value = []
+        if not isinstance(value, list):
+            value = [value]
+        
+        # 列表长度不足时，用空字符串填充
+        aligned_list = value + [""] * (max_length - len(value))
+        aligned_metrics[key] = aligned_list
+    
+    return aligned_metrics
 
 def get_logger(log_path, log_name):
     try:

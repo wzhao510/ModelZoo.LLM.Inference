@@ -161,9 +161,17 @@ class PerfBenchmark(Benchmark):
             command = command_match.group(1)
         else:
             command = ' '
-        input_len,output_len,num_prompt,_ = self.get_benchmark_args(command)
-        bench_args['in-out'].append(f'{input_len}-{output_len}')
-        bench_args['num_prompt'].append(f'{num_prompt}')
+        # input_len,output_len,num_prompt,_ = self.get_benchmark_args(command)
+
+        in_match = re.search(r'in(\d+)', file_path)
+        out_match = re.search(r'out(\d+)', file_path)
+        prompt_match = re.search(r'prompt(\d+)', file_path)
+        in_value = int(in_match.group(1)) if in_match else None
+        out_value = int(out_match.group(1)) if out_match else None
+        prompt_value = int(prompt_match.group(1)) if prompt_match else None
+
+        bench_args['in-out'].append(f'{in_value}-{out_value}')
+        bench_args['num_prompt'].append(f'{prompt_value}')
 
         extract_field = lambda pattern, text: (
             match.group(1).strip()
@@ -212,12 +220,11 @@ class PerfBenchmark(Benchmark):
             'P100 ITL (ms)': r'P100 ITL \(ms\):\s+(\d+\.\d+|\d+)',
             'Max ITL (ms)': r'Max ITL \(ms\):\s+(\d+\.\d+|\d+)',
         }
-
-        metrics = {
-            key: [value]
-            for key, pattern in patterns.items()
-            if (value := extract_field(pattern, content)) is not None
-        }
+        metrics = {key: [] for key in patterns.keys()}
+        for key, pattern in patterns.items():
+            value = extract_field(pattern, content)
+            if value is not None:
+                metrics[key] = [value]
 
         bench_result_data = {**bench_args, **metrics}
 
