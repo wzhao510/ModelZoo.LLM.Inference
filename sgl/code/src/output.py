@@ -387,6 +387,7 @@ class OutputManager:
             df_server_args = server_args.copy()
             df_server_args.pop('tp_size')
             server_args_df = pd.DataFrame(df_server_args)
+            metrics = align_metrics_for_dataframe(metrics)
             bench_result_df = pd.DataFrame(metrics)
             merge_df = pd.concat([server_args_df, bench_result_df], axis=1)
             if exist_result_df is not None:
