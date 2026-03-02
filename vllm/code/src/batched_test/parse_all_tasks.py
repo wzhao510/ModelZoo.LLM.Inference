@@ -10,7 +10,7 @@ import pandas as pd
 import sqlite3
 import argparse
 from tabulate import tabulate
-from sqlalchemy import JSON, Double, Integer, and_, create_engine, Column, String, Float, DateTime, func, or_, select, over, desc, asc, tuple_
+from sqlalchemy import JSON, Integer, and_, create_engine, Column, String, Float, DateTime, func, or_, select, over, desc, asc, tuple_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.exc import OperationalError
@@ -66,7 +66,7 @@ class DailyPerformance(BaseRemote):
     input_len = Column(Integer)
     output_len = Column(Integer)
 
-    tps = Column(Double)
+    tps = Column(Float)
     test_date = Column(DateTime)
     meta_data = Column(JSON)
     device_type = Column(String)
@@ -398,7 +398,7 @@ def main(res_dir: Path, local_db_url: 'str', device_type: 'str', threshold: 'flo
             stralign='left',
             numalign='left',
             missingval='None'
-        ))
+        ), flush=True)
     logging.info("=" * 100)
     logging.info("+" * 100)
 
