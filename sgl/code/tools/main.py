@@ -126,7 +126,7 @@ class MainProcessor:
                 shell=True,
                 capture_output=True,
                 text=True,
-                timeout=15  # 15秒超时
+                timeout=20 
             )
             
             if result.returncode == 0:

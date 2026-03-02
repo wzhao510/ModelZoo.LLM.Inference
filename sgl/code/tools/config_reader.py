@@ -136,7 +136,7 @@ class ConfigReader:
         print(f"   自定义基准值：{setting_map['CUSTOM_BENCHMARK']}")
         return setting_map
 
-    def read_model_csv(self, run_only: bool = False) -> dict | list:
+    def read_model_csv(self, run_only: bool = False):
         """
         读取model.csv配置
         :param run_only: True=仅返回RUN=1的模型名，False=返回映射字典

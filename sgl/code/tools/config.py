@@ -33,21 +33,22 @@ class ValidationConfig:
     SETTING_REQUIRED_FIELDS = [
         "DATE", "CONTAINER_IMAGE", "LOCAL_IP", "RUN_USER",
         "INCREMENTAL_MODE", "PARALLEL", "RM_EXIST_DOCKER", "PULL_IMAGES",
-        "ALL_RUN", "CONFIG_REUSE"
+        "ALL_RUN", "CONFIG_REUSE", "USING_LUWU"
     ]
     SETTING_BOOL_FIELDS = [
-        "INCREMENTAL_MODE", "PARALLEL", "RM_EXIST_DOCKER", "PULL_IMAGES", "CONFIG_REUSE"
+        "INCREMENTAL_MODE", "PARALLEL", "RM_EXIST_DOCKER", "PULL_IMAGES", "CONFIG_REUSE", "USING_LUWU"
     ]
     DATASET_PARAM_MAP = {
         "random": "--dataset-path",
         "ceval": "--test_jsonl",
-        "mmlu": "--data_dir"
+        "mmlu": "--data_dir",
+        "verify": "--dataset-path",
     }
     MODEL_PATH_PATTERN = r'(--model-path)\s+/models/[^"\s]+'
     SPECULATIVE_DRAFT_MODEL_PATTERN = r'(--speculative-draft-model-path)\s+/models/[^"\s]+'
     CEVAL_MODEL_PATTERN = r'(--model)\s+/models/[^"\s]+'
     ILLEGAL_SEPARATORS = [",", " ", "，", "|", "；"]
-    VALID_BENCHMARKS = {"random", "ceval", "mmlu"}
+    VALID_BENCHMARKS = {"random", "ceval", "mmlu", "verify"}
 
 
 class Constants:

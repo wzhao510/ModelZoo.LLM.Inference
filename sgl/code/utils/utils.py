@@ -169,8 +169,10 @@ class BenchmarkType(Enum):
     perf = "perf"
     mmlu = "mmlu"
     ceval = 'ceval'
+    verify = 'verify'
 
 
+# @dataclasses.dataclass
 class TaskLaunchMode(Enum):
     online = "online"
     offline = "offline"

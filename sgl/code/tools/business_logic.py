@@ -53,6 +53,11 @@ class BusinessLogic:
             print(f"🔍 【模式】ALL_RUN=custom，仅复制model.csv中RUN=1的模型")
             need_copy_models = self.cr.read_model_csv(run_only=True)
         
+        # 替换 machines.json 中数据集和模型路径
+        date = os.path.basename(date_folder)
+        machines_json_path = date_folder + f"/{date}_machines.json"
+        self.crep.replace_model_dataset_path(machines_json_path, self.pm)
+
         # 4. 复制+替换
         copied_count = 0
         for model_name in need_copy_models:
@@ -66,15 +71,15 @@ class BusinessLogic:
             try:
                 # 复制文件
                 self.fo.copy_file(src_config, dst_config)
-                # 替换--model-path（原有逻辑）
-                self.crep.replace_server_cmds_model_path(dst_config, model_name, model_target_map)
-                # 替换--speculative-draft-model-path（有值则替换，无则跳过）
-                self.crep.replace_server_cmds_draft_model_path(dst_config, model_name, model_target_map)
-                # 替换ceval--model
-                self.crep.replace_ceval_model_path(dst_config, model_target_map[model_name]["target_path"])
-                # 替换数据集路径
-                self.crep.replace_dataset_paths(dst_config, dataset_map)
-                
+                # # 替换--model-path（原有逻辑）
+                # self.crep.replace_server_cmds_model_path(dst_config, model_name, model_target_map)
+                # # 替换--speculative-draft-model-path（有值则替换，无则跳过）
+                # self.crep.replace_server_cmds_draft_model_path(dst_config, model_name, model_target_map)
+                # # 替换ceval--model
+                # self.crep.replace_ceval_model_path(dst_config, model_target_map[model_name]["target_path"])
+                # # 替换数据集路径（现在仅修改extra_config不替换路径）
+                self.crep.replace_dataset_paths_in_benchmark_cmds(dst_config, dataset_map)
+
                 # custom:xxx时替换benchmark
                 if all_run_type == "custom" and custom_benchmark is not None:
                     print(f"🔄 【Custom模式】替换模型{model_name}的benchmark为：{custom_benchmark}")
@@ -90,6 +95,16 @@ class BusinessLogic:
                 continue
         
         print(f"\n📊 【复制统计】共处理{len(need_copy_models)}个模型，成功{copied_count}个")
+
+    def replace_machine_info_json(self, date_folder: str) -> None:
+        """ 
+            1. 如何选择 master 节点, 要在local-ip里面填写
+            2. 会有交互式选项（需要提前删除/跳过交互/默认值）
+        """
+        # 1. 执行sh脚本获取到节点、网卡信息
+        pass
+
+        # 2. 判断获取是否异常，若正常则生成json块替换 machines.json 中节点信息
 
     def process_task_config(self) -> dict:
         """
@@ -110,7 +125,19 @@ class BusinessLogic:
         daily_result_abs = self.fo.get_abs_path(self.pm.DAILY_RESULT_DIR)
         os.makedirs(daily_result_abs, exist_ok=True)
         date_folder = os.path.join(daily_result_abs, date_value)
+        # 检查date_folder目录是否已存在
+        if os.path.exists(date_folder) and not config_reuse:
+            # 交互式确认
+            response = input(f"⚠️ 目录 {date_folder} 已存在，是否覆盖？(y/N): ").strip().lower()
+            if response != "y":
+                print("❌ 请更改 setting.csv 中的 DATE 或 REUSE_CONFIG")
+                exit(1)  # 或根据业务需求改为抛出异常、返回等
+            else:
+                print(f"✅ 确认覆盖目录 {date_folder}")
+
+        # 目录不存在或用户确认覆盖后，创建目录
         os.makedirs(date_folder, exist_ok=True)
+        print(f"📁 目录 {date_folder} 已准备就绪")
         
         print(f"\n📁 【路径解析】")
         print(f"     脚本目录：{os.path.dirname(os.path.abspath(__file__))}")
@@ -119,15 +146,26 @@ class BusinessLogic:
         # 3. 备份setting.csv
         setting_src = self.fo.get_abs_path(os.path.join("summary", "setting.csv"))
         setting_dst = os.path.join(date_folder, f"{date_value}_setting.csv")
-        
+
+        # 4. 备份机器信息
+        machines_src = self.fo.get_abs_path(os.path.join("../../models", "machines.json"))
+        machines_dst = os.path.join(date_folder, f"{date_value}_machines.json")
+
         if config_reuse:
-            print(f"\n🔄 【配置复用模式】CONFIG_REUSE=true，仅跳过模型操作")
-            self.fo.copy_file(setting_src, setting_dst)
+            print(f"\n🔄 【配置复用模式】CONFIG_REUSE=true，跳过复制、替换等操作")
+            # self.fo.copy_file(setting_src, setting_dst)
+            # self.fo.copy_file(machines_src, machines_dst)
         else:
             print(f"\n🆕 【全新配置模式】CONFIG_REUSE=false，执行清空+备份+复制+替换")
             self.fo.clear_directory(date_folder)
             self.fo.copy_file(setting_src, setting_dst)
+            self.fo.copy_file(machines_src, machines_dst)
             self.copy_and_replace_configs(setting_config, date_folder)
         
+        # 5. 根据是否在陆吾平台预约来替换machines.json
+        using_luwu = setting_config["USING_LUWU"]
+        if using_luwu:
+            self.replace_machine_info_json(date_folder)
+
         setting_config["DATE_FOLDER_ABS"] = date_folder
         return setting_config
