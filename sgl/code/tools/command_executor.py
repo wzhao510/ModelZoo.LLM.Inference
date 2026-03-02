@@ -42,8 +42,12 @@ class CommandExecutor:
         
         cmd.extend(["--target-path", target_path_abs])
         cmd.extend(["--output-path", output_path_abs])
-        cmd.extend(["--machine-config", machine_config_abs])
         cmd.extend(["--tasks-config", tasks_config_abs])
+
+        # 用修改过的machines.json
+        date = os.path.basename(date_folder)
+        machines_json_path = date_folder + f"/{date}_machines.json"
+        cmd.extend(["--machine-config", machines_json_path])
         
         # 布尔参数
         if setting_config["INCREMENTAL_MODE"]:

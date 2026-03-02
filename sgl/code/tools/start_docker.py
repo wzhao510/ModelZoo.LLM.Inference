@@ -12,6 +12,16 @@ import re
 import socket
 
 logger = logging.getLogger(__name__)
+# EXTRA_CMD_IN_DOCKER="cp /external/ai/share/yunlei/maca_sdk/maca-sdk-3.5.3.17/libmccl.so /opt/maca-20251223/lib/libmccl.so; \
+#                         pip uninstall flash_mla -y; pip install /external/ai/share/m01305/flash_mla-1.0.1+git518423atorch2.8-cp310-cp310-linux_x86_64.whl"
+
+EXTRA_CMD_IN_DOCKER="pip3 config set global.index https://repo.metax-tech.com/r/pypi/pypi; \
+pip3 config set global.index-url https://repo.metax-tech.com/r/pypi/simple; \
+pip3 config set install.trusted-host repo.metax-tech.com; \
+pip install --upgrade transformers; \
+pip uninstall flash_mla -y; pip install /external/ai/share/m01305/flash_mla-1.0.1+git518423atorch2.8-cp310-cp310-linux_x86_64.whl"
+
+EXTRA_CMD_IN_DOCKER="pip uninstall flash_mla -y; pip install /external/ai/share/m01305/flash_mla-1.0.1+git518423atorch2.8-cp310-cp310-linux_x86_64.whl"
 
 @dataclasses.dataclass
 class ProcStatus:
@@ -349,7 +359,7 @@ def start_models(args,ssh_info_list,tag):
     incremental = "--incremental-mode" if args.incremental_mode else ""
     specify = "--specify-task" if args.specify_task else ""
 
-    benchmark_cmd = f'docker exec -i {args.container_name}  /bin/bash -c "source /opt/conda/etc/profile.d/conda.sh; conda activate base;cd {target_path}/code; \
+    benchmark_cmd = f'docker exec -i {args.container_name}  /bin/bash -c "source /opt/conda/etc/profile.d/conda.sh; conda activate base;cd {target_path}/code;{EXTRA_CMD_IN_DOCKER}; \
         python3 -u -m src.master \
             --output-path {args.output_path} \
             --machine-config {args.machine_config} \
@@ -365,7 +375,7 @@ def start_models(args,ssh_info_list,tag):
         local_ip = get_all_local_ip()
 
         if ssh_info.ip not in local_ip:
-            slave_cmd = f'docker exec -i {args.container_name} /bin/bash -c "source /opt/conda/etc/profile.d/conda.sh; conda activate base;cd {target_path}/code;python3 -u -m src.slave --local-ip {ssh_info.ip} --port {args.port} 2>&1"'
+            slave_cmd = f'docker exec -i {args.container_name} /bin/bash -c "source /opt/conda/etc/profile.d/conda.sh; conda activate base;cd {target_path}/code;{EXTRA_CMD_IN_DOCKER};python3 -u -m src.slave --local-ip {ssh_info.ip} --port {args.port} 2>&1"'
             run_cmd(slave_cmd,ssh_info,use_thread = True)
         else:
             master_ssh_info = ssh_info
