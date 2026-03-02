@@ -168,6 +168,7 @@ class OutputManager:
 
         self.server_args = self._get_launch_server_args()
         self.logger = get_logger(self.log_path, self.log_file_name)
+        self.server_available_gpu_mem = None
         
     @classmethod
     def from_task(cls, args:argparse.Namespace, task: Union["TaskOnline","TaskOffline"], local_ip: str):
@@ -385,6 +386,7 @@ class OutputManager:
 
             metrics = benchmark.extract_metrics_from_file(result_file)
             df_server_args = server_args.copy()
+            df_server_args["available_mem"] = self.server_available_gpu_mem
             df_server_args.pop('tp_size')
             server_args_df = pd.DataFrame(df_server_args)
             metrics = align_metrics_for_dataframe(metrics)

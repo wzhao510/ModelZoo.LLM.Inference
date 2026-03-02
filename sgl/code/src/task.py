@@ -329,6 +329,7 @@ class TaskOnline(BaseTask):
         self.launch_mode = TaskLaunchMode.online
         self.current_bench_id = 0
         self.bench_total_num = sum([len(bench.cmd_list) for bench in self.bench_serving])
+        self.server_info = {}
 
     def init(self):
         self.is_stopped = False
@@ -392,6 +393,12 @@ class TaskOnline(BaseTask):
                 output = MsgContent.from_json(message)
                 ready = output.info[0] is not None
             if ready:
+                pattern = r'available_gpu_mem=(\d+\.\d+)\s*GB'
+                for line in reversed(self.server_cmd_ops[0].output):
+                    match = re.search(pattern, line)
+                    if match:
+                        self.output_manager.server_available_gpu_mem = match.group(1) + " GB"
+                        break
                 break
             self.wake_up_event.wait(timeout=10)
         return True
