@@ -226,6 +226,7 @@ class MsgType(IntEnum):
     STOP_CMD = auto()
     GET_CMD_STATUS = auto()
     CHECK_OUTPUT_FLAG = auto()
+    GET_AVAILABLE_MEM = auto()
     GET_SERVER_ARGS = auto()
     EXIT = auto()
 

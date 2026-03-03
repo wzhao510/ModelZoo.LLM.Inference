@@ -372,36 +372,39 @@ class TaskOnline(BaseTask):
 
     def wait_server_ready(self):
         ready_flag = 'The server is fired up and ready to roll'
-        while True:
-            if self.is_stopped:
-                self.logger.error('server has been stopped !')
+        if self.nodes_used[0].is_local:
+            while True:
+                if self.is_stopped:
+                    self.logger.error('server has been stopped !')
+                    return False
+                ready = False
+                if self.nodes_used[0].is_local:
+                    ready = (
+                        self.server_cmd_ops[0].output is not None 
+                        and ready_flag in ''.join(self.server_cmd_ops[0].output)
+                    )
+                if ready:
+                    pattern = r'available_gpu_mem=(\d+\.\d+)\s*GB'
+                    for line in reversed(self.server_cmd_ops[0].output):
+                        match = re.search(pattern, line)
+                        if match:
+                            self.output_manager.server_available_gpu_mem = match.group(1) + " GB"
+                            break
+                    break
+                self.wake_up_event.wait(timeout=10)
+            return True
+        else:
+            op_content = MsgContent(
+                id=get_next_op_id(),
+                type=MsgType.GET_AVAILABLE_MEM,
+                cmd=self.server_cmd_ops[0].cmd,
+                info=[ready_flag]
+            )
+            message = self.connection.send_slave_msg(self.nodes_used[0], op_content, self.logger)
+            if len(message) == 0:
                 return False
-            ready = False
-            if self.nodes_used[0].is_local:
-                ready = (
-                    self.server_cmd_ops[0].output is not None 
-                    and ready_flag in ''.join(self.server_cmd_ops[0].output)
-                )
-            else:
-                op_content = MsgContent(
-                    id=get_next_op_id(),
-                    type=MsgType.CHECK_OUTPUT_FLAG,
-                    cmd=self.server_cmd_ops[0].cmd,
-                    info=[ready_flag]
-                )
-                message = self.connection.send_slave_msg(self.nodes_used[0], op_content, self.logger)
-                output = MsgContent.from_json(message)
-                ready = output.info[0] is not None
-            if ready:
-                pattern = r'available_gpu_mem=(\d+\.\d+)\s*GB'
-                for line in reversed(self.server_cmd_ops[0].output):
-                    match = re.search(pattern, line)
-                    if match:
-                        self.output_manager.server_available_gpu_mem = match.group(1) + " GB"
-                        break
-                break
-            self.wake_up_event.wait(timeout=10)
-        return True
+            self.output_manager.server_available_gpu_mem = message
+
 
     def bench_test(self, client_id=0):
         # if self.is_stopped:

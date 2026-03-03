@@ -85,6 +85,22 @@ def do_check_output_flag(sock, op_content: MsgContent) -> None:
         op_content.info[1] = get_file_size(g_log_file_path)
     sock.send_string(f'{op_content.to_json()}')
 
+def do_get_available_mem(sock, op_content: MsgContent) -> None:
+    global g_logger, g_opcontent_map
+    output_flags = op_content.info
+    mes = ""
+    if op_content.cmd in g_opcontent_map.keys():
+        while True:
+            if g_opcontent_map[op_content.cmd].output is None:
+                continue
+            output = "".join(g_opcontent_map[op_content.cmd].output)
+            if output_flags[0] in output:
+                pattern = r'available_gpu_mem=(\d+\.\d+)\s*GB'
+                match = re.search(pattern, output)
+                if match:
+                    mes = match.group(1) + " GB"
+                break
+    sock.send_string(f'{mes}')
 
 def do_get_server_args(sock, op_content: MsgContent) -> None:
     global g_logger, g_opcontent_map
@@ -109,6 +125,7 @@ g_do_msg_map = {
     MsgType.STOP_CMD: do_stop_cmd,
     MsgType.GET_CMD_STATUS: do_get_cmd_status,
     MsgType.CHECK_OUTPUT_FLAG: do_check_output_flag,
+    MsgType.GET_AVAILABLE_MEM: do_get_available_mem,
     MsgType.GET_SERVER_ARGS: do_get_server_args,
     MsgType.EXIT: do_exit,
 }
