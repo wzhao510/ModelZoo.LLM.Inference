@@ -1,0 +1,95 @@
+#draft model
+- name: Qwen3-32B-draft_Model(4B)
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-32B
+  serve_config:
+    tp: 2
+    dp: 1
+    pp: 1
+    extra_args: 
+      --speculative-config: '{"method": "draft_model", "model": "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B", "num_speculative_tokens": 4 }'
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+
+#eagle
+- name: Llama-3.1-8B-Instruct-eagle
+  model_path: /mxstorage/pde_ai/models/llm/Llama/Meta-Llama-3.1-8B-Instruct
+  serve_config:
+    tp: 2
+    dp: 1
+    pp: 1
+    extra_args: 
+      --speculative-config: '{"method": "eagle", "model": "/sw_home/o25617/eagle-llama" , "num_speculative_tokens": 4 }'
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+
+#eagle3
+- name: Qwen3-32B-eagle3
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-32B
+  serve_config:
+    tp: 2
+    dp: 1
+    pp: 1
+    extra_args: 
+      --speculative-config: '{"method": "eagle3", "model": "/sw_home/o25617/Qwen3-32B_eagle3" , "num_speculative_tokens": 4 }'
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+
+#ngram
+- name: Qwen3-32B-ngram
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-32B
+  serve_config:
+    tp: 2
+    dp: 1
+    pp: 1
+    extra_args: 
+      --speculative-config: '{"method": "ngram", "prompt_lookup_max":4 , "num_speculative_tokens": 4 }'
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+
+#suffix
+- name: Qwen3-32B-suffix
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-32B
+  serve_config:
+    tp: 2
+    dp: 1
+    pp: 1
+    extra_args: 
+      --speculative-config: '{"method": "suffix", "num_speculative_tokens": 4 }'
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+
+#mtp
+- name: Qwen3-Next-80B-A3B-mtp
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-Next-80B-A3B-Instruct
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args: 
+      --speculative-config: '{"method": "mtp",  "num_speculative_tokens": 4 }'
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
