@@ -833,6 +833,43 @@
   tags:
   - moe
 
+- name: GLM-4.7-W48A8_WITH_MTP-OFF
+  model_path: /mxstorage/pde_ai/model_quant_opt/GLM/GLM-4.7-W48A8_WITH_MTP/vllm_quant_model
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
+    VLLM_USE_FUSED_MOE_GROUPED_TOPK : 0
+  tags:
+  - moe
+
+- name: GLM-4.7-W48A8_WITH_MTP
+  model_path: /mxstorage/pde_ai/model_quant_opt/GLM/GLM-4.7-W48A8_WITH_MTP/vllm_quant_model
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+      --speculative-config '{"method":"glm4_moe_mtp","num_speculative_tokens":2, "model":"/mxstorage/pde_ai/model_quant_opt/GLM/GLM-4.7-W48A8_WITH_MTP/vllm_quant_model"}' 
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
+    VLLM_USE_FUSED_MOE_GROUPED_TOPK : 0 
+  tags:
+  - moe
+
 - name: Mistral-8x7B-v0.1
   model_path: /mxstorage/pde_ai/models/llm/Mistral/Mixtral-8x7B-v0.1
   serve_config:
@@ -1134,6 +1171,69 @@
     pp: 1
     extra_args:
       -dcp: 2
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_high.json
+    sweep_num_runs: 1
+  extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
+  
+- name: DeepSeek-R1-W4A8-SQ_MIX_V5
+  model_path: /mxstorage/pde_ai/models/llm/DeepSeek_W4A8_OPT/DeepSeek-R1-W4A8-SQ_MIX_V5/vllm_quant_model_R1/
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_high.json
+    sweep_num_runs: 1
+  extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
+
+- name: DeepSeek-R1-W48A8-MTP_W4A8
+  model_path: /mxstorage/pde_ai/models/llm/DeepSeek_W4A8_OPT/DeepSeek-R1-W48A8-MTP_W4A8/vllm_quant_model/
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+      --speculative-config: '{"method": "deepseek_mtp" , "num_speculative_tokens" : 2}'
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_high.json
+    sweep_num_runs: 1
+  extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
+
+- name: DeepSeek-R1-W48A8-MTP_W8A8
+  model_path: /mxstorage/pde_ai/models/llm/DeepSeek_W4A8_OPT/DeepSeek-R1-W48A8-MTP_W8A8/vllm_quant_model/
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+      --speculative-config : '{"method": "deepseek_mtp", "num_speculative_tokens": 2}'
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_high.json
+    sweep_num_runs: 1
+  extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
+
+- name: DeepSeek-R1-W48A8-MTP_BF16
+  model_path: /mxstorage/pde_ai/models/llm/DeepSeek_W4A8_OPT/DeepSeek-R1-W48A8-MTP_BF16/vllm_quant_model_R1/
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+      --speculative-config : '{"method": "deepseek_mtp", "num_speculative_tokens": 2}'
   infer_type:
   - text-only
   benchmark:
