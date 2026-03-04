@@ -4,34 +4,35 @@
 
 ```markdown
 sgl
-├──code/
-│   ├── src/
-│   │   ├── __init__.py
-│   │   ├── benchmark.py
-│   │   ├── connection.py
-│   │   ├── master.py
-│   │   ├── output.py
-│   │   ├── slave.py
-│   │   ├── task.py
-│   ├──utils/
-│   │   ├── __init__.py
-│   │   └── utils.py
-│   ├── __init__.py
-│   ├── bench_sglang.py
-│   ├── run_ceval_client.py
-│   ├──pd_scripts/
-│   │   ├── generate_config.py
-│   │   ├── launch_servers.sh
-│   │   ├── template_decoder.sh
-│   │   ├── template_docker.sh
-│   │   ├── template_prefill.sh
-├── dataset/
-│   └── ceval_val_cmcc.jsonl
-├── models/
-│   ├── 模型名称
-│   │   ├── config.json
-│   ├── mechines.json
-└── README.md
+├──── code/
+│       ├──── src/
+│       │        ├── __init__.py
+│       │        ├── benchmark.py
+│       │        ├── benchmark.py
+│       │        ├── connection.py
+│       │        ├── master.py
+│       │        ├── output.py
+│       │        ├── slave.py
+│       │        ├── task.py
+│       ├──── utils/
+│       │        ├── __init__.py
+│       │        └── utils.py
+│       ├──── __init__.py
+│       ├──── bench_sglang.py
+│       ├──── run_ceval_client.py
+│       ├──── pd_scripts/
+│       │        ├── generate_config.py
+│       │        ├── launch_servers.sh
+│       │        ├── template_decoder.sh
+│       │        ├── template_docker.sh
+│       │        └── template_prefill.sh
+├──── dataset/
+│       └──── ceval_val_cmcc.jsonl
+├──── models/
+│       ├──── ${MODEL_NAME}
+│       │        └── config.json
+│       └──── machines.json
+└──── README.md
 ```
 
 code下存放的是测试代码和脚本, models目录下存放的是支持的模型的配置文件
@@ -43,7 +44,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 | perf         | 可以组合各种参数的性能测试                              |
 | acc          | 精度测试，目前支持 mmlu和ceval                               |
 
-## 2.1 服务器信息配置 (mechines.json)
+## 2.1 服务器信息配置 (machines.json)
 
 包含节点信息和通用环境变量配置
 
@@ -68,7 +69,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 | PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM            | PyTorch 的优先级流（Priority Stream）优化         |
 | MACA_QUEUE_SCHEDULE_POLICY                        | MACA 队列调度策略设置                             |
 
-已有配置默认路径在sgl/models/mechines.json：
+已有配置默认路径在sgl/models/machines.json：
 
 ```json
 {
@@ -112,7 +113,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 
 - **replacements：公共变量替换**
 
-鉴于模型路径、精度测试数据路径和测试集路径在不同的机器上路径不同，故在sgl/models/mechines.json中提供公共变量替换功能，如下：
+鉴于模型路径、精度测试数据路径和测试集路径在不同的机器上路径不同，故在sgl/models/machines.json中提供公共变量替换功能，如下：
 
 ```json
 {
@@ -157,7 +158,56 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 }
 ```
 
-注意这个变量替换只会替换task指定的config.json中的变量，不会替换mechines.json本身的变量
+注意这个变量替换只会替换task指定的config.json中的变量，不会替换machines.json本身的变量
+
+- **replacements：公共变量替换**
+
+鉴于模型路径、精度测试数据路径和测试集路径在不同的机器上路径不同，故在sgl/models/machines.json中提供公共变量替换功能，如下：
+
+```json
+{
+    ......
+    "replacements": {
+        "random-dataset-path": "/models/ShareGPT_V3_unfiltered_cleaned_split.json",
+        "mmlu-data-path": "/models/acc/mmlu/data",
+        "ceval-data-path": "/workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl",
+
+        "DeepSeek-R1-W8A8-model-path": "/models/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model",
+        "DeepSeek-R1-W8A8-draft-model-path": "/models/DeepSeek-R1-NextN-Channel-INT8"
+        ......
+  }
+    ......
+}
+```
+在config.json中只需要通过 **${xx}** 引用即可，运行时会自动替换此变量：
+
+```json
+{
+    "server_cmds": {
+        "server_cmd": [
+            ["python3 -m sglang.launch_server --trust-remote-code"],
+            ["--model-path ${DeepSeek-R1-W8A8-model-path}"],
+            ......
+        ]
+    }
+    ......
+}
+```
+替换后：
+```json
+{
+    "server_cmds": {
+        "server_cmd": [
+            ["python3 -m sglang.launch_server --trust-remote-code"],
+            ["--model-path /models/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model"],
+            ......
+        ]
+    }
+    ......
+}
+```
+
+注意这个变量替换只会替换task指定的config.json中的变量，不会替换machines.json本身的变量
 
 
 ## 2.2 测试通用配置说明
@@ -240,8 +290,9 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 | 参数                                              | 说明                                      |
 | ------------------------------------------------- | ----------------------------------------- |
 
-如果不设置或者为空，则此任务使用**mechines.json**中的**default_envs**环境变量配置
-可以添加独有环境变量；也可以直接添加**mechines.json**中的环境变量组名来直接引用已有的环境变量，如：
+如果不设置或者为空，则此任务使用**machines.json**中的**default_envs**环境变量配置
+如果不设置或者为空，则此任务使用**machines.json**中的**default_envs**环境变量配置
+可以添加独有环境变量；也可以直接添加**machines.json**中的环境变量组名来直接引用已有的环境变量，如：
 ```json
     ......
     "environment": [
@@ -249,7 +300,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
     ],
     ......
 ```
-上述这个任务配置就会直接使用**mechines.json**中的**specific_scenario_envs**的环境变量配置。
+上述这个任务配置就会直接使用**machines.json**中的**specific_scenario_envs**的环境变量配置。
 
 
 **所有内置的模型config.json文件都是当前版本的最佳性能参数，只需要修改模型路径和机器等信息即可**
@@ -280,7 +331,22 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
             ......
             "benchmark": "random"
             ......
+    ......
+    "benchmark_cmds": {
+        "random": {
+            "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json",
+            "input_output_len": ["3072/1024"],
+            "num_prompt": ["1", "16", "32", "64", "128"]
         }
+    },
+    "tasks": {
+        "DeepSeek-R1-0528-BF16-W8A8" : {
+            ......
+            "benchmark": "random"
+            ......
+        }
+    }
+    ......
     }
     ......
 }
@@ -303,7 +369,24 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
             ......
             "benchmark": "random"
             ......
+{
+    ......
+    "benchmark_cmds": {
+        "random": {
+            "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json",
+            "input_output_len": ["3072/1024"],
+            "max_concurrency": ["1", "16", "32", "64", "128"],
+            "num_prompt_times": 5
         }
+    },
+    "tasks": {
+        "DeepSeek-R1-0528-BF16-W8A8" : {
+            ......
+            "benchmark": "random"
+            ......
+        }
+    }
+    ......
     }
     ......
 }
@@ -327,7 +410,24 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
             ......
             "benchmark": "random"
             ......
+{
+    ......
+    "benchmark_cmds": {
+        "random": {
+            "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json",
+            "input_output_len": ["3072/1024"],
+            "max_concurrency": ["1", "16", "32", "64", "128"],
+            "num_prompt_times": [2, 3]
         }
+    },
+    "tasks": {
+        "DeepSeek-R1-0528-BF16-W8A8" : {
+            ......
+            "benchmark": "random"
+            ......
+        }
+    }
+    ......
     }
     ......
 }
@@ -350,7 +450,17 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 | 参数     | 说明                                                         |
 | -------- | ------------------------------------------------------------ |
 | nsub     | 学科数，默认60                                               |
-| data_dir | 如果使用mmlu数据集进行精度测试，需要准备data数据，请从https://people.eecs.berkeley.edu/~hendrycks/data.tar下载、解压, 使用此路径。此外，如果是离线环境还需要从https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken下载"cl100k_base.tiktoken"文件，放到容器内任意路径下，并且将cl100k_base.tiktoken文件重命名为9b5ad71b2ce5302211f9c61530b329a4922fc6a4(注：此目录名称为tiktoken下载的http链接的hash，如果后续下载链接有变更，则调整此目录名)，然后直接将sgl/models/mechines.json中的 TIKTOKEN_CACHE_DIR 设置为上述任意路径的绝对全路径既可以，如下：
+| data_dir | 如果使用mmlu数据集进行精度测试，需要准备data数据，请从https://people.eecs.berkeley.edu/~hendrycks/data.tar下载、解压, 使用此路径。此外，如果是离线环境还需要从https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken下载"cl100k_base.tiktoken"文件，放到容器内任意路径下，并且将cl100k_base.tiktoken文件重命名为9b5ad71b2ce5302211f9c61530b329a4922fc6a4(注：此目录名称为tiktoken下载的http链接的hash，如果后续下载链接有变更，则调整此目录名)，然后直接将sgl/models/machines.json中的 TIKTOKEN_CACHE_DIR 设置为上述任意路径的绝对全路径既可以，如下：
+```json
+    "environments": {
+      ......
+      "mmlu_envs" : [
+          "TIKTOKEN_CACHE_DIR={下载cl100k_base.tiktoken的所在的路径的绝对全路径}"
+      ]
+    },
+```
+或者在任务的benchmark配置信息中增加环境变量：
+| data_dir | 如果使用mmlu数据集进行精度测试，需要准备data数据，请从https://people.eecs.berkeley.edu/~hendrycks/data.tar下载、解压, 使用此路径。此外，如果是离线环境还需要从https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken下载"cl100k_base.tiktoken"文件，放到容器内任意路径下，并且将cl100k_base.tiktoken文件重命名为9b5ad71b2ce5302211f9c61530b329a4922fc6a4(注：此目录名称为tiktoken下载的http链接的hash，如果后续下载链接有变更，则调整此目录名)，然后直接将sgl/models/machines.json中的 TIKTOKEN_CACHE_DIR 设置为上述任意路径的绝对全路径既可以，如下：
 ```json
     "environments": {
       ......
@@ -458,7 +568,7 @@ docker run -it --device=/dev/dri --device=/dev/mxcd --device=/dev/infiniband --p
 
 进入主节点容器内部，modelzoo目录就在 /workspace/ModelZoo.LLM.Inference
 
-修改  /workspace/ModelZoo.LLM.Inference/models/mechines.json 使用的节点信息，填写指南参考 第2章节的 测试类型的服务器信息部分，此处DeepSeek-R1-BF16-W8A8使用的双机，只需要添加两个节点信息：
+修改  /workspace/ModelZoo.LLM.Inference/models/machines.json 使用的节点信息，填写指南参考 第2章节的 测试类型的服务器信息部分，此处DeepSeek-R1-BF16-W8A8使用的双机，只需要添加两个节点信息：
 
 ```json
 {
@@ -527,15 +637,16 @@ docker run -it --device=/dev/dri --device=/dev/mxcd --device=/dev/infiniband --p
 ```python
 # (容器内)进入code目录
 cd /workspace/ModelZoo.LLM.Inference/code
-# 对mechines.json文件中除主节点以外的“所有”从节点执行（无论从节点在此任务中有没有使用到），以上面4.2中的配置信息为例，需要对ip为192.168.0.2的设备执行即可。 port 可自定义（保持主从一致），
+# 对machines.json文件中除主节点以外的“所有”从节点执行（无论从节点在此任务中有没有使用到），以上面4.2中的配置信息为例，需要对ip为192.168.0.2的设备执行即可。 port 可自定义（保持主从一致），
 python3 -m src.slave --local-ip 192.168.1.10 --port 20005 
 # 必选参数：
---local-ip：当前节点ip，与mechines.json中配置的从节点ip保持一致
+--local-ip：当前节点ip，与machines.json中配置的从节点ip保持一致
+--local-ip：当前节点ip，与machines.json中配置的从节点ip保持一致
 # 可选参数：
 --port：从节点监听的端口后，必须和主节点一致，默认是20000
 
 # 在主节点执行， port 可自定义（保持主从一致），可不配置，默认20000
-python3 -m src.master --output-path ../outputs/ --tasks-config ../models/DeepSeek-R1-W8A8/config.json --machine-config ../models/mechines.json --port 20005 --local-ip 192.168.1.2
+python3 -m src.master --output-path ../outputs/ --tasks-config ../models/DeepSeek-R1-W8A8/config.json --machine-config ../models/machines.json --port 20005 --local-ip 192.168.1.2
 
 
 # 参数说明：
@@ -546,203 +657,10 @@ python3 -m src.master --output-path ../outputs/ --tasks-config ../models/DeepSee
 --specify-test：从测试的配置文件中筛选出特定的任务类型执行，支持perf,mmlu,ceval，默认是全部执行，可选择多个
 --port：socket的端口号，默认20000
 --timeout：测试的超时时间，单位是秒，默认1200秒
---local-ip：当前节点ip，与mechines.json中配置的主节点ip保持一致
+--local-ip：当前节点ip，与machines.json中配置的主节点ip保持一致
+--timeout：测试的超时时间，单位是秒，默认1200秒
+--local-ip：当前节点ip，与machines.json中配置的主节点ip保持一致
 
 ```
 
 测试完成日志和结果都存放在output-path，结构说明见第3章 
-
-# 5 pd分离服务启动
-使用code/pd_scripts下脚本可实现一键启动sglang pd分离场景下的server端，包括prefill节点、deocde节点以及mini_lb服务，下面对使用步骤进行说明
-
-## 5.1 前提条件
-脚本使用依赖下述条件
-
-1. 执行脚本的节点能ssh免密连接到其它节点
-2. 通过配置/etc/hosts，保证每个节点使用`hostname -i`命令获取到的ip与ssh连接该节点的ip一致
-
-## 5.2 配置修改
-
-### 5.2.1 generate_config.py修改
-generate_config主要用于生成多机启动的环境变量配置，根据需求进行修改
-
-```python
-container_name='sglang-benchmark-server' # 测试启动容器名字
-model_path='/oschina0/kychina/models/DeepSeek-R1-BF16_W8A8/vllm_quant_model/' # 模型路径
-port=8000 # 在线测试发送请求的端口
-
-# 节点ip列表
-host_list = [
-    "192.168.12.15", # decode node 0 
-    "192.168.12.17", # decode node 1
-
-    "192.168.12.11", # prefill node 0
-    "192.168.12.13", # prefill node 1
-]
-
-num_prefill = 1 # prefill实例数量
-num_decoder = 1 # decode实例数量
-num_nodes_per_prefill = 2 # 每个prefill实例使用节点数量
-num_nodes_per_decoder = 2 # 每个decode实例使用节点数量
-prefill_pp_size = 2 # prefill使用pp并行的pp_size
-```
-
-### 5.2.2 template_docker.sh修改
-template_docker.sh中是docker启动容器的命令，根据需求修改镜像、挂载目录
-
-```shell
-set -x
-
-WORKDIR=$(dirname "$(readlink -f "$0")")
-cd $WORKDIR
-
-source configs/$(hostname -i).env
-
-docker stop $CONTAINER_NAME || true
-docker rm $CONTAINER_NAME || true
-
-DOCKER_IMAGE=pub-registry1.metax-tech.com/ai-opentest/master/maca/sglang:0.5.1-maca.ai20251011-38-torch2.6-py310-ubuntu22.04-amd64 # 镜像
-
-if [[ $ROLE == "decoder" ]]; then
-    LAUNCH_SCRIPT=template_decoder.sh
-else
-    LAUNCH_SCRIPT=template_prefill.sh
-fi
-
-docker run -itd --rm --name=$CONTAINER_NAME \
-            --net=host \
-            --uts=host \
-            --ipc=host \
-            --device=/dev/dri \
-            --device=/dev/mxcd  \
-            --device=/dev/infiniband \
-            --privileged=true \
-            --group-add video \
-            --security-opt seccomp=unconfined \
-            --security-opt apparmor=unconfined \
-            --shm-size 100gb \
-            --ulimit memlock=-1 \
-            -d \
-            -v /data/:/data/ \
-            -v /oschina0/kychina/:/oschina0/kychina/ \ # 挂载目录，自行增减
-            -v $WORKDIR:/workspace \ # 不要修改这个
-            --workdir=/workspace \
-            --runtime=runc -t $DOCKER_IMAGE /bin/bash -c "source /etc/profile && source ~/.bashrc && bash $LAUNCH_SCRIPT"
-```
-
-### 5.2.3 template_prefill.sh修改
-template_prefill.sh中是prefill节点启动命令，多机相关参数无须修改，sglang使用的环境变量、切分方式、内存设置等参数根据需求进行修改
-
-```shell
-#!/bin/bash
-
-set -x
-pidof python | xargs -n 1 kill -9
-source configs/$(hostname -i).env
-
-
-export MCCL_IB_HCA=mlx5_1,mlx5_2,mlx5_3,mlx5_4
-export GLOO_SOCKET_IFNAME=inbond1
-export MACA_SMALL_PAGESIZE_ENABLE=1
-export MACA_DIRECT_DISPATCH=1
-export MACA_GRAPH_LAUNCH_QUEUE_POLICY=3
-export MCDBG_GRAPH_LAUNCH_QUEUE_POLICY=3
-# export PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM=1
-# export MACA_QUEUE_SCHEDULE_POLICY=1
-export TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP=1
-export TRITON_ENABLE_MACA_CHAIN_DOT_OPT=1
-export CUDA_GRAPH_DP_USE_SUM_BS=0
-export SGL_CHUNKED_PREFIX_CACHE_THRESHOLD=0
-# export SGLANG_PP_LAYER_PARTITION="32,29"
-export SGLANG_TORCH_PROFILER_DIR=/oschina0/kychina/yunlei/tmp_file/
-
-PP=$PREFILL_PP_SIZE
-TP=$(( $NNODES * 8 / $PP ))
-MEMORY_FRACTION=0.84
-
-env
-# --dist-init-addr --nnodes --node-rank多机参数自动生成，不用修改
-python3 -m sglang.launch_server \
-    --model-path $MODEL \ # model_path在generate_config.py中进行指定，此处通过环境变量获取，也可直接指定
-    --dist-init-addr $DIST_INIT_ADDR  \
-    --host $(hostname -i) \
-    --port 30000 \
-    --tp $TP \
-    --pp $PP \
-    --nnodes $NNODES \
-    --node-rank $NODE_RANK \
-    --disable-radix-cache  \
-    --attention-backend flashinfer  \
-    --mem-fraction-static ${MEMORY_FRACTION} \
-    --disaggregation-mode prefill  \
-    --disaggregation-ib-device  $MCCL_IB_HCA \
-    --trust-remote-code 2>&1 | tee logs/prefill_$(hostname -i).log
-```
-### 5.2.4 template_decoder.sh修改
-template_decoder.sh中是decode节点启动命令，多机相关参数无须修改，sglang使用的环境变量、切分方式、内存设置等参数根据需求进行修改
-```shell
-#!/bin/bash
-
-set -x
-pidof python | xargs -n 1 kill -9
-source configs/$(hostname -i).env
-
-export MCCL_IB_HCA=mlx5_1,mlx5_2,mlx5_3,mlx5_4
-export GLOO_SOCKET_IFNAME=inbond1
-export MACA_SMALL_PAGESIZE_ENABLE=1
-export MACA_DIRECT_DISPATCH=1
-export MACA_GRAPH_LAUNCH_QUEUE_POLICY=3
-export MCDBG_GRAPH_LAUNCH_QUEUE_POLICY=3
-# export PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM=1
-# export MACA_QUEUE_SCHEDULE_POLICY=1
-export TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP=1
-export TRITON_ENABLE_MACA_CHAIN_DOT_OPT=1
-export CUDA_GRAPH_DP_USE_SUM_BS=0
-export SGLANG_TORCH_PROFILER_DIR=/oschina0/kychina/yunlei/tmp_file/
-
-
-TP=16
-DP=4
-MEMORY_FRACTION=0.86
-
-env
-
-# --dist-init-addr --nnodes --node-rank多机参数自动生成，不用修改
-python3 -m sglang.launch_server \
-    --model-path $MODEL \
-    --dist-init-addr $DIST_INIT_ADDR  \
-    --host $(hostname -i) \
-    --port 30001 \
-    --tp $TP \
-    --nnodes $NNODES \
-    --node-rank $NODE_RANK \
-    --disable-radix-cache  \
-    --attention-backend flashinfer  \
-    --quantization w8a8_int8 \
-    --dp $DP \
-    --enable-dp-attention \
-    --mem-fraction-static ${MEMORY_FRACTION} \
-    --disaggregation-mode decode  \
-    --disaggregation-ib-device  $MCCL_IB_HCA \
-    --trust-remote-code 2>&1 | tee logs/decoder_$(hostname -i).log
-
-```
-
-### 5.2.5 启动命令
-修改配置文件之后，在code/pd_scripts中执行launch_servers.sh即可启动
-```shell
-bash launch_servers.sh
-```
-
-### 5.2.6 输出说明
-启动之后会在code/pd_scripts下生成logs和configs目录
-```markdown
-│   ├──pd_scripts/
-│   │   ├── logs 存放日志文件
-│   │   │   ├── prefill_192.168.12.11.log
-│   │   │   ├── prefill_192.168.12.13.log
-│   │   │   ├── decoder_192.168.12.15.log
-│   │   │   ├── decoder_192.168.12.17.log
-│   │   │   ├── mini_lb.log
-│   │   ├── configs 脚本运行生成的中间配置文件，可以不关注
-```
