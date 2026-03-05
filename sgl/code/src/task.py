@@ -372,11 +372,11 @@ class TaskOnline(BaseTask):
 
     def wait_server_ready(self):
         ready_flag = 'The server is fired up and ready to roll'
-        if self.nodes_used[0].is_local:
-            while True:
-                if self.is_stopped:
-                    self.logger.error('server has been stopped !')
-                    return False
+        while True:
+            if self.is_stopped:
+                self.logger.error('server has been stopped !')
+                return False
+            if self.nodes_used[0].is_local:
                 ready = False
                 if self.nodes_used[0].is_local:
                     ready = (
@@ -392,19 +392,18 @@ class TaskOnline(BaseTask):
                             break
                     break
                 self.wake_up_event.wait(timeout=10)
-            return True
-        else:
-            op_content = MsgContent(
-                id=get_next_op_id(),
-                type=MsgType.GET_AVAILABLE_MEM,
-                cmd=self.server_cmd_ops[0].cmd,
-                info=[ready_flag]
-            )
-            message = self.connection.send_slave_msg(self.nodes_used[0], op_content, self.logger)
-            if len(message) == 0:
-                return False
-            self.output_manager.server_available_gpu_mem = message
-
+            else:
+                op_content = MsgContent(
+                    id=get_next_op_id(),
+                    type=MsgType.GET_AVAILABLE_MEM,
+                    cmd=self.server_cmd_ops[0].cmd,
+                    info=[ready_flag]
+                )
+                message = self.connection.send_slave_msg(self.nodes_used[0], op_content, self.logger)
+                if len(message) > 0:
+                    self.output_manager.server_available_gpu_mem = message
+                    break
+        return True
 
     def bench_test(self, client_id=0):
         # if self.is_stopped:
