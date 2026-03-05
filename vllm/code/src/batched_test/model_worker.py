@@ -15,7 +15,7 @@ import pandas as pd
 
 
 from gpu_manager import GPUManager
-from ray_manager import RayClusterManager
+from mp_manager import MPClusterManager
 from utils import cal_gpu_count
 
 CRITICAL_WORDS = ["EngineCore encountered an issue"]
@@ -26,7 +26,7 @@ class Worker(abc.ABC):
         self,
         work_dir: str,
         model_cfg: dict,
-        gpu_manager: RayClusterManager | GPUManager,
+        gpu_manager: MPClusterManager | GPUManager,
     ):
         self.work_dir = work_dir
         self.model_cfg = model_cfg
@@ -36,6 +36,10 @@ class Worker(abc.ABC):
         self.port_manager = net_utils.PortManager()
 
         self.port = self.port_manager.get_next_available_port()
+        # For mp multi-node distributed init (e.g. master-port). Allocated lazily.
+        self.dist_port: int | None = None
+        # Track remote headless rank pids (keyed by node index).
+        self.remote_rank_pids: dict[int, int] = {}
         self.related_gpu_ids = []
 
     @abc.abstractmethod
@@ -72,6 +76,8 @@ class Worker(abc.ABC):
 
     def _cleanup(self):
         self.port_manager.release_port(self.port)
+        if self.dist_port is not None:
+            self.port_manager.release_port(self.dist_port)
         self.gpu_manager.release(self.related_gpu_ids)
 
 
@@ -86,17 +92,23 @@ class ModelConfigManager:
     def calc_required_gpus(self) -> int:
         return cal_gpu_count(self.model_cfg)
 
-    def prepare_serve_cmd(self, host: str | None, port: int) -> list[str]:
+    def prepare_serve_cmd(
+        self,
+        host: str | None,
+        port: int,
+        mp_config: dict | None = None,
+        force_backend: str | None = None,
+    ) -> list[str]:
         # Prepare command
         serve_config = self.model_cfg.get("serve_config", {})
-        distributed_executor_backend = (
-            "ray"
-            if (
-                serve_config.get("distributed_executor_backend") == "ray"
-                # or self.calc_required_gpus() >= 8
-            )
-            else "mp"
-        )
+        # Backend selection:
+        # - By default we use the model config value, falling back to 'mp'.
+        # - In mp multi-node mode (mp_config is not None) we force backend to 'mp'.
+        distributed_executor_backend = serve_config.get("distributed_executor_backend", "mp")
+        if force_backend is not None:
+            distributed_executor_backend = force_backend
+        if mp_config is not None:
+            distributed_executor_backend = "mp"
 
         cmd = [
             "vllm",
@@ -122,6 +134,22 @@ class ModelConfigManager:
             "--distributed-executor-backend",
             distributed_executor_backend,
         ]
+
+        # mp multi-node args (only when launching multi-node ranks)
+        if mp_config is not None:
+            # Expected keys: nnodes, node_rank, master_addr, master_port, headless(optional)
+            cmd += [
+                "--nnodes",
+                str(mp_config["nnodes"]),
+                "--node-rank",
+                str(mp_config["node_rank"]),
+                "--master-addr",
+                str(mp_config["master_addr"]),
+                "--master-port",
+                str(mp_config["master_port"]),
+            ]
+            if mp_config.get("headless"):
+                cmd.append("--headless")
 
         extra_args = serve_config.get("extra_args")
         if extra_args:
@@ -159,12 +187,17 @@ class ModelConfigManager:
         return bench_cmd
 
     def prepare_sweep_cmd(
-        self, host: str | None, port: int, output_dir: str
+        self,
+        host: str | None,
+        port: int,
+        output_dir: str,
+        mp_config: dict | None = None,
+        force_backend: str | None = None,
     ) -> list[str]:
         # Prepare sweep command
         bench_cfg = self.model_cfg.get("benchmark", {})
 
-        serve_cmd = self.prepare_serve_cmd(host, port)
+        serve_cmd = self.prepare_serve_cmd(host, port, mp_config=mp_config, force_backend=force_backend)
         bench_cmd = self.prepare_bench_cmd(host, port)
         param_file = bench_cfg.get("bench_param")
 
@@ -199,7 +232,6 @@ class ModelConfigManager:
         run_env = {}
 
         if occupied_gpus is not None:
-            run_env["RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"] = "1"
             run_env["CUDA_VISIBLE_DEVICES"] = ",".join(
                 str(idx) for idx in occupied_gpus
             )
@@ -235,7 +267,7 @@ class InferWorker(Worker):
         model_cfg: dict,
         work_dir: str,
         last_resume: str | None = None,
-        gpu_manager: RayClusterManager | GPUManager = None,
+        gpu_manager: MPClusterManager | GPUManager = None,
     ):
         super().__init__(
             work_dir=work_dir, model_cfg=model_cfg, gpu_manager=gpu_manager
@@ -425,16 +457,108 @@ class InferWorker(Worker):
             os.path.join(self.work_dir, f"{self.model_tag}_serve.log")
         )
 
-        # Prepare command
+        # Prepare command (built below; may include mp multi-node args)
+
+        # Set environment variable (local rank0 by default)
+        # NOTE: In cluster (multi-node) mode, `self.related_gpu_ids` represents NODE indices,
+        # so we must NOT feed it into prepare_extra_env directly.
+        extra_env = {}
+
+        if isinstance(self.gpu_manager, MPClusterManager):
+            # ---- mp multi-node cluster mode ----
+            nodes_list = self.related_gpu_ids
+            nnodes = len(nodes_list)
+
+            # Always force mp backend in cluster-config mode.
+            # Allocate a dedicated distributed port (master-port) to avoid conflicts.
+            if self.dist_port is None:
+                self.dist_port = self.port_manager.get_next_available_port(
+                    start_port=29500, max_port=29650
+                )
+
+            master_addr = self.gpu_manager.get_node_hostname(nodes_list[0])
+
+            required_gpus = self.config_manager.calc_required_gpus()
+            gpus_per_node = self.gpu_manager.gpu_per_node
+
+            # Plan CUDA_VISIBLE_DEVICES per rank (contiguous from 0).
+            remaining = required_gpus
+            per_rank_visible: list[list[int]] = []
+            for _ in range(nnodes):
+                use = min(gpus_per_node, remaining)
+                per_rank_visible.append(list(range(use)) if use > 0 else [])
+                remaining -= use
+
+            # Rank0 command (local; provides HTTP service)
+            mp_rank0 = {
+                "nnodes": nnodes,
+                "node_rank": 0,
+                "master_addr": master_addr,
+                "master_port": self.dist_port,
+                "headless": False,
+            }
+            cmd = self.config_manager.prepare_serve_cmd(
+                host=None, port=self.port, mp_config=mp_rank0, force_backend="mp"
+            )
+            extra_env = {
+                **self.gpu_manager.get_base_env(nodes_list[0]),
+                **self.config_manager.prepare_extra_env(per_rank_visible[0]),
+            }
+
+            # Log rank0 cmd/env
+            with open(log_file, "a") as f:
+                cmd_str = f"[{self.model_cfg['name']}] command(rank0): {shlex.join(cmd)}"
+                f.write(cmd_str + "\\n" + "-" * 80 + "\\n")
+                f.write(extra_env.__str__() + "\\n" + "-" * 80 + "\\n")
+                f.flush()
+                print(cmd_str)
+
+            # Launch local rank0 first (it will wait for other ranks to join)
+            self.api_serve_process = net_utils.run_cmd(
+                cmd=cmd, log_file=log_file, env={**os.environ, **extra_env}
+            )
+
+            # Launch remote headless ranks (rank>0) via SSH
+            for rank in range(1, nnodes):
+                node_idx = nodes_list[rank]
+                mp_rank = {
+                    "nnodes": nnodes,
+                    "node_rank": rank,
+                    "master_addr": master_addr,
+                    "master_port": self.dist_port,
+                    "headless": True,
+                }
+                remote_cmd = self.config_manager.prepare_serve_cmd(
+                    host=None, port=self.port, mp_config=mp_rank, force_backend="mp"
+                )
+                remote_env = self.config_manager.prepare_extra_env(per_rank_visible[rank])
+
+                remote_log = f"/tmp/batched_test_{self.model_tag}_rank{rank}.log"
+                print(
+                    f"[{self.model_cfg['name']}] command(rank{rank} headless @ "
+                    f"{self.gpu_manager.get_node_hostname(node_idx)}): {shlex.join(remote_cmd)}"
+                )
+                pid = self.gpu_manager.start_headless_rank(
+                    node_idx=node_idx,
+                    cmd=remote_cmd,
+                    env=remote_env,
+                    log_path=remote_log,
+                )
+                self.remote_rank_pids[node_idx] = pid
+
+                with open(log_file, "a") as f:
+                    f.write(
+                        f"[{self.model_cfg['name']}] started remote rank{rank} on node {node_idx} "
+                        f"(host={self.gpu_manager.get_node_hostname(node_idx)}) pid={pid} log={remote_log}\\n"
+                    )
+                    f.flush()
+
+            # Done: in mp cluster mode we already started rank0 and rank>0 here.
+            return
+
+        # ---- single-node mode (local GPUManager) ----
         cmd = self.config_manager.prepare_serve_cmd(host=None, port=self.port)
-
-        # Set environment variable
         extra_env = self.config_manager.prepare_extra_env(self.related_gpu_ids)
-
-        # No need to set this variable for multi-node ray cluster
-        if isinstance(self.gpu_manager, RayClusterManager):
-            extra_env.pop("CUDA_VISIBLE_DEVICES", None)
-            self.gpu_manager.start_ray_serve(self.related_gpu_ids, extra_env)
 
         # Log the command and environment
         with open(log_file, "a") as f:
@@ -524,33 +648,38 @@ class InferWorker(Worker):
         except psutil.NoSuchProcess:
             pass
 
-        # Double check the gpu worker processes
-        worker_pid = self.gpu_manager.get_gpu_process_pid(self.related_gpu_ids)
-
-        # kill GPU worker zombie processes in case they are not cleaned up
-        for pid in worker_pid:
-            if psutil.pid_exists(pid):
-                try:
-                    p = psutil.Process(pid)
-                    p.kill()
-                except Exception as e:
-                    print(
-                        f"[{self.model_cfg['name']}] Error killing GPU worker process {pid}: {e}"
-                    )
-
+        if hasattr(self.gpu_manager, "get_gpu_process_pid"):
+            try:
+                worker_pid = self.gpu_manager.get_gpu_process_pid(self.related_gpu_ids)
+            except Exception as e:
+                print(f"[{self.model_cfg['name']}] get_gpu_process_pid failed: {e}")
+                worker_pid = []
+        
+            for pid in worker_pid:
+                if psutil.pid_exists(pid):
+                    try:
+                        p = psutil.Process(pid)
+                        p.kill()
+                    except Exception as e:
+                        print(
+                            f"[{self.model_cfg['name']}] Error killing GPU worker process {pid}: {e}"
+                        )
         print(f"[{self.model_cfg['name']}] Serve cleaned up successfully.")
 
     def _cleanup(self):
-        """
-        Additional cleanup after serve is stopped.
-
-        :param self: Description
-        :param args: Description
-        :param kwargs: Description
-        """
+        """Additional cleanup after serve is stopped."""
+        if isinstance(self.gpu_manager, MPClusterManager) and self.related_gpu_ids:
+            try:
+                nodes_list = self.related_gpu_ids
+                for i in nodes_list[1:]:
+                    try:
+                        self.gpu_manager.stop_headless_rank(i, master_port=self.dist_port)
+                    except Exception as e:
+                        print(f"[InferWorker] stop remote rank on node {i} failed: {e}")
+            except Exception as e:
+                print(f"[InferWorker] pre-stop remote ranks failed: {e}")
+        self._shutdown_process()
         super()._cleanup()
-        if isinstance(self.gpu_manager, GPUManager):
-            self._shutdown_process()
 
 
 class BenchSweepWorker(Worker):
@@ -558,7 +687,7 @@ class BenchSweepWorker(Worker):
         self,
         work_dir: str,
         model_cfg: dict,
-        gpu_manager: RayClusterManager | GPUManager = None,
+        gpu_manager: MPClusterManager | GPUManager = None,
     ):
         super().__init__(
             work_dir=work_dir, model_cfg=model_cfg, gpu_manager=gpu_manager
@@ -604,17 +733,49 @@ class BenchSweepWorker(Worker):
     def _launch_bench_sweep(self):
         result_dir = os.path.join(self.work_dir, self.model_tag)
 
+        # NOTE: In cluster (multi-node) mode, `self.related_gpu_ids` represents NODE indices.
+        extra_env = {}
+
+        mp_rank0_cfg: dict | None = None
+        if isinstance(self.gpu_manager, MPClusterManager):
+            nodes_list = self.related_gpu_ids
+            nnodes = len(nodes_list)
+
+            if self.dist_port is None:
+                self.dist_port = self.port_manager.get_next_available_port(
+                    start_port=29500, max_port=29650
+                )
+            master_addr = self.gpu_manager.get_node_hostname(nodes_list[0])
+
+            # Rank0 serve-cmd will be started *inside* the sweep process.
+            mp_rank0_cfg = {
+                "nnodes": nnodes,
+                "node_rank": 0,
+                "master_addr": master_addr,
+                "master_port": self.dist_port,
+                "headless": False,
+            }
+
+            # Make sweep process inherit base env + CUDA_VISIBLE_DEVICES for rank0.
+            required_gpus = self.config_manager.calc_required_gpus()
+            use0 = min(self.gpu_manager.gpu_per_node, required_gpus)
+            extra_env = {
+                **self.gpu_manager.get_base_env(nodes_list[0]),
+                **self.config_manager.prepare_extra_env(list(range(use0))),
+            }
+
+        # For local sweep process env we still set CUDA_VISIBLE_DEVICES in single-node mode.
+        if not isinstance(self.gpu_manager, MPClusterManager):
+            extra_env = self.config_manager.prepare_extra_env(self.related_gpu_ids)
+
         sweep_cmd = self.config_manager.prepare_sweep_cmd(
-            host=None, port=self.port, output_dir=result_dir
+            host=None,
+            port=self.port,
+            output_dir=result_dir,
+            mp_config=mp_rank0_cfg,
+            force_backend="mp" if mp_rank0_cfg is not None else None,
         )
-
-        extra_env = self.config_manager.prepare_extra_env(self.related_gpu_ids)
-
-        # No need to set this variable for multi-node ray cluster
-        if isinstance(self.gpu_manager, RayClusterManager):
-            extra_env.pop("CUDA_VISIBLE_DEVICES", None)
-            self.gpu_manager.start_ray_serve(self.related_gpu_ids, extra_env)
-
+ 
         # Log the process output
         log_file = net_utils.prepare_dir(self.log_file)
 
@@ -630,6 +791,51 @@ class BenchSweepWorker(Worker):
         self.sweep_process = net_utils.run_cmd(
             cmd=sweep_cmd, env={**os.environ, **extra_env}, log_file=log_file
         )
+
+        # In mp cluster mode, rank0 serve will wait for other ranks.
+        # Start remote headless ranks immediately after launching the sweep process.
+        if mp_rank0_cfg is not None and isinstance(self.gpu_manager, MPClusterManager):
+            nodes_list = self.related_gpu_ids
+            nnodes = len(nodes_list)
+            required_gpus = self.config_manager.calc_required_gpus()
+            gpus_per_node = self.gpu_manager.gpu_per_node
+
+            remaining = required_gpus
+            per_rank_visible: list[list[int]] = []
+            for _ in range(nnodes):
+                use = min(gpus_per_node, remaining)
+                per_rank_visible.append(list(range(use)) if use > 0 else [])
+                remaining -= use
+
+            # small delay to increase the chance rank0 has bound the master-port
+            time.sleep(2)
+
+            for rank in range(1, nnodes):
+                node_idx = nodes_list[rank]
+                mp_rank = {
+                    "nnodes": nnodes,
+                    "node_rank": rank,
+                    "master_addr": mp_rank0_cfg["master_addr"],
+                    "master_port": mp_rank0_cfg["master_port"],
+                    "headless": True,
+                }
+                remote_cmd = self.config_manager.prepare_serve_cmd(
+                    host=None, port=self.port, mp_config=mp_rank, force_backend="mp"
+                )
+                remote_env = self.config_manager.prepare_extra_env(per_rank_visible[rank])
+
+                remote_log = f"/tmp/batched_test_{self.model_tag}_rank{rank}.log"
+                print(
+                    f"[{self.model_cfg['name']}] command(rank{rank} headless @ "
+                    f"{self.gpu_manager.get_node_hostname(node_idx)}): {shlex.join(remote_cmd)}"
+                )
+                pid = self.gpu_manager.start_headless_rank(
+                    node_idx=node_idx,
+                    cmd=remote_cmd,
+                    env=remote_env,
+                    log_path=remote_log,
+                )
+                self.remote_rank_pids[node_idx] = pid
 
         returncode = self.sweep_process.wait()
         if returncode != 0:
