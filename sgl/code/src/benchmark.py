@@ -259,8 +259,11 @@ class AccBenchmark(Benchmark):
                 self.cmd_list.append(f"{command_base}")
 
     def _get_acc_mmlu_metrics(self, file_path):
-        with open(file_path, 'r', encoding='utf-8') as file:
-            content = file.read()
+        if os.path.isfile(file_path):
+            with open(file_path, 'r', encoding='utf-8') as file:
+                content = file.read()
+        else:
+            content = ""
         try:
             data = json.loads(content)
             accuracy = data.get("accuracy")

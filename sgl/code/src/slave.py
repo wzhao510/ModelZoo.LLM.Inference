@@ -90,16 +90,13 @@ def do_get_available_mem(sock, op_content: MsgContent) -> None:
     output_flags = op_content.info
     mes = ""
     if op_content.cmd in g_opcontent_map.keys():
-        while True:
-            if g_opcontent_map[op_content.cmd].output is None:
-                continue
+        if g_opcontent_map[op_content.cmd].output is not None:
             output = "".join(g_opcontent_map[op_content.cmd].output)
             if output_flags[0] in output:
                 pattern = r'available_gpu_mem=(\d+\.\d+)\s*GB'
                 match = re.search(pattern, output)
                 if match:
                     mes = match.group(1) + " GB"
-                break
     sock.send_string(f'{mes}')
 
 def do_get_server_args(sock, op_content: MsgContent) -> None:
