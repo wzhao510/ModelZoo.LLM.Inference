@@ -16,7 +16,7 @@ from pprint import pprint
 import net_utils
 
 from tqdm import tqdm
-from ray_manager import RayClusterManager
+from mp_manager import MPClusterManager
 from gpu_manager import GPUManager
 from utils import cal_gpu_count
 
@@ -184,7 +184,7 @@ class Scheduler:
         self.work_dir = os.path.join(args.work_dir, net_utils.current_dt())
         if args.cluster_config:
             cluster_nodes_config = self._load_yaml_config(args.cluster_config)
-            self.gpu_manager = RayClusterManager(cluster_nodes_config)
+            self.gpu_manager = MPClusterManager(cluster_nodes_config)
             # TODO(hank) not allow concurrency on cluster mode now
             max_workers = 1
         else:
@@ -492,4 +492,3 @@ if __name__ == "__main__":
 
     sche = Scheduler(SchedularArgs.from_cli_args(args))
     sche.run_all()
-
