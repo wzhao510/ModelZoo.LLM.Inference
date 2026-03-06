@@ -2,7 +2,7 @@
 
 # 1 目录结构
 
-```markdown
+```sh
 sgl
 ├──── code/
 │       ├──── src/
@@ -160,55 +160,6 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 
 注意这个变量替换只会替换task指定的config.json中的变量，不会替换machines.json本身的变量
 
-- **replacements：公共变量替换**
-
-鉴于模型路径、精度测试数据路径和测试集路径在不同的机器上路径不同，故在sgl/models/machines.json中提供公共变量替换功能，如下：
-
-```json
-{
-    ......
-    "replacements": {
-        "random-dataset-path": "/models/ShareGPT_V3_unfiltered_cleaned_split.json",
-        "mmlu-data-path": "/models/acc/mmlu/data",
-        "ceval-data-path": "/workspace/ModelZoo.LLM.Inference/dataset/ceval_val_cmcc.jsonl",
-
-        "DeepSeek-R1-W8A8-model-path": "/models/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model",
-        "DeepSeek-R1-W8A8-draft-model-path": "/models/DeepSeek-R1-NextN-Channel-INT8"
-        ......
-  }
-    ......
-}
-```
-在config.json中只需要通过 **${xx}** 引用即可，运行时会自动替换此变量：
-
-```json
-{
-    "server_cmds": {
-        "server_cmd": [
-            ["python3 -m sglang.launch_server --trust-remote-code"],
-            ["--model-path ${DeepSeek-R1-W8A8-model-path}"],
-            ......
-        ]
-    }
-    ......
-}
-```
-替换后：
-```json
-{
-    "server_cmds": {
-        "server_cmd": [
-            ["python3 -m sglang.launch_server --trust-remote-code"],
-            ["--model-path /models/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model"],
-            ......
-        ]
-    }
-    ......
-}
-```
-
-注意这个变量替换只会替换task指定的config.json中的变量，不会替换machines.json本身的变量
-
 
 ## 2.2 测试通用配置说明
 
@@ -291,7 +242,6 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 | ------------------------------------------------- | ----------------------------------------- |
 
 如果不设置或者为空，则此任务使用**machines.json**中的**default_envs**环境变量配置
-如果不设置或者为空，则此任务使用**machines.json**中的**default_envs**环境变量配置
 可以添加独有环境变量；也可以直接添加**machines.json**中的环境变量组名来直接引用已有的环境变量，如：
 ```json
     ......
@@ -331,22 +281,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
             ......
             "benchmark": "random"
             ......
-    ......
-    "benchmark_cmds": {
-        "random": {
-            "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json",
-            "input_output_len": ["3072/1024"],
-            "num_prompt": ["1", "16", "32", "64", "128"]
         }
-    },
-    "tasks": {
-        "DeepSeek-R1-0528-BF16-W8A8" : {
-            ......
-            "benchmark": "random"
-            ......
-        }
-    }
-    ......
     }
     ......
 }
@@ -369,24 +304,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
             ......
             "benchmark": "random"
             ......
-{
-    ......
-    "benchmark_cmds": {
-        "random": {
-            "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json",
-            "input_output_len": ["3072/1024"],
-            "max_concurrency": ["1", "16", "32", "64", "128"],
-            "num_prompt_times": 5
         }
-    },
-    "tasks": {
-        "DeepSeek-R1-0528-BF16-W8A8" : {
-            ......
-            "benchmark": "random"
-            ......
-        }
-    }
-    ......
     }
     ......
 }
@@ -410,24 +328,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
             ......
             "benchmark": "random"
             ......
-{
-    ......
-    "benchmark_cmds": {
-        "random": {
-            "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path /models/ShareGPT_V3_unfiltered_cleaned_split.json",
-            "input_output_len": ["3072/1024"],
-            "max_concurrency": ["1", "16", "32", "64", "128"],
-            "num_prompt_times": [2, 3]
         }
-    },
-    "tasks": {
-        "DeepSeek-R1-0528-BF16-W8A8" : {
-            ......
-            "benchmark": "random"
-            ......
-        }
-    }
-    ......
     }
     ......
 }
@@ -441,7 +342,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 其中model path和 benchmark的 ShareGPT_V3_unfiltered_cleaned_split.json需要修改为镜像内可访问的路径
 
 
-## 2.2 精度测试 (config.json)
+## 2.4 精度测试 (config.json)
 
 目前只支持mmlu和ceval精度测试
 
@@ -450,16 +351,6 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 | 参数     | 说明                                                         |
 | -------- | ------------------------------------------------------------ |
 | nsub     | 学科数，默认60                                               |
-| data_dir | 如果使用mmlu数据集进行精度测试，需要准备data数据，请从https://people.eecs.berkeley.edu/~hendrycks/data.tar下载、解压, 使用此路径。此外，如果是离线环境还需要从https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken下载"cl100k_base.tiktoken"文件，放到容器内任意路径下，并且将cl100k_base.tiktoken文件重命名为9b5ad71b2ce5302211f9c61530b329a4922fc6a4(注：此目录名称为tiktoken下载的http链接的hash，如果后续下载链接有变更，则调整此目录名)，然后直接将sgl/models/machines.json中的 TIKTOKEN_CACHE_DIR 设置为上述任意路径的绝对全路径既可以，如下：
-```json
-    "environments": {
-      ......
-      "mmlu_envs" : [
-          "TIKTOKEN_CACHE_DIR={下载cl100k_base.tiktoken的所在的路径的绝对全路径}"
-      ]
-    },
-```
-或者在任务的benchmark配置信息中增加环境变量：
 | data_dir | 如果使用mmlu数据集进行精度测试，需要准备data数据，请从https://people.eecs.berkeley.edu/~hendrycks/data.tar下载、解压, 使用此路径。此外，如果是离线环境还需要从https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken下载"cl100k_base.tiktoken"文件，放到容器内任意路径下，并且将cl100k_base.tiktoken文件重命名为9b5ad71b2ce5302211f9c61530b329a4922fc6a4(注：此目录名称为tiktoken下载的http链接的hash，如果后续下载链接有变更，则调整此目录名)，然后直接将sgl/models/machines.json中的 TIKTOKEN_CACHE_DIR 设置为上述任意路径的绝对全路径既可以，如下：
 ```json
     "environments": {
@@ -637,11 +528,10 @@ docker run -it --device=/dev/dri --device=/dev/mxcd --device=/dev/infiniband --p
 ```python
 # (容器内)进入code目录
 cd /workspace/ModelZoo.LLM.Inference/code
-# 对machines.json文件中除主节点以外的“所有”从节点执行（无论从节点在此任务中有没有使用到），以上面4.2中的配置信息为例，需要对ip为192.168.0.2的设备执行即可。 port 可自定义（保持主从一致），
+# 对mechines.json文件中除主节点以外的“所有”从节点执行（无论从节点在此任务中有没有使用到），以上面4.2中的配置信息为例，需要对ip为192.168.0.2的设备执行即可。 port 可自定义（保持主从一致），
 python3 -m src.slave --local-ip 192.168.1.10 --port 20005 
 # 必选参数：
---local-ip：当前节点ip，与machines.json中配置的从节点ip保持一致
---local-ip：当前节点ip，与machines.json中配置的从节点ip保持一致
+--local-ip：当前节点ip，与mechines.json中配置的从节点ip保持一致
 # 可选参数：
 --port：从节点监听的端口后，必须和主节点一致，默认是20000
 
@@ -657,10 +547,7 @@ python3 -m src.master --output-path ../outputs/ --tasks-config ../models/DeepSee
 --specify-test：从测试的配置文件中筛选出特定的任务类型执行，支持perf,mmlu,ceval，默认是全部执行，可选择多个
 --port：socket的端口号，默认20000
 --timeout：测试的超时时间，单位是秒，默认1200秒
---local-ip：当前节点ip，与machines.json中配置的主节点ip保持一致
---timeout：测试的超时时间，单位是秒，默认1200秒
---local-ip：当前节点ip，与machines.json中配置的主节点ip保持一致
-
+--local-ip：当前节点ip，与mechines.json中配置的主节点ip保持一致
 ```
 
 测试完成日志和结果都存放在output-path，结构说明见第3章 
