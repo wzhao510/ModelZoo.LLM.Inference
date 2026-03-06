@@ -176,7 +176,7 @@ class TaskScheduler:
             benchmark_cmds = get_json_config_default(config, 'benchmark_cmds', None)
             for bench_name in benchmark_cmd.split(';'):
                 if benchmark_cmds is None or bench_name.strip() not in benchmark_cmds.keys():
-                    raise RuntimeError(f"Task[{task_name}] benchmark cmd{bench_name.strip()} not set!")
+                    raise RuntimeError(f"Task[{task_name}] benchmark cmd {bench_name.strip()} not set!")
                 bench_type = get_json_config_default(benchmark_cmds[bench_name.strip()], 'type', 'perf')
                 if bench_type in self.args.specify_test:
                     benchmark_list.append(
