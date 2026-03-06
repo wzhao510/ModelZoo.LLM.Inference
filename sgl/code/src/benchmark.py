@@ -298,7 +298,7 @@ class AccBenchmark(Benchmark):
 
             bs = bs_str.group(1) if bs_str else "0"
             seed = seed_str.group(1) if seed_str else "0"
-            num = num_str.group(1) if num_str else "0"
+            num = num_str.group(1) if num_str else "1346"
             return f'acc_{self.name}_bs{bs}_seed{seed}_num{num}'
         else:
             return f'acc_{self.name}'
