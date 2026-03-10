@@ -46,7 +46,7 @@ class Worker(abc.ABC):
     def run(self, stop_event: threading.Event):
         raise NotImplementedError("Worker must implement run method.")
 
-    def _wait_and_allocate_gpus(self, timeout: int = 14400) -> list[int]:
+    def _wait_and_allocate_gpus(self, timeout: int = 21600) -> list[int]:
         # Block until required GPUs are allocated
         assert self.related_gpu_ids == [], "GPUs have already been allocated."
 
@@ -654,7 +654,7 @@ class InferWorker(Worker):
             except Exception as e:
                 print(f"[{self.model_cfg['name']}] get_gpu_process_pid failed: {e}")
                 worker_pid = []
-        
+
             for pid in worker_pid:
                 if psutil.pid_exists(pid):
                     try:
