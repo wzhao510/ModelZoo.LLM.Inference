@@ -238,20 +238,31 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 
 - **environment：任务独有环境变量配置**
 
-| 参数                                              | 说明                                      |
-| ------------------------------------------------- | ----------------------------------------- |
-
-如果不设置或者为空，则此任务使用**machines.json**中的**default_envs**环境变量配置
+如果tasks中的environment不设置或者为空，则在server启动时使用**machines.json**中的**default_envs**环境变量配置
 可以添加独有环境变量；也可以直接添加**machines.json**中的环境变量组名来直接引用已有的环境变量，如：
 ```json
     ......
-    "environment": [
-        "specific_scenario_envs"
-    ],
+    "tasks": {
+    "DeepSeek-R1-0528-BF16-W8A8" : {
+        ......
+        "benchmark": "random;ceval;mmlu",
+        "environment": ["specific_scenario_envs"]
+        ......
+    }
     ......
 ```
-上述这个任务配置就会直接使用**machines.json**中的**specific_scenario_envs**的环境变量配置。
-
+上述这个任务在server启动时就会直接使用**machines.json**中的**specific_scenario_envs**的环境变量配置。
+若只是想要对某个benchmark的client端添加环境变量，需要添加在benchmark_cmds对应的测试类型中，如：
+```json
+    ......
+    "mmlu": {
+        "type": "mmlu",
+        "environment": ["mmlu_envs"],
+        "command_base": "python3 bench_sglang.py --data_dir /models/acc/mmlu/data --nsub 60"
+    }
+    ......
+```
+在进行mmlu测试时会复制server端的环境变量，在此基础上按照mmlu_envs中的环境变量再次进行设置（不会影响到server以及其他benchmark测试）
 
 **所有内置的模型config.json文件都是当前版本的最佳性能参数，只需要修改模型路径和机器等信息即可**
 
@@ -528,10 +539,10 @@ docker run -it --device=/dev/dri --device=/dev/mxcd --device=/dev/infiniband --p
 ```python
 # (容器内)进入code目录
 cd /workspace/ModelZoo.LLM.Inference/code
-# 对mechines.json文件中除主节点以外的“所有”从节点执行（无论从节点在此任务中有没有使用到），以上面4.2中的配置信息为例，需要对ip为192.168.0.2的设备执行即可。 port 可自定义（保持主从一致），
+# 对machines.json文件中除主节点以外的“所有”从节点执行（无论从节点在此任务中有没有使用到），以上面4.2中的配置信息为例，需要对ip为192.168.0.2的设备执行即可。 port 可自定义（保持主从一致），
 python3 -m src.slave --local-ip 192.168.1.10 --port 20005 
 # 必选参数：
---local-ip：当前节点ip，与mechines.json中配置的从节点ip保持一致
+--local-ip：当前节点ip，与machines.json中配置的从节点ip保持一致
 # 可选参数：
 --port：从节点监听的端口后，必须和主节点一致，默认是20000
 
@@ -547,7 +558,7 @@ python3 -m src.master --output-path ../outputs/ --tasks-config ../models/DeepSee
 --specify-test：从测试的配置文件中筛选出特定的任务类型执行，支持perf,mmlu,ceval，默认是全部执行，可选择多个
 --port：socket的端口号，默认20000
 --timeout：测试的超时时间，单位是秒，默认1200秒
---local-ip：当前节点ip，与mechines.json中配置的主节点ip保持一致
+--local-ip：当前节点ip，与machines.json中配置的主节点ip保持一致
 ```
 
 测试完成日志和结果都存放在output-path，结构说明见第3章 
