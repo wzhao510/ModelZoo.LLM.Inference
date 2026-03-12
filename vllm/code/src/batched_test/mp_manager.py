@@ -175,7 +175,7 @@ class MPClusterManager:
             "GLOO_SOCKET_IFNAME": node.nic,
             "MCCL_SOCKET_IFNAME": node.nic,
             "MACA_PATH": "/opt/maca",
-            "MACA_DIRECT_DISPATH": 1,
+            "MACA_DIRECT_DISPATH": "1",
         }
         if node.extra_env:
             env.update(node.extra_env)
