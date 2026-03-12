@@ -950,6 +950,7 @@
   - moe
 
 - name: Qwen3-Next-80B-A3B-Instruct
+  time: 780
   model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-Next-80B-A3B-Instruct
   serve_config:
     tp: 4
@@ -1180,6 +1181,7 @@
     VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
   
 - name: DeepSeek-R1-W4A8-SQ_MIX_V5
+  time: 1200
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek_W4A8_OPT/DeepSeek-R1-W4A8-SQ_MIX_V5/vllm_quant_model_R1/
   serve_config:
     tp: 8
@@ -1195,6 +1197,7 @@
     VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
 - name: DeepSeek-R1-W48A8-MTP_W4A8
+  time: 1200
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek_W4A8_OPT/DeepSeek-R1-W48A8-MTP_W4A8/vllm_quant_model/
   serve_config:
     tp: 8
@@ -1211,6 +1214,7 @@
     VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
 - name: DeepSeek-R1-W48A8-MTP_W8A8
+  time: 1200
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek_W4A8_OPT/DeepSeek-R1-W48A8-MTP_W8A8/vllm_quant_model/
   serve_config:
     tp: 8
@@ -1227,6 +1231,7 @@
     VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
 - name: DeepSeek-R1-W48A8-MTP_BF16
+  time: 1200
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek_W4A8_OPT/DeepSeek-R1-W48A8-MTP_BF16/vllm_quant_model_R1/
   serve_config:
     tp: 8
@@ -1288,6 +1293,7 @@
   extra_env:
 
 - name: Qwen3-Next-80B-A3B-Instruct
+  time: 1200
   model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-Next-80B-A3B-Instruct
   serve_config:
     tp: 8
