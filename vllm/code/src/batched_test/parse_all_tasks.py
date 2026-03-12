@@ -50,8 +50,8 @@ class LocalBestPerformance(BaseLocal):
     concurrency = Column(Integer, primary_key=True)
     input = Column(Integer, primary_key=True)
     output = Column(Integer, primary_key=True)
+    device_type = Column(String, primary_key=True)
 
-    device_type = Column(String)
     best_tps = Column(Float, nullable=False)
     update_date = Column(DateTime, nullable=False)
 
@@ -154,15 +154,15 @@ def query_local_best(keys: 'List[Tuple]', SessionLocal) -> 'Dict[Tuple, float]':
     with SessionLocal() as sess_local:
         results: 'List[LocalBestPerformance]' = sess_local.query(LocalBestPerformance).filter(
             tuple_(
-                LocalBestPerformance.device_type, LocalBestPerformance.model_name, LocalBestPerformance.tp,
+                LocalBestPerformance.model_name, LocalBestPerformance.tp,
                 LocalBestPerformance.pp, LocalBestPerformance.dp,
                 LocalBestPerformance.concurrency, LocalBestPerformance.input,
-                LocalBestPerformance.output
+                LocalBestPerformance.output,LocalBestPerformance.device_type, 
             ).in_(keys)
         ).all()
         
         return {
-            (r.model_name, r.tp, r.pp, r.dp, r.concurrency, r.input, r.output): (r.best_tps, r.update_date)
+            (r.model_name, r.tp, r.pp, r.dp, r.concurrency, r.input, r.output, r.device_type): (r.best_tps, r.update_date)
             for r in results
         }
 
@@ -173,22 +173,22 @@ def query_remote_best(keys: 'List[Tuple]', SessionRemote) -> 'Dict[Tuple, float]
     
     # 分组列名（根据你的表结构调整）
     group_cols = [
-        'device_type', 'model_name', 'tp', 'pp', 'dp',
-        'concurrency', 'input', 'output'
+        'model_name', 'tp', 'pp', 'dp',
+        'concurrency', 'input', 'output', 'device_type'
     ]
     
     json_conditions = []
-    for device_type, model_name, tp, pp, dp, concurrency, input_tokens, output_tokens in keys:
+    for model_name, tp, pp, dp, concurrency, input_tokens, output_tokens, device_type in keys:
         json_conditions.append(
             and_(
-                DailyPerformance.device_type == device_type,
                 DailyPerformance.model_name == model_name,
-                DailyPerformance.concurrency == concurrency,
-                DailyPerformance.input_len == input_tokens,
-                DailyPerformance.output_len == output_tokens,
                 func.json_extract(DailyPerformance.meta_data, '$.tp') == tp,
                 func.json_extract(DailyPerformance.meta_data, '$.pp') == pp,
                 func.json_extract(DailyPerformance.meta_data, '$.dp') == dp,
+                DailyPerformance.concurrency == concurrency,
+                DailyPerformance.input_len == input_tokens,
+                DailyPerformance.output_len == output_tokens,
+                DailyPerformance.device_type == device_type,
                 DailyPerformance.task_type == "LLM-Inference",
                 DailyPerformance.evaluation_framework == "vLLM",
                 DailyPerformance.test_cycle_type == "daily"
@@ -198,7 +198,6 @@ def query_remote_best(keys: 'List[Tuple]', SessionRemote) -> 'Dict[Tuple, float]
     with SessionRemote() as sess_remote:
         # 批量查询匹配的所有行
         results = sess_remote.query(
-            DailyPerformance.device_type,
             DailyPerformance.model_name,
             func.json_extract(DailyPerformance.meta_data, '$.tp').label('tp'),
             func.json_extract(DailyPerformance.meta_data, '$.pp').label('pp'),
@@ -206,6 +205,7 @@ def query_remote_best(keys: 'List[Tuple]', SessionRemote) -> 'Dict[Tuple, float]
             DailyPerformance.concurrency,
             DailyPerformance.input_len,
             DailyPerformance.output_len,
+            DailyPerformance.device_type,
             DailyPerformance.tps,
             DailyPerformance.test_date
         ).filter(
@@ -266,7 +266,7 @@ def process_performance(model_info: 'TaskInfo', df: 'pd.DataFrame', threshold: '
     tp, pp, dp = (model_info.tp, model_info.pp, model_info.dp)
 
     keys = [
-        (device_type, model_name, tp, pp, dp, r['max_concurrency'], r['input_len'], r['output_len'])
+        (model_name, tp, pp, dp, r['max_concurrency'], r['input_len'], r['output_len'], device_type)
         for _, r in df.iterrows()
     ]
 
@@ -285,7 +285,7 @@ def process_performance(model_info: 'TaskInfo', df: 'pd.DataFrame', threshold: '
     to_merge = []
     failed_indices = []
     for idx, r in df.iterrows():
-        key = (model_name, tp, pp, dp, r['max_concurrency'], r['input_len'], r['output_len'])
+        key = (model_name, tp, pp, dp, r['max_concurrency'], r['input_len'], r['output_len'], device_type)
         current_tps = r['output_throughput']
         history = history_best.get(key, (-math.inf, r['date']))
         history_tps = history[0]
@@ -297,8 +297,8 @@ def process_performance(model_info: 'TaskInfo', df: 'pd.DataFrame', threshold: '
             the_best: 'LocalBestPerformance' = LocalBestPerformance(
                 model_name = model_name, tp = tp, pp = pp, dp = dp,
                 concurrency = r['max_concurrency'], input = r['input_len'],
-                output = r['output_len'], best_tps = final_best,
-                update_date = r['date']
+                output = r['output_len'], device_type = device_type,
+                best_tps = final_best, update_date = r['date']
             )
             to_merge.append(the_best)
         
