@@ -834,7 +834,7 @@
   - moe
 
 - name: GLM-4.7-W48A8_WITH_MTP-OFF
-  model_path: /mxstorage/pde_ai/model_quant_opt/GLM/GLM-4.7-W48A8_WITH_MTP/vllm_quant_model
+  model_path: /mxstorage/pde_ai/models/model_quant_opt/GLM/GLM-4_7-W48A8_WITH_MTP/vllm_quant_model
   serve_config:
     tp: 4
     dp: 1
@@ -852,13 +852,13 @@
   - moe
 
 - name: GLM-4.7-W48A8_WITH_MTP
-  model_path: /mxstorage/pde_ai/model_quant_opt/GLM/GLM-4.7-W48A8_WITH_MTP/vllm_quant_model
+  model_path: /mxstorage/pde_ai/models/model_quant_opt/GLM/GLM-4_7-W48A8_WITH_MTP/vllm_quant_model
   serve_config:
     tp: 4
     dp: 1
     pp: 1
     extra_args:
-      --speculative-config '{"method":"glm4_moe_mtp","num_speculative_tokens":2, "model":"/mxstorage/pde_ai/model_quant_opt/GLM/GLM-4.7-W48A8_WITH_MTP/vllm_quant_model"}' 
+      --speculative-config '{"method":"glm4_moe_mtp","num_speculative_tokens":2, "model":"/mxstorage/pde_ai/models/model_quant_opt/GLM/GLM-4_7-W48A8_WITH_MTP/vllm_quant_model"}' 
   infer_type:
     - text-only
   benchmark:
@@ -1457,7 +1457,7 @@
     VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
 - name: DeepSeek-V2-236B
-  timeout: 1800
+  timeout: 3600
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V2-236B
   serve_config:
     tp: 8
@@ -1472,7 +1472,7 @@
   extra_env:
 
 - name: DeepSeek-V3-671B-W8A8
-  timeout: 1800
+  timeout: 3600
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V3-BF16_W8A8
   serve_config:
     tp: 4
@@ -1489,7 +1489,7 @@
   - moe
 
 - name: DeepSeek-V3-671B-W8A8-MTP
-  timeout: 1800
+  timeout: 3600
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V3-BF16_W8A8
   serve_config:
     tp: 4
@@ -1507,7 +1507,7 @@
   - moe
 
 - name: DeepSeek-V3-671B-W8A8-DCP
-  timeout: 1800
+  timeout: 3600
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V3-BF16_W8A8
   serve_config:
     tp: 4
@@ -1525,12 +1525,13 @@
   - moe
 
 - name: DeepSeek-V3.2-Exp
-  timeout: 1800
+  timeout: 3600
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V3.2-Exp-BF16
   serve_config:
     tp: 16
     dp: 1
     pp: 1
+    gpu_memory_utilization: 0.95
     extra_args:
   infer_type:
   - text-only
@@ -1542,7 +1543,7 @@
   - moe
 
 - name: GLM-4.5
-  timeout: 1800
+  timeout: 3600
   model_path: /mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.5
   serve_config:
     tp: 8
@@ -1559,7 +1560,7 @@
   - moe
 
 - name: GLM-4.6
-  timeout: 1800
+  timeout: 3600
   model_path: /mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.6
   serve_config:
     tp: 8
@@ -1576,7 +1577,7 @@
   - moe
 
 - name: MiMo-V2-Flash-BF16
-  timeout: 1800
+  timeout: 3600
   model_path: /mxstorage/pde_ai/models/llm/MiMo-V2-Flash-BF16
   serve_config:
     tp: 8
@@ -1591,7 +1592,7 @@
   extra_env:
 
 - name: ERNIE-4.5-21B-A3B-PT
-  timeout: 1800
+  timeout: 3600
   model_path: /mxstorage/pde_ai/models/llm/ERNIE/ERNIE-4.5-21B-A3B-PT
   serve_config:
     tp: 8
@@ -1608,7 +1609,7 @@
   - moe
 
 - name: Qwen3-235B-A22B
-  timeout: 1800
+  timeout: 3600
   model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-235B-A22B
   serve_config:
     tp: 8
@@ -1625,7 +1626,7 @@
   - moe
 
 - name: MiniMax-M2-BF16
-  timeout: 1800
+  timeout: 3600
   model_path: /mxstorage/pde_ai/models/llm/MiniMax-M2-BF16
   serve_config:
     tp: 16
