@@ -238,8 +238,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 
 - **environment：任务独有环境变量配置**
 
-如果tasks中的environment不设置或者为空，则在server启动时使用**machines.json**中的**default_envs**环境变量配置
-可以添加独有环境变量；也可以直接添加**machines.json**中的环境变量组名来直接引用已有的环境变量，如：
+如果tasks中的environment不设置或者为空，则在server启动时使用**machines.json**中的**default_envs**环境变量配置。也可以添加**machines.json**中的环境变量组名来直接引用已有的环境变量，如：
 ```json
     ......
     "tasks": {
@@ -251,7 +250,13 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
     }
     ......
 ```
-上述这个任务在server启动时就会直接使用**machines.json**中的**specific_scenario_envs**的环境变量配置。
+上述这个任务在server启动时就会使用**machines.json**中的**specific_scenario_envs**的环境变量配置。若是需要针对某些任务额外增加特殊的环境变量，可以通过逗号分隔的方式添加。例如某个任务需要加上 *MCCL_ENABLE_FC=0* 来避免hang住，写法如下：
+```json
+    ......
+    "environment": ["specific_scenario_envs","MCCL_ENABLE_FC=0"]
+    ......
+
+```
 若只是想要对某个benchmark的client端添加环境变量，需要添加在benchmark_cmds对应的测试类型中，如：
 ```json
     ......
