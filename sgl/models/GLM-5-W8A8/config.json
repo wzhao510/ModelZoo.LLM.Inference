@@ -1,16 +1,17 @@
 {
     "server_cmds": {
-        "server_cmd": [
+        "server_cmd_tp4dp4mtp314": [
             ["python3 -m sglang.launch_server --trust-remote-code"],
-            ["--model-path ${Qwen3-Coder-480B-int8-model-path}"],
-            ["--cuda-graph-max-bs 256"],
+            ["--model-path ${GLM-5-W8A8-model-path}"],
+            ["--cuda-graph-max-bs 64 --max-running-requests 64"],
+            ["--chunked-prefill-size 4096"],
             ["--disable-radix-cache --disable-chunked-prefix-cache"],
-            ["--quantization w8a8_int8"],
-            ["--attention-backend flashinfer"],
             ["--tp 16 --dp 4 --enable-dp-attention --enable-dp-lm-head"],
-            ["--mem-fraction-static 0.87"]
+            ["--mem-fraction-static 0.89"],
+            ["--speculative-algorithm NEXTN  --speculative-num-steps 3 --speculative-eagle-topk 1 --speculative-num-draft-tokens 4 --quantization w8a8_int8"]
         ]
     },
+
     "benchmark_cmds": {
         "random": {
             "command_base": "python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --dataset-path ${random-dataset-path} ",
@@ -20,17 +21,17 @@
         },
         "ceval": {
             "type": "ceval",
-            "command_base": "python3  run_ceval_client.py --model ${Qwen3-Coder-480B-int8-model-path}  --test_jsonl ${ceval-data-path} --batch_size 64 --timeout 1800 "
+            "command_base": "python3  run_ceval_client.py --model ${GLM-5-W8A8-model-path}  --test_jsonl ${ceval-dataset-path} --batch_size 64 --timeout 300 "
         },
         "mmlu": {
             "type": "mmlu",
             "environment": ["mmlu_envs"],
-            "command_base": "python3 bench_sglang.py --data_dir ${mmlu-data-path} --nsub 60"
+            "command_base": "python3 bench_sglang.py --data_dir ${mmlu-dataset-path} --nsub 60"
         }
     },
     "tasks": {
-        "Qwen3-Coder-480B-int8" : {
-            "launch_server": "server_cmd",
+        "GLM-5-W8A8-TP4DP4(MTP3)" : {
+            "launch_server": "server_cmd_tp4dp4mtp314",
             "benchmark": "random;ceval;mmlu"
         }
     }
