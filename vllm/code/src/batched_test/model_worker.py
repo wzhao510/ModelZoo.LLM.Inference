@@ -411,7 +411,7 @@ class InferWorker(Worker):
             self._cleanup()
 
     def _post_client_test(self):
-        timeout = self.model_cfg.get("timeout", 600)
+        timeout = self.model_cfg.get("timeout", 1200)
         self._check_api_service_ready(timeout=timeout, blocking=True)
 
         correct_ratio = self._chat_completion()
@@ -573,7 +573,7 @@ class InferWorker(Worker):
             cmd=cmd, log_file=log_file, env={**os.environ, **extra_env}
         )
 
-    def _check_api_service_ready(self, blocking=True, timeout=600):
+    def _check_api_service_ready(self, blocking=True, timeout=1200):
         # Block until the API service is up or timeout
         t0 = time.time()
 

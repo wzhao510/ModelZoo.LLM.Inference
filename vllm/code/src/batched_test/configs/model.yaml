@@ -1597,9 +1597,9 @@
     sweep_num_runs: 1
   extra_env:
 
-- name: ERNIE-4.5-21B-A3B-PT
+- name: ERNIE-4.5-300B-A47B-PT
   timeout: 3600
-  model_path: /mxstorage/pde_ai/models/llm/ERNIE/ERNIE-4.5-21B-A3B-PT
+  model_path: /mxstorage/pde_ai/models/llm/ERNIE/ERNIE-4.5-300B-A47B-PT
   serve_config:
     tp: 8
     dp: 1
