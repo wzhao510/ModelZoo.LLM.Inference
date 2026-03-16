@@ -10,7 +10,7 @@ import pandas as pd
 import sqlite3
 import argparse
 from tabulate import tabulate
-from sqlalchemy import JSON, Integer, and_, create_engine, Column, String, Float, DateTime, func, or_, select, over, desc, asc, tuple_
+from sqlalchemy import JSON, Integer, and_, cast, create_engine, Column, String, Float, DateTime, func, or_, select, over, desc, asc, tuple_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.exc import OperationalError
@@ -199,9 +199,9 @@ def query_remote_best(keys: 'List[Tuple]', SessionRemote) -> 'Dict[Tuple, float]
         # 批量查询匹配的所有行
         results = sess_remote.query(
             DailyPerformance.model_name,
-            func.json_extract(DailyPerformance.meta_data, '$.tp').label('tp'),
-            func.json_extract(DailyPerformance.meta_data, '$.pp').label('pp'),
-            func.json_extract(DailyPerformance.meta_data, '$.dp').label('dp'),
+            cast(func.json_extract(DailyPerformance.meta_data, '$.tp'), Integer).label('tp'),
+            cast(func.json_extract(DailyPerformance.meta_data, '$.pp'), Integer).label('pp'),
+            cast(func.json_extract(DailyPerformance.meta_data, '$.dp'), Integer).label('dp'),
             DailyPerformance.concurrency,
             DailyPerformance.input_len,
             DailyPerformance.output_len,
@@ -284,16 +284,18 @@ def process_performance(model_info: 'TaskInfo', df: 'pd.DataFrame', threshold: '
 
     to_merge = []
     failed_indices = []
+    cases_list = []
     for idx, r in df.iterrows():
+        cases_list.append(f"bs{r['max_concurrency']}_input{r['input_len']}_outout{r['output_len']}")
         key = (model_name, tp, pp, dp, r['max_concurrency'], r['input_len'], r['output_len'], device_type)
         current_tps = r['output_throughput']
         history = history_best.get(key, (-math.inf, r['date']))
         history_tps = history[0]
 
         final_best = max(current_tps, history_tps)
-
+        # print(f"{model_name:30.30}, {tp:02d}, {pp:02d}, {dp:02d}, {key[4]:>4}, {key[5]:>4}, {key[6]:>4}, {device_type:.4}: current={current_tps}, bestDB={history_tps}")
         # 数据不存在或者是远程存在，但是本地没有，都需要更新到本地
-        if final_best >= history_tps or remote_best.get(key, None):
+        if final_best >= history_tps or local_best.get(key, None):
             the_best: 'LocalBestPerformance' = LocalBestPerformance(
                 model_name = model_name, tp = tp, pp = pp, dp = dp,
                 concurrency = r['max_concurrency'], input = r['input_len'],
@@ -307,11 +309,11 @@ def process_performance(model_info: 'TaskInfo', df: 'pd.DataFrame', threshold: '
 
     update_local_best(to_merge, SessionLocal)
 
-    total_cases = df.size
+    total_cases = len(df)
     pass_count = total_cases - len(failed_indices)
     cases_status = f"{pass_count}/{total_cases} (pass/total)"
 
-    return pass_count == total_cases, cases_status, failed_indices
+    return pass_count == total_cases, cases_status, failed_indices, cases_list
 
 
 
@@ -344,10 +346,8 @@ def info_complement(row: 'pd.Series', threshold: 'float', device_type: 'str', Se
         task_info = TaskInfo(model_name=model_name, tp=tp, pp=pp, dp=dp)
         df_summary = get_summary_df(new_cols["summary_dir"])
 
-        ispass, cases_status, failed_indices = process_performance(task_info, df_summary, threshold, device_type, SessionLocal=SessionLocal, SessionRemote=SessionRemote)
+        ispass, cases_status, failed_indices, cases_list = process_performance(task_info, df_summary, threshold, device_type, SessionLocal=SessionLocal, SessionRemote=SessionRemote)
 
-        new_cols["cases_status"] = cases_status
-        new_cols["failed_indices"] = failed_indices
         new_cols["benchmark_start"] = df_summary["start_time"].min()
         new_cols["benchmark_end"] = df_summary["date"].max()
         new_cols["actual_duration (s)"] = df_summary["duration"].sum()
@@ -357,12 +357,30 @@ def info_complement(row: 'pd.Series', threshold: 'float', device_type: 'str', Se
             new_cols["note"] = "pass"
         else:
             new_cols["note"] = "performance degradation"
+        
+        new_cols["cases_status"] = cases_status
+        new_cols["failed_indices"] = failed_indices
+        new_cols["cases_list"] = cases_list
+        
+
     else:
+        new_cols["benchmark_start"] = None
+        new_cols["benchmark_end"] = None
+        new_cols["actual_duration (s)"] = None
+        new_cols["whole_duration (s)"] = None
+        new_cols["note"] = "Runtime Error"
         new_cols["cases_status"] = "Runtime Error"
         new_cols["failed_indices"] = None
-        new_cols["note"] = "Runtime Error"
+        new_cols["cases_list"] = None
 
-    return pd.Series(new_cols)
+    new_cols_order = ["model_name", "tp", "pp", "dp",
+                    "benchmark_start", "benchmark_end", "actual_duration (s)",
+                    "whole_duration (s)", "note", "cases_status", "failed_indices", "cases_list"]
+    
+    pd_new_cols = pd.Series(new_cols)
+    pd_new_cols = pd_new_cols[new_cols_order]
+
+    return pd_new_cols
 
 
 # ----------------------------- 主逻辑 -----------------------------
