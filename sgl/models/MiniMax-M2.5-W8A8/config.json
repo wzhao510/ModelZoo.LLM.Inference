@@ -6,7 +6,7 @@
             ["--disable-radix-cache --disable-chunked-prefix-cache"],
             ["--attention-backend flashinfer"],
             ["--tp 8"],
-            ["--mem-fraction-static 0.90"],
+            ["--mem-fraction-static 0.88"],
             ["--quantization w8a8_int8"]
         ]
     },
