@@ -853,6 +853,7 @@
     tp: 4
     dp: 1
     pp: 1
+    gpu_memory_utilization: 0.9
     extra_args:
   infer_type:
     - text-only
@@ -862,6 +863,7 @@
   extra_env:
     VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
     VLLM_USE_FUSED_MOE_GROUPED_TOPK : 0
+    MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: 1
   tags:
   - moe
 
@@ -871,6 +873,7 @@
     tp: 4
     dp: 1
     pp: 1
+    gpu_memory_utilization: 0.9
     extra_args:
       --speculative-config '{"method":"glm4_moe_mtp","num_speculative_tokens":2, "model":"/mxstorage/pde_ai/models/model_quant_opt/GLM/GLM-4_7-W48A8_WITH_MTP/vllm_quant_model"}' 
   infer_type:
@@ -881,6 +884,7 @@
   extra_env:
     VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
     VLLM_USE_FUSED_MOE_GROUPED_TOPK : 0 
+    MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: 1
   tags:
   - moe
 
@@ -1225,6 +1229,7 @@
     sweep_num_runs: 1
   extra_env:
     VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
+    MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: 1
 
 - name: DeepSeek-R1-W48A8-MTP_W4A8
   time: 1200
@@ -1242,6 +1247,7 @@
     sweep_num_runs: 1
   extra_env:
     VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
+    MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: 1
 
 - name: DeepSeek-R1-W48A8-MTP_W8A8
   time: 1200
@@ -1259,6 +1265,7 @@
     sweep_num_runs: 1
   extra_env:
     VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
+    MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: 1
 
 - name: DeepSeek-R1-W48A8-MTP_BF16
   time: 1200
@@ -1267,6 +1274,7 @@
     tp: 8
     dp: 1
     pp: 1
+    gpu_memory_utilization: 0.9
     extra_args:
       --speculative-config : '{"method": "deepseek_mtp", "num_speculative_tokens": 2}'
   infer_type:
@@ -1276,6 +1284,7 @@
     sweep_num_runs: 1
   extra_env:
     VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
+    MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: 1
 
 - name: Qwen2.5-72B-Instruct
   model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen2.5-72B-Instruct
