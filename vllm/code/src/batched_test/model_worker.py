@@ -4,6 +4,7 @@ import time
 import psutil
 import os
 import abc
+import json
 from enum import Enum, auto
 
 import threading
@@ -698,6 +699,71 @@ class BenchSweepWorker(Worker):
         self.model_tag = f"{model_cfg['name']}_tp{self.serve_cfg.get('tp', 1)}_pp{self.serve_cfg.get('pp', 1)}_dp{self.serve_cfg.get('dp', 1)}"
         self.log_file = os.path.join(self.work_dir, f"{self.model_tag}_serve.log")
 
+    def get_client_cmd(self, bench_cmd):
+        client_cmds = []
+        bench_cfg = self.model_cfg.get("benchmark", {})
+        param_file = bench_cfg.get("bench_param")
+        serve_config = self.model_cfg.get("serve_config", {})
+        assert os.path.exists(os.path.abspath(param_file)), (
+            f"Benchmark parameters file {param_file} does not exist."
+        )
+        with open(os.path.abspath(param_file), 'r', encoding='utf-8') as f:
+            data_params =json.load(f)
+
+        param_to_var = {
+            'max-concurrency': 'bs',
+            'random-input-len': 'input',
+            'random-output-len': 'output'
+        }
+        
+        for params in data_params:
+            # tp = serve_config.get('tp', 1)
+            # pp = serve_config.get('pp', 1)
+            # dp = serve_config.get('dp', 1)
+            input_val = params['random_input_len']
+            output_val = params['random_output_len']
+            bs_val = params['max_concurrency']
+
+            var_prefix = (
+                # f"tp={tp}; "
+                # f"pp={pp}; "
+                # f"dp={dp}; "
+                f"input={input_val}; "
+                f"output={output_val}; "
+                f"bs={bs_val}; "
+            )
+
+            temp_cmd = bench_cmd
+
+            for key, value in params.items():
+                temp_cmd.append(f"--{str(key).replace('_','-')}")
+
+                if key in param_to_var:
+                    var_name = param_to_var[key]
+                    temp_cmd.append(f"${{{var_name}}}")
+                else:
+                    temp_cmd.append(str(value))
+            full_cmd = f"{var_prefix} {' '.join(temp_cmd)}"
+            client_cmds.append(full_cmd)
+        return client_cmds
+            
+    def select_envs(self, env):
+        ref_env = (
+            "MACA_SMALL_PAGESIZE_ENABLE", "MACA_DIRECT_DISPATCH", 
+            "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES",
+            "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API",
+            "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE",
+            "CUDA_VISIBLE_DEVICES", "MACA_VISIBLE_DEVICES",
+            "VLLM_DISABLE_SHARED_EXPERTS_STREAM",
+            "PYTORCH_CUDA_ALLOC_CONF", "DISABLE_MAP2XPU"
+        )
+        res_env = {}
+
+        for key, value in env.items():
+            if key in ref_env:
+                res_env[key] = value
+        return ref_env
+
     def run(self, stop_event: threading.Event, alloc_time_out: int = 14400):
         self.stop_event = stop_event
 
@@ -705,15 +771,21 @@ class BenchSweepWorker(Worker):
             "task_name": self.model_tag,
             "log_dir": None,
             "status": "unknown",
-            "error": None
+            "error": None,
+            "server_command": None,
+            "client_command": None,
+            "env": None,
         }
         try:
             self._wait_and_allocate_gpus(timeout=alloc_time_out)
-            self._launch_bench_sweep()
+            sweep_cmd, bench_cmd, env = self._launch_bench_sweep()
             print(f"[{self.model_cfg['name']}] {'Completed!'.center(90, '-')}")
 
             result["log_dir"] = self.log_file
             result["status"] = "success"
+            result["server_command"] = sweep_cmd[5]
+            result["client_command"] = self.get_client_cmd(bench_cmd)
+            result["env"] = self.select_envs(env)
 
         except RuntimeError as e:
             self.warp_failure(str(e))
@@ -775,6 +847,8 @@ class BenchSweepWorker(Worker):
             mp_config=mp_rank0_cfg,
             force_backend="mp" if mp_rank0_cfg is not None else None,
         )
+
+        bench_cmd = self.config_manager.prepare_bench_cmd(host=None, port=self.port)
  
         # Log the process output
         log_file = net_utils.prepare_dir(self.log_file)
@@ -841,6 +915,8 @@ class BenchSweepWorker(Worker):
         if returncode != 0:
             raise RuntimeError(f"[{self.model_cfg['name']}] vllm bench sweep serve encounter an error, return code {returncode}. Please check the log: {log_file}")
 
+        return sweep_cmd, bench_cmd, {**os.environ, **extra_env}
+    
     def warp_failure(self, e: str):
         # Implement failure handling for performance testing here
         print(f"[{self.model_cfg['name']}] {'Benchmark failed:'.center(100, '-')}")

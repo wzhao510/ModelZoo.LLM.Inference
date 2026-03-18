@@ -459,7 +459,13 @@ class Scheduler:
         
         # deal with the result and create the bench_tasks_result.csv
         df = pd.DataFrame(all_results)
-        df = df[['task_name', 'status', 'log_dir', 'error']]
+        df = df[
+            [
+                'task_name', 'status', 
+                'log_dir', 'error',
+                'server_command', 'client_command', 'env'
+            ]
+        ]
         csv_path = Path(bench_work_dir) / "bench_tasks_result.csv"
         csv_path.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(csv_path, index=False, encoding='utf-8')

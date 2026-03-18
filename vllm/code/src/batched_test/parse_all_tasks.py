@@ -420,6 +420,11 @@ def main(res_dir: Path, local_db_url: 'str', device_type: 'str', threshold: 'flo
     logging.info("=" * 100)
     logging.info("+" * 100)
 
+    # 将命令列和环境列放在最后面
+    cols_to_move = ['server_command', 'client_command', 'env']
+    remaining_cols = [col for col in df_bench_result.columns if col not in cols_to_move]
+    new_order = remaining_cols + cols_to_move
+    df_bench_result = df_bench_result[new_order]
 
     report_file = res_dir / "report.csv"
     df_bench_result.to_csv(report_file, index=False, encoding='utf-8')
