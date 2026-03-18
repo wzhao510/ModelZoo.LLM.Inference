@@ -567,3 +567,12 @@ python3 -m src.master --output-path ../outputs/ --tasks-config ../models/DeepSee
 ```
 
 测试完成日志和结果都存放在output-path，结构说明见第3章 
+
+# 5. 特殊说明
+
+针对下列模型需要在容器内升级 transformers 使用，推荐升级至 5.3.0 版本 `pip install --upgrade transformers==5.3.0` 
+
+|                           |                                                      
+| ------------------------- | 
+| GLM-5-W8A8                | 
+| Qwen3.5系列所有模型        | 
