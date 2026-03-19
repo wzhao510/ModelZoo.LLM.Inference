@@ -1092,7 +1092,7 @@
   - moe
 
 - name: step3_5_W8A8
-  model_path: /mxstorage/pde_ai/models/llm/stepfun-ai/step3_5_W8A8/vllm_quant_model/
+  model_path: /mxstorage/pde_ai/models/model_quant_opt/Stepfun/step3_5_W8A8/vllm_quant_model_with_mtp
   serve_config:
     tp: 4
     dp: 1
