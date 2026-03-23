@@ -373,7 +373,7 @@ def info_complement(row: 'pd.Series', threshold: 'float', device_type: 'str', Se
         new_cols["failed_indices"] = None
         new_cols["cases_list"] = None
 
-    new_cols_order = ["model_name", "tp", "pp", "dp",
+    new_cols_order = ["summary_dir", "model_name", "tp", "pp", "dp",
                     "benchmark_start", "benchmark_end", "actual_duration (s)",
                     "whole_duration (s)", "note", "cases_status", "failed_indices", "cases_list"]
     
@@ -423,7 +423,7 @@ def main(res_dir: Path, local_db_url: 'str', device_type: 'str', threshold: 'flo
     # 将命令列和环境列放在最后面
     cols_to_move = ['server_command', 'client_command', 'env']
     remaining_cols = [col for col in df_bench_result.columns if col not in cols_to_move]
-    new_order = remaining_cols + cols_to_move
+    new_order = remaining_cols + [col for col in cols_to_move if col in df_bench_result.columns]
     df_bench_result = df_bench_result[new_order]
 
     report_file = res_dir / "report.csv"
