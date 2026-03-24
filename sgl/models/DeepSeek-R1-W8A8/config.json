@@ -6,6 +6,7 @@
             ["--disable-radix-cache"],
             ["--attention-backend flashinfer"],
             ["--tp 16 --dp 8 --enable-dp-attention --enable-dp-lm-head"],
+            ["--mem-frac 0.86"],
             [" --speculative-algorithm NEXTN --speculative-draft-model-path ${DeepSeek-R1-W8A8-draft-model-path} --speculative-num-steps 2 --speculative-eagle-topk 1 --speculative-num-draft-tokens 3 --quantization w8a8_int8"]
         ],
         "server_cmd_tp16mtp314": [
@@ -44,15 +45,15 @@
     },
     "tasks": {
         "DeepSeek-R1-W8A8-0528": {
-            "launch_server": "server_cmd",
+            "launch_server": "server_cmd_tp2dp8mtp213",
             "benchmark": "random;ceval;mmlu"
         },
         "DeepSeek-R1-W8A8-0528-tp16mtp3" : {
-            "launch_server": "server_cmd_tp16mtp3",
+            "launch_server": "server_cmd_tp16mtp314",
             "benchmark": "random;ceval;mmlu"
         },
         "DeepSeek-R1-W8A8-0528-tp4dp4mtp3": {
-            "launch_server": "server_cmd_tp4dp4mtp3",
+            "launch_server": "server_cmd_tp4dp4mtp213",
             "benchmark": "random;ceval;mmlu"
         }
     }
