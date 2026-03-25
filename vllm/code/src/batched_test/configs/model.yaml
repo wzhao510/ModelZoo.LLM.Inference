@@ -1217,22 +1217,6 @@
 - name: DeepSeek-R1-BF16-L4-W8A8
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-BF16-L4-W8A8
   serve_config:
-    tp: 2
-    dp: 4
-    pp: 1
-    extra_args:
-      --speculative-config: '{"num_speculative_tokens":1,"method":"deepseek_mtp"}'
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_high.json
-    sweep_num_runs: 1
-  extra_env:
-    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
-
-- name: DeepSeek-R1-BF16-L4-W8A8
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-BF16-L4-W8A8
-  serve_config:
     tp: 4
     dp: 2
     pp: 1
