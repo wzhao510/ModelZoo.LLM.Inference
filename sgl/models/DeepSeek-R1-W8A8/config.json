@@ -46,15 +46,18 @@
     "tasks": {
         "DeepSeek-R1-W8A8-0528": {
             "launch_server": "server_cmd_tp2dp8mtp213",
-            "benchmark": "random;ceval;mmlu"
+            "benchmark": "random;ceval;mmlu",
+            "environment": ["specific_scenario_envs"]
         },
         "DeepSeek-R1-W8A8-0528-tp16mtp3" : {
             "launch_server": "server_cmd_tp16mtp314",
-            "benchmark": "random;ceval;mmlu"
+            "benchmark": "random;ceval;mmlu",
+            "environment": ["specific_scenario_envs"]
         },
         "DeepSeek-R1-W8A8-0528-tp4dp4mtp3": {
             "launch_server": "server_cmd_tp4dp4mtp213",
-            "benchmark": "random;ceval;mmlu"
+            "benchmark": "random;ceval;mmlu",
+            "environment": ["specific_scenario_envs"]
         }
     }
 }

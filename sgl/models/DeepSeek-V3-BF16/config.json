@@ -30,7 +30,8 @@
     "tasks": {
         "DeepSeek-V3-BF16" : {
             "launch_server": "server_cmd",
-            "benchmark": "random;ceval;mmlu"
+            "benchmark": "random;ceval;mmlu",
+            "environment": ["specific_scenario_envs"]
         }
     }
 }
