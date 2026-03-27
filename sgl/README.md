@@ -97,9 +97,9 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
       "MACA_SMALL_PAGESIZE_ENABLE=1",
       "TRITON_ENABLE_MACA_OPT_MOVE_DOT_OPERANDS_OUT_LOOP=1",
       "TRITON_ENABLE_MACA_CHAIN_DOT_OPT=1",
-      "MACA_DIRECT_DISPATCH=1",
-      "MCDBG_GRAPH_LAUNCH_QUEUE_POLICY=3",
-      "MACA_GRAPH_LAUNCH_QUEUE_POLICY=3"
+      "PYTORCH_ENABLE_PG_HIGH_PRIORITY_STREAM=1",
+      "MACA_QUEUE_SCHEDULE_POLICY=1",
+      "MACA_DIRECT_DISPATCH=1"
     ],
     "mmlu_envs" : [
         "TIKTOKEN_CACHE_DIR=/models/"
@@ -109,7 +109,7 @@ code下存放的是测试代码和脚本, models目录下存放的是支持的�
 ```
 这里可以配置多组环境变量，以组名区分，如default_envs、specific_scenario_envs，不同的任务可以通过在task和benchmark配置中的**environment**字段添加组名（如specific_scenario_envs）来直接引用对应的环境变量。
 
-注意：**default_envs**是针对当前版本提供的默认服务启动参数的最优环境变量；如果变更服务启动参数，比如由TP切分改为DP切分，当前的默认的环境变量可能不是最优，可以尝试使用**specific_scenario_envs**，当前版本测试发现对于DeepSeek TP并行和 Qwen3 235B PP并行，**specific_scenario_envs**环境变量是最优的
+注意：**default_envs**是针对当前版本提供的默认服务启动参数的最优环境变量；如果变更服务启动参数，比如由TP切分改为DP切分，当前的默认的环境变量可能不是最优，可以尝试使用**specific_scenario_envs**。DeepSeek系列部分模型推荐使用该环境变量配置
 
 - **replacements：公共变量替换**
 
