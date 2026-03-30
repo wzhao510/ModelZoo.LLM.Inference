@@ -15,6 +15,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.exc import OperationalError
 import logging
+from datetime import datetime, timezone, timedelta
 
 
 
@@ -151,18 +152,25 @@ def get_summary_df(csv_dir: 'Path') -> 'pd.DataFrame':
 
 
 def query_local_best(keys: 'List[Tuple]', SessionLocal) -> 'Dict[Tuple, float]':
+    if not keys:
+        return {}
     with SessionLocal() as sess_local:
         results: 'List[LocalBestPerformance]' = sess_local.query(LocalBestPerformance).filter(
             tuple_(
-                LocalBestPerformance.model_name, LocalBestPerformance.tp,
-                LocalBestPerformance.pp, LocalBestPerformance.dp,
-                LocalBestPerformance.concurrency, LocalBestPerformance.input,
-                LocalBestPerformance.output,LocalBestPerformance.device_type, 
+                LocalBestPerformance.model_name, 
+                LocalBestPerformance.tp,
+                LocalBestPerformance.pp, 
+                LocalBestPerformance.dp,
+                LocalBestPerformance.concurrency, 
+                LocalBestPerformance.input,
+                LocalBestPerformance.output,
+                LocalBestPerformance.device_type, 
+                LocalBestPerformance.update_date,
             ).in_(keys)
         ).all()
         
         return {
-            (r.model_name, r.tp, r.pp, r.dp, r.concurrency, r.input, r.output, r.device_type): (r.best_tps, r.update_date)
+            (r.model_name, r.tp, r.pp, r.dp, r.concurrency, r.input, r.output, r.device_type, r.update_date): (r.best_tps, r.update_date)
             for r in results
         }
 
@@ -178,7 +186,10 @@ def query_remote_best(keys: 'List[Tuple]', SessionRemote) -> 'Dict[Tuple, float]
     ]
     
     json_conditions = []
-    for model_name, tp, pp, dp, concurrency, input_tokens, output_tokens, device_type in keys:
+    for model_name, tp, pp, dp, concurrency, input_tokens, output_tokens, device_type, date in keys:
+        # 给summary.csv文件中的时间加上时区设置
+        tz_beijing = timezone(timedelta(hours=8))
+        dt_aware = date.replace(tzinfo=tz_beijing)
         json_conditions.append(
             and_(
                 DailyPerformance.model_name == model_name,
@@ -191,7 +202,8 @@ def query_remote_best(keys: 'List[Tuple]', SessionRemote) -> 'Dict[Tuple, float]
                 DailyPerformance.device_type == device_type,
                 DailyPerformance.task_type == "LLM-Inference",
                 DailyPerformance.evaluation_framework == "vLLM",
-                DailyPerformance.test_cycle_type == "daily"
+                DailyPerformance.test_cycle_type == "daily",
+                DailyPerformance.test_date <= dt_aware,
             )
         )
     
@@ -266,7 +278,7 @@ def process_performance(model_info: 'TaskInfo', df: 'pd.DataFrame', threshold: '
     tp, pp, dp = (model_info.tp, model_info.pp, model_info.dp)
 
     keys = [
-        (model_name, tp, pp, dp, r['max_concurrency'], r['input_len'], r['output_len'], device_type)
+        (model_name, tp, pp, dp, r['max_concurrency'], r['input_len'], r['output_len'], device_type, r["date"])
         for _, r in df.iterrows()
     ]
 
@@ -307,13 +319,28 @@ def process_performance(model_info: 'TaskInfo', df: 'pd.DataFrame', threshold: '
         if current_tps < final_best * (1 - threshold):
             failed_indices.append(idx)
 
+    # 将远程数据库中case对应时间之前的最好tps信息、对应时间当前的tps和case信息保存
+    case_best_tps_infos = []
+    for idx, r in df.iterrows():
+        best_tps_infos = {}
+        key = (model_name, tp, pp, dp, r['max_concurrency'], r['input_len'], r['output_len'], device_type)
+        current_tps = r['output_throughput']
+        history = remote_best.get(key, (-math.inf, r['date']))
+        best_tps_infos[f"bs{r['max_concurrency']}_input{r['input_len']}_outout{r['output_len']}"] = {
+            "current_tps": r['output_throughput'],
+            "best_tps": history[0],
+            "best_date": history[1]
+        }
+        case_best_tps_infos.append(best_tps_infos)
+
+
     update_local_best(to_merge, SessionLocal)
 
     total_cases = len(df)
     pass_count = total_cases - len(failed_indices)
     cases_status = f"{pass_count}/{total_cases} (pass/total)"
 
-    return pass_count == total_cases, cases_status, failed_indices, cases_list
+    return pass_count == total_cases, cases_status, failed_indices, cases_list, case_best_tps_infos
 
 
 
@@ -346,7 +373,7 @@ def info_complement(row: 'pd.Series', threshold: 'float', device_type: 'str', Se
         task_info = TaskInfo(model_name=model_name, tp=tp, pp=pp, dp=dp)
         df_summary = get_summary_df(new_cols["summary_dir"])
 
-        ispass, cases_status, failed_indices, cases_list = process_performance(task_info, df_summary, threshold, device_type, SessionLocal=SessionLocal, SessionRemote=SessionRemote)
+        ispass, cases_status, failed_indices, cases_list, case_best_tps_infos = process_performance(task_info, df_summary, threshold, device_type, SessionLocal=SessionLocal, SessionRemote=SessionRemote)
 
         new_cols["benchmark_start"] = df_summary["start_time"].min()
         new_cols["benchmark_end"] = df_summary["date"].max()
@@ -361,6 +388,7 @@ def info_complement(row: 'pd.Series', threshold: 'float', device_type: 'str', Se
         new_cols["cases_status"] = cases_status
         new_cols["failed_indices"] = failed_indices
         new_cols["cases_list"] = cases_list
+        new_cols["case_best_tps_infos"] = case_best_tps_infos
         
 
     else:
@@ -372,10 +400,11 @@ def info_complement(row: 'pd.Series', threshold: 'float', device_type: 'str', Se
         new_cols["cases_status"] = "Runtime Error"
         new_cols["failed_indices"] = None
         new_cols["cases_list"] = None
+        new_cols["case_best_tps_infos"] = None
 
     new_cols_order = ["summary_dir", "model_name", "tp", "pp", "dp",
                     "benchmark_start", "benchmark_end", "actual_duration (s)",
-                    "whole_duration (s)", "note", "cases_status", "failed_indices", "cases_list"]
+                    "whole_duration (s)", "note", "cases_status", "failed_indices", "cases_list", "case_best_tps_infos"]
     
     pd_new_cols = pd.Series(new_cols)
     pd_new_cols = pd_new_cols[new_cols_order]
