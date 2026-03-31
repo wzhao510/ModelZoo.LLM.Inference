@@ -212,7 +212,7 @@ class ModelConfigManager:
             "sweep",
             "serve",
             "--server-ready-timeout",
-            3600,
+            "3600",
             "--serve-cmd",
             shlex.join(serve_cmd),
             "--bench-cmd",
