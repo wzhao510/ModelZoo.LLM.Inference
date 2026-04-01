@@ -319,7 +319,8 @@ def process_performance(model_info: 'TaskInfo', df: 'pd.DataFrame', threshold: '
         best_tps_infos[f"bs{r['max_concurrency']}_input{r['input_len']}_outout{r['output_len']}"] = {
             "current_tps": r['output_throughput'],
             "best_tps": history[0],
-            "best_date": history[1]
+            "best_date": history[1],
+            "growth_rate": str(round((current_tps - history[0])/history[0] * 100, 2)) + "%",
         }
         case_infos.append(best_tps_infos)
 

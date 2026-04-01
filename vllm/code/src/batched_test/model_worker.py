@@ -783,7 +783,10 @@ class BenchSweepWorker(Worker):
 
             result["log_dir"] = self.log_file
             result["status"] = "success"
-            result["server_command"] = sweep_cmd[5]
+            result["server_command"] = {
+                "type": "normal",
+                "command": sweep_cmd[5]
+            }
             result["client_command"] = self.get_client_cmd(bench_cmd)
             result["env"] = self.select_envs(env)
 
