@@ -16,6 +16,7 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.exc import OperationalError
 import logging
 from datetime import datetime, timezone, timedelta
+import ast
 
 
 
@@ -76,23 +77,19 @@ class DailyPerformance(BaseRemote):
     evaluation_framework = Column(String)
 
 
-def create_engines(local_db_url: 'str'):
-    logging.info(f"Database URL: {local_db_url}")
-
-    engine_local = create_engine(local_db_url, echo=False, future=True)
+def create_engines():
     # 远程 URL 请根据实际情况修改
     engine_remote = create_engine(
         REMOTE_DB_URL,
         echo=False, future=True, pool_pre_ping=True
     )
 
-    return engine_local, engine_remote
+    return engine_remote
 
 
-def create_sessions(engine_local, engine_remote):
-    SessionLocal = scoped_session(sessionmaker(bind=engine_local))
+def create_sessions(engine_remote):
     SessionRemote = scoped_session(sessionmaker(bind=engine_remote))
-    return SessionLocal, SessionRemote
+    return SessionRemote
 
 
 def find_summary_csv(root: 'Path') -> 'Path':
@@ -273,32 +270,34 @@ def update_local_best(best_list: 'List[LocalBestPerformance]', SessionLocal):
 #         return t
 
 
-def process_performance(model_info: 'TaskInfo', df: 'pd.DataFrame', threshold: 'float', device_type: 'str', SessionLocal, SessionRemote) -> 'Tuple[bool, str, List[int]]':
+def process_performance(model_info: 'TaskInfo', df: 'pd.DataFrame', threshold: 'float', device_type: 'str', SessionRemote) -> 'Tuple[bool, str, List[int]]':
     model_name = model_info.model_name
     tp, pp, dp = (model_info.tp, model_info.pp, model_info.dp)
 
-    keys = [
+    # 远程数据库筛选查询键
+    remot_filter_keys = [
         (model_name, tp, pp, dp, r['max_concurrency'], r['input_len'], r['output_len'], device_type, r["date"])
         for _, r in df.iterrows()
     ]
 
-    local_best = query_local_best(keys, SessionLocal)
-    missing_local_keys = [k for k in keys if k not in local_best]
-    remote_best = query_remote_best(missing_local_keys, SessionRemote)
+    remote_best = query_remote_best(remot_filter_keys, SessionRemote)
+    """
+    remot_best是一个字典数组，里面包含了每个case的信息和对应远程数据库当前时间最优的tps性能和时间
+    字典的数据格式：{
+    key:('model_name', 'tp', 'pp', 'dp','concurrency', 'input', 'output', 'device_type'),
+    value:(tps, test_date)
+    }
+    """
     # missing_keys = [k for k in missing_local_keys if k not in remote_best]
     # new_best = {
     #     k: None
     #     for k in missing_keys
     # }
 
-    history_best = local_best.copy()
-    history_best.update(remote_best)
+    history_best = remote_best.copy()
 
-    to_merge = []
     failed_indices = []
-    cases_list = []
     for idx, r in df.iterrows():
-        cases_list.append(f"bs{r['max_concurrency']}_input{r['input_len']}_outout{r['output_len']}")
         key = (model_name, tp, pp, dp, r['max_concurrency'], r['input_len'], r['output_len'], device_type)
         current_tps = r['output_throughput']
         history = history_best.get(key, (-math.inf, r['date']))
@@ -306,21 +305,12 @@ def process_performance(model_info: 'TaskInfo', df: 'pd.DataFrame', threshold: '
 
         final_best = max(current_tps, history_tps)
         # print(f"{model_name:30.30}, {tp:02d}, {pp:02d}, {dp:02d}, {key[4]:>4}, {key[5]:>4}, {key[6]:>4}, {device_type:.4}: current={current_tps}, bestDB={history_tps}")
-        # 数据不存在或者是远程存在，但是本地没有，都需要更新到本地
-        if final_best >= history_tps or local_best.get(key, None):
-            the_best: 'LocalBestPerformance' = LocalBestPerformance(
-                model_name = model_name, tp = tp, pp = pp, dp = dp,
-                concurrency = r['max_concurrency'], input = r['input_len'],
-                output = r['output_len'], device_type = device_type,
-                best_tps = final_best, update_date = r['date']
-            )
-            to_merge.append(the_best)
         
         if current_tps < final_best * (1 - threshold):
             failed_indices.append(idx)
 
     # 将远程数据库中case对应时间之前的最好tps信息、对应时间当前的tps和case信息保存
-    case_best_tps_infos = []
+    case_infos = []
     for idx, r in df.iterrows():
         best_tps_infos = {}
         key = (model_name, tp, pp, dp, r['max_concurrency'], r['input_len'], r['output_len'], device_type)
@@ -331,20 +321,32 @@ def process_performance(model_info: 'TaskInfo', df: 'pd.DataFrame', threshold: '
             "best_tps": history[0],
             "best_date": history[1]
         }
-        case_best_tps_infos.append(best_tps_infos)
-
-
-    update_local_best(to_merge, SessionLocal)
+        case_infos.append(best_tps_infos)
 
     total_cases = len(df)
     pass_count = total_cases - len(failed_indices)
     cases_status = f"{pass_count}/{total_cases} (pass/total)"
 
-    return pass_count == total_cases, cases_status, failed_indices, cases_list, case_best_tps_infos
+    return pass_count == total_cases, cases_status, failed_indices, case_infos
 
+def parse_string_to_json(client_cmd_list):
+    result = {}
+    for item in client_cmd_list:
+        input_match = re.search(r'input=(\d+)',item)
+        output_match = re.search(r'output=(\d+)',item)
+        bs_match = re.search(r'bs=(\d+)',item)
 
+        if input_match and output_match and bs_match:
+            input_val = int(input_match.group(1))
+            output_val = int(output_match.group(1))
+            bs_val = int(bs_match.group(1))
 
-def info_complement(row: 'pd.Series', threshold: 'float', device_type: 'str', SessionLocal, SessionRemote) -> 'pd.Series':
+            key = f"bs{bs_val}_input{input_val}_outout{output_val}"
+
+            result[key] = item
+    return result
+
+def info_complement(row: 'pd.Series', threshold: 'float', device_type: 'str', SessionRemote) -> 'pd.Series':
     new_cols = {}
 
     # 处理model_name
@@ -373,7 +375,14 @@ def info_complement(row: 'pd.Series', threshold: 'float', device_type: 'str', Se
         task_info = TaskInfo(model_name=model_name, tp=tp, pp=pp, dp=dp)
         df_summary = get_summary_df(new_cols["summary_dir"])
 
-        ispass, cases_status, failed_indices, cases_list, case_best_tps_infos = process_performance(task_info, df_summary, threshold, device_type, SessionLocal=SessionLocal, SessionRemote=SessionRemote)
+        ispass, cases_status, failed_indices, case_infos = process_performance(task_info, df_summary, threshold, device_type, SessionRemote=SessionRemote)
+
+        # 处理该行的所有客户命令
+        client_cmd_list = ast.literal_eval(row["client_command"])
+        client_cmd_dict = parse_string_to_json(client_cmd_list)
+        for case_info in case_infos:
+            for info_key, _ in case_info.items():
+                case_info[info_key].update({"client_command": client_cmd_dict[info_key]})
 
         new_cols["benchmark_start"] = df_summary["start_time"].min()
         new_cols["benchmark_end"] = df_summary["date"].max()
@@ -387,8 +396,7 @@ def info_complement(row: 'pd.Series', threshold: 'float', device_type: 'str', Se
         
         new_cols["cases_status"] = cases_status
         new_cols["failed_indices"] = failed_indices
-        new_cols["cases_list"] = cases_list
-        new_cols["case_best_tps_infos"] = case_best_tps_infos
+        new_cols["case_infos"] = case_infos
         
 
     else:
@@ -399,12 +407,11 @@ def info_complement(row: 'pd.Series', threshold: 'float', device_type: 'str', Se
         new_cols["note"] = "Runtime Error"
         new_cols["cases_status"] = "Runtime Error"
         new_cols["failed_indices"] = None
-        new_cols["cases_list"] = None
-        new_cols["case_best_tps_infos"] = None
+        new_cols["case_infos"] = None
 
     new_cols_order = ["summary_dir", "model_name", "tp", "pp", "dp",
                     "benchmark_start", "benchmark_end", "actual_duration (s)",
-                    "whole_duration (s)", "note", "cases_status", "failed_indices", "cases_list", "case_best_tps_infos"]
+                    "whole_duration (s)", "note", "cases_status", "failed_indices", "case_infos"]
     
     pd_new_cols = pd.Series(new_cols)
     pd_new_cols = pd_new_cols[new_cols_order]
@@ -413,20 +420,16 @@ def info_complement(row: 'pd.Series', threshold: 'float', device_type: 'str', Se
 
 
 # ----------------------------- 主逻辑 -----------------------------
-def main(res_dir: Path, local_db_url: 'str', device_type: 'str', threshold: 'float'):
+def main(res_dir: Path, device_type: 'str', threshold: 'float'):
     # 创建 engine 和 session
-    engine_local, engine_remote = create_engines(local_db_url)
-    SessionLocal, SessionRemote = create_sessions(engine_local, engine_remote)
-
-    # 创建本地数据库表，如果存在则跳过
-    BaseLocal.metadata.create_all(engine_local)
-    logging.debug("The tables of local DB are already checked/created.")
+    engine_remote = create_engines()
+    SessionRemote = create_sessions(engine_remote)
 
     df_bench_result = pd.read_csv(res_dir / "performance" / "bench_tasks_result.csv")
     total_tasks_len = df_bench_result["status"].size
     runtime_pass_tasks_len = (df_bench_result["status"] == "success").sum()
 
-    new_cols = df_bench_result.apply(info_complement, axis=1, args=(threshold, device_type, SessionLocal, SessionRemote))
+    new_cols = df_bench_result.apply(info_complement, axis=1, args=(threshold, device_type, SessionRemote))
     df_bench_result[new_cols.columns] = new_cols
 
     performence_pass_num = (df_bench_result["note"] == "pass").sum()
@@ -454,6 +457,7 @@ def main(res_dir: Path, local_db_url: 'str', device_type: 'str', threshold: 'flo
     remaining_cols = [col for col in df_bench_result.columns if col not in cols_to_move]
     new_order = remaining_cols + [col for col in cols_to_move if col in df_bench_result.columns]
     df_bench_result = df_bench_result[new_order]
+    df_bench_result.drop("client_command", axis=1, inplace=True)
 
     report_file = res_dir / "report.csv"
     df_bench_result.to_csv(report_file, index=False, encoding='utf-8')
@@ -471,14 +475,6 @@ def create_parser():
         required=True,
         help="The director of daily test result."
     )
-
-    parser.add_argument(
-        "--db-dir",
-        type=Path,
-        required=True,
-        help="The directory of local .db file to record the best performance.",
-    )
-
     parser.add_argument(
         "--device-type",
         default="C500",
@@ -501,14 +497,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     res_dir = get_performence_dir(args.res_dir)
-    db_dir: Path = args.db_dir
 
+    if not res_dir.exists():
+        raise FileNotFoundError(f"{res_dir.resolve()} is not found!")
     
-
-    if not res_dir.exists() or not db_dir.exists():
-        raise FileNotFoundError(f"{res_dir.resolve()} or {db_dir.resolve()} is not found!")
-    if not db_dir.is_dir():
-        raise ValueError(f"--db-dir can only accept a directory not a file. provided: {db_dir}")
-    
-    db_url = "sqlite:///" + str(db_dir.resolve() / LOCAL_DB_NAME)
-    main(res_dir, db_url, args.device_type, args.threshold)
+    main(res_dir, args.device_type, args.threshold)
