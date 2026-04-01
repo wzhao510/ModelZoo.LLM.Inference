@@ -1,5 +1,39 @@
 # -name: "Llama2_7b_sql_lora"
 
+- name: "Qwen3.5-27B"
+  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3.5-27B"
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "float16"
+      --gpu-memory-utilization: 0.9
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_common.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+- name: "Qwen3.5-35B"
+  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3.5-35B-A3B"
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "float16"
+      --gpu-memory-utilization: 0.9
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_common.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+  
 - name: "Mixtral-8x22B-V0.1-W8A8"
   model_path: "/mxstorage/pde_ai/models/llm/W8A8/Mixtral-8x22B-Instruct-v0.1-INT8-Dynamic"
   serve_config:
@@ -503,3 +537,55 @@
     sweep_num_runs: 1
   extra_env:
 
+
+- name: "Qwen3.5-9B"
+  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3.5-9B/"
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "float16"
+      --gpu-memory-utilization: 0.95
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_common.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+- name: "Internlm3_8B"
+  model_path: "/mxstorage/pde_ai/models/llm/Internlm/internlm3_8b/"
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "float16"
+      --gpu-memory-utilization: 0.95
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_common.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+
+- name: "Baichuan2-13B"
+  model_path: "/mxstorage/pde_ai/models/llm/Baichuan/Baichuan2-13B-Chat/"
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "float16"
+      --gpu-memory-utilization: 0.95
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_common.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
