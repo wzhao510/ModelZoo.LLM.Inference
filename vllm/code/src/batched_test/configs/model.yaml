@@ -1775,7 +1775,8 @@
     dp: 1
     pp: 1
     distributed_executor_backend: mp
-    extra_args: 
+    extra_args:
+      --chat-template: chat_template/template_baichuan.jinja 
       --enable-lora: 
       --lora-modules: "sql-lora=/mxstorage/pde_ai/models/llm/lora/baichuan7b-text2sql-spider"
       --max-lora-rank: 64 
