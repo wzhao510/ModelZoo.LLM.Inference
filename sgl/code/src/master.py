@@ -71,7 +71,7 @@ class ServerParser:
             for model in MODEL_SERIES:
                 if model.lower() in part[1].lower():
                     return part[1]
-        return parts[-1][1]
+        return parts[-1]
 
     @staticmethod
     def merge_task_envs(environments, task_envs, logger):
