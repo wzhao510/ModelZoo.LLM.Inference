@@ -6,22 +6,44 @@ from typing import Callable, TypeVar
 
 import threading
 
-import pymxml
+import pymxml as ml
 
 from pprint import pprint
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
+ml_available = False
+try:
+    try:
+        ml.nvmlInit()
+        ml_available = True
+    except Exception:
+        # On Jetson, NVML is not supported.
+        # try to nvmlInit
+        import vllm.third_party.pynvml as ml
+        ml.nvmlInit()
+        ml_available = True
+        print(f"[WARN] mx NVML is not available, but use nvidia NVML instead of it.")
+finally:
+    if ml_available:
+        ml.nvmlShutdown()
+
+assert ml_available, "mx NVML and nvidia NVML are both not available on this system."
+
+# pprint(gpu_manager.get_gpu_count()) # initialize pymxml
+# pprint(gpu_manager.get_gpu_memory_list()) # initialize pymxml
+# pprint(gpu_manager.get_free_gpu_indices())
+# pprint(gpu_manager.get_all_gpu_process_info())
 
 def with_mxml_context(fn: Callable[_P, _R]) -> Callable[_P, _R]:
     @wraps(fn)
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
-        pymxml.nvmlInit()
+        ml.nvmlInit()
         try:
             return fn(*args, **kwargs)
         finally:
-            pymxml.nvmlShutdown()
+            ml.nvmlShutdown()
 
     return wrapper
 
@@ -50,7 +72,7 @@ class GPUManager:
     @cache
     @with_mxml_context
     def get_gpu_count(self) -> int:
-        return pymxml.nvmlDeviceGetCount()
+        return ml.nvmlDeviceGetCount()
 
     @with_mxml_context
     def get_gpu_memory_list(self) -> list[dict]:
@@ -61,8 +83,8 @@ class GPUManager:
         gpu_count = self.get_gpu_count()
         mems_infos = []
         for i in range(gpu_count):
-            handle = pymxml.nvmlDeviceGetHandleByIndex(i)
-            info = pymxml.nvmlDeviceGetMemoryInfo(handle)
+            handle = ml.nvmlDeviceGetHandleByIndex(i)
+            info = ml.nvmlDeviceGetMemoryInfo(handle)
             mems_infos.append(
                 {
                     "used": int(info.used) // (1024 * 1024),  # type: ignore
@@ -96,11 +118,11 @@ class GPUManager:
          - pid: Process ID using the GPU.
          - usedGpuMemory: Amount of GPU memory used by the process (MiB).
         """
-        handle = pymxml.nvmlDeviceGetHandleByIndex(gpu_index)
+        handle = ml.nvmlDeviceGetHandleByIndex(gpu_index)
         gpu_process_infos = []
         try:
-            gpu_process_infos = pymxml.nvmlDeviceGetComputeRunningProcesses_v3(handle)
-        except pymxml.NVMLError as e:
+            gpu_process_infos = ml.nvmlDeviceGetComputeRunningProcesses_v3(handle)
+        except ml.NVMLError as e:
             print(f"[WARN] Failed to get processes for GPU {gpu_index}: {e}")
         except Exception as e:
             print(
@@ -137,7 +159,7 @@ class GPUManager:
         """
         gpu_count = self.get_gpu_count()
         gpu_process_infos: dict[int, list[dict]] = {}
-        for i in range(self.gpu_count):
+        for i in range(gpu_count):
             info = self.get_gpu_process_info(i)
             gpu_process_infos[i] = info  # type: ignore
         return gpu_process_infos
@@ -168,22 +190,3 @@ class GPUManager:
             for idx in gpu_indices:
                 self.occupied_gpus.discard(idx)
 
-
-mxml_available = False
-try:
-    try:
-        pymxml.nvmlInit()
-        mxml_available = True
-    except Exception:
-        # On Jetson, NVML is not supported.
-        mxml_available = False
-finally:
-    if mxml_available:
-        pymxml.nvmlShutdown()
-
-assert mxml_available, "pymxml NVML is not available on this system."
-
-# pprint(gpu_manager.get_gpu_count()) # initialize pymxml
-# pprint(gpu_manager.get_gpu_memory_list()) # initialize pymxml
-# pprint(gpu_manager.get_free_gpu_indices())
-# pprint(gpu_manager.get_all_gpu_process_info())
