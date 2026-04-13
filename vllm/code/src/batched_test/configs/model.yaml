@@ -1076,7 +1076,7 @@
   tags:
   - moe
 
-- name: Qwen3-30B-A3B
+- name: Qwen3-30B-A3B-EP
   model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B
   serve_config:
     tp: 2
