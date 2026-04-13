@@ -226,7 +226,7 @@ class ModelConfigManager:
             "--show-stdout",
         ]
 
-        return sweep_cmd
+        return sweep_cmd, shlex.join(serve_cmd)
 
     def prepare_extra_env(self, occupied_gpus: list[int] | None) -> dict:
         # Prepare environment variables
@@ -778,14 +778,14 @@ class BenchSweepWorker(Worker):
         }
         try:
             self._wait_and_allocate_gpus(timeout=alloc_time_out)
-            sweep_cmd, bench_cmd, env = self._launch_bench_sweep()
+            serve_cmd, bench_cmd, env = self._launch_bench_sweep()
             print(f"[{self.model_cfg['name']}] {'Completed!'.center(90, '-')}")
 
             result["log_dir"] = self.log_file
             result["status"] = "success"
             result["server_command"] = {
                 "type": "normal",
-                "command": sweep_cmd[5]
+                "command": serve_cmd
             }
             result["client_command"] = self.get_client_cmd(bench_cmd)
             result["env"] = self.select_envs(env)
@@ -843,7 +843,7 @@ class BenchSweepWorker(Worker):
         if not isinstance(self.gpu_manager, MPClusterManager):
             extra_env = self.config_manager.prepare_extra_env(self.related_gpu_ids)
 
-        sweep_cmd = self.config_manager.prepare_sweep_cmd(
+        sweep_cmd, serve_cmd = self.config_manager.prepare_sweep_cmd(
             host=None,
             port=self.port,
             output_dir=result_dir,
@@ -918,7 +918,7 @@ class BenchSweepWorker(Worker):
         if returncode != 0:
             raise RuntimeError(f"[{self.model_cfg['name']}] vllm bench sweep serve encounter an error, return code {returncode}. Please check the log: {log_file}")
 
-        return sweep_cmd, bench_cmd, {**os.environ, **extra_env}
+        return serve_cmd, bench_cmd, {**os.environ, **extra_env}
     
     def warp_failure(self, e: str):
         # Implement failure handling for performance testing here
