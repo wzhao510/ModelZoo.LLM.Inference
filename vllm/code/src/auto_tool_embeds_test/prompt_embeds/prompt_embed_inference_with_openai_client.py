@@ -72,7 +72,7 @@ def main():
     print(completion.choices[0].text)
     print("-" * 30)
     if "The capital of France is Paris." in completion.choices[0].text:
-        print("prompt_embeds 测试成功")
+        print("=======prompt_embeds 测试成功=======")
 
 
 if __name__ == "__main__":
