@@ -15,7 +15,6 @@ echo "vllm serve started with PID: $VLLM_PID"
 echo "Waiting for service to start..."
 sleep 240
 
-
 echo "Running python test.py..."
 python "$SCRIPT_DIR/prompt_embed_inference_with_openai_client.py"
 sleep 10
