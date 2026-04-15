@@ -1,0 +1,10 @@
+vllm bench throughput \
+--trust-remote-code \
+--model /pde_ai/models/llm/Qwen/Qwen3.5-397B-A17B-W8A8 \
+--backend openai-chat \
+--endpoint /v1/chat/completions \
+--input-len 2048 \
+--output-len 256 \
+--dataset-name random-mm \
+--num-prompts 5 \
+--seed 42

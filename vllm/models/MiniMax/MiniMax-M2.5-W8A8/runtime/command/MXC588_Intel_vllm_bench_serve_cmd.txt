@@ -1,0 +1,11 @@
+vllm bench serve \
+--trust-remote-code \
+--model /pde_ai/models/llm/MiniMax-M2.5-W8A8/ \
+--port 8010 \
+--backend vllm \
+--dataset-name random \
+--num-prompts 20 \
+--max-concurrency 4 \
+--random-input-len 2048 \
+--random-output-len 1024 \
+--ignore-eos True

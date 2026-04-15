@@ -1,0 +1,14 @@
+MACA_SMALL_PAGESIZE_ENABLE=1 MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE=1 MACA_VLLM_ENABLE_MCTLASS_PYTHON_API=1 MACA_DIRECT_DISPATCH=1 vllm serve \
+/pde_ai/models/llm/Qwen/Qwen3.5-2B \
+--trust-remote-code \
+--no-async-scheduling \
+--no-enable-prefix-caching \
+--enable-auto-tool-choice \
+--tensor-parallel-size 1 \
+--data-parallel-size 1 \
+--max-model-len 1024 \
+--max-num-seqs 10 \
+--gpu-memory-utilization 0.9 \
+--port 8000 \
+--swap-space 16 \
+--max-num-batched-tokens 1024

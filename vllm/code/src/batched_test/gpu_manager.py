@@ -3,8 +3,13 @@
 from functools import wraps, cache
 from typing_extensions import ParamSpec
 from typing import Callable, TypeVar
+import os 
+import sys
 
 import threading
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
 
 import pymxml as ml
 
@@ -163,6 +168,30 @@ class GPUManager:
             info = self.get_gpu_process_info(i)
             gpu_process_infos[i] = info  # type: ignore
         return gpu_process_infos
+    
+    @with_mxml_context
+    def get_gpu_name(self, gpu_index: int) -> str:
+        handle = ml.nvmlDeviceGetHandleByIndex(gpu_index)
+        try:
+            name_bytes =  ml.nvmlDeviceGetName(handle)
+            if isinstance(name_bytes, bytes):
+               name = name_bytes.decode("utf-8")
+            else:
+               name = name_bytes
+            return name
+        except Exception as e:
+            print(
+                f"[ERROR] Unexpected error getting name for GPU {gpu_index}: {e}"
+            )
+
+    @with_mxml_context
+    def get_all_gpu_names(self) -> dict[int, str]:
+        gpu_count = self.get_gpu_count()
+        gpu_names = {}
+        for i in range(gpu_count):
+            name = self.get_gpu_name(i)
+            gpu_names[i] = name
+        return gpu_names
 
     def allocate(self, num_required: int) -> list[int]:
         """
