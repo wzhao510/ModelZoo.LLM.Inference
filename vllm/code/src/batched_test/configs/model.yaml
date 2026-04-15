@@ -1290,7 +1290,7 @@
     tp: 8
     dp: 1
     pp: 1
-    gpu_memory_utilization: 0.9
+    gpu_memory_utilization: 0.85
     extra_args:
       --speculative-config : '{"method": "deepseek_mtp", "num_speculative_tokens": 2}'
   infer_type:
@@ -1301,6 +1301,7 @@
   extra_env:
     VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
     MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: 1
+    MACA_VLLM_ENABLE_MCTLASS_PYTHON_API: 1
 
 - name: Qwen2.5-72B-Instruct
   model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen2.5-72B-Instruct
