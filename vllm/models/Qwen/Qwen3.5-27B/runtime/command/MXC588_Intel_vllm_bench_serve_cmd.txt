@@ -1,0 +1,17 @@
+vllm bench serve \
+--trust-remote-code \
+--ignore-eos \
+--model /pde_ai/models/llm/Qwen/Qwen3.5-27B \
+--port 8010 \
+--backend openai-chat \
+--endpoint /v1/chat/completions \
+--dataset-name random-mm \
+--num-prompts 5 \
+--max-concurrency 1 \
+--random-input-len 300 \
+--random-output-len 40 \
+--random-range-ratio 0.0 \
+--random-mm-base-items-per-request 1 \
+--seed 42 \
+--random-mm-limit-mm-per-prompt '{"image": 5, "video": 1}' \
+--random-mm-bucket-config '(1080, 1920, 1): 1.0'

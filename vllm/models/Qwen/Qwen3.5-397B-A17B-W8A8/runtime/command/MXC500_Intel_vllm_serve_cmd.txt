@@ -1,0 +1,20 @@
+MACA_SMALL_PAGESIZE_ENABLE=1 MACA_VLLM_ENABLE_MCTLASS_PYTHON_API=1 MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE=1 vllm serve \
+/pde_ai/models/llm/Qwen/Qwen3.5-397B-A17B-W8A8 \
+--trust-remote-code \
+--no-async-scheduling \
+--no-enable-prefix-caching \
+--enable-auto-tool-choice \
+--skip-mm-profiling \
+--tensor-parallel-size 8 \
+--max-model-len 32768 \
+--max-num-seqs 128 \
+--gpu-memory-utilization 0.89 \
+--port 8010 \
+--tool-call-parser qwen3_coder \
+--swap-space 16 \
+--seed 0 \
+--max-num-batched-tokens 8192 \
+--reasoning-parser  \
+--mm-processor-cache-type shm \
+--mm-encoder-tp-mode data \
+--limit-mm-per-prompt '{"image": 5, "video": 1}'

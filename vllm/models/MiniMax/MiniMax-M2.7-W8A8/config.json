@@ -1,0 +1,140 @@
+{
+    "model_config":{
+        "model": "/pde_ai/models/llm/MiniMax-M2.7-W8A8/",
+        "trust_remote_code": true,
+        "dtype": "float16",
+        "seed": 0,
+        "enforce_eager": false,
+        "disable_sliding_window": false,
+        "max_logprobs": 20,
+        "skip_tokenizer_init": false,
+        "enable_prompt_embeds": false
+    },
+    "parallel_config":{
+        "distributed_executor_backend":"mp", 
+        "tensor_parallel_size": 8,
+        "master_addr":"127.0.0.1",
+        "master_port": 29501,
+        "nnodes": 1,
+        "node_rank": 0,
+        "decode_context_parallel_size": 1,
+        "dcp_comm_backend": "ag_rs",
+        "dcp_kv_cache_interleave_size": 1,
+        "cp_kv_cache_interleave_size": 1,
+        "prefill_context_parallel_size": 1
+    },
+    "scheduler_config":{
+        "max_num_batched_tokens": 16384,
+        "max_num_partial_prefills":1
+    },
+    "frontend_config":{
+        "trust_request_chat_template": false,
+        "port":"8010",
+        "tool_call_parser":"minimax_m2",
+        "c": true,
+        "enable_auto_tool_choice": true
+    },
+    "structured_outputs_config":{
+        "reasoning_parser":"minimax_m2_append_think"
+    },
+    "bench_config":{
+        "backend":"vllm", 
+        "trust_remote_code": false, 
+        "num_prompts": 1000,
+        "dataset_name": "random",
+        "no_stream": false,
+        "skip_chat_template": false,
+        "enable_multimodal_chat": false,
+        "disable_shuffle": false,
+        "input_len": 2048,
+        "output_len":256,
+        "use_beam_search": false,
+        "disable_tqdm": false,
+        "num_warmups":0,
+        "profile": false,
+        "save_result": false
+    },
+    "cache_config":{
+        "gpu_memory_utilization": 0.9,
+        "kv_cache_dtype":"auto",
+        "enable_prefix_caching": false,
+        "swap_space": 16
+    },
+    "offload_config":{
+        "offload_backend":"auto",
+        "cpu_offload_gb": 0
+    },
+    "multi_modal_config":{
+        "language_model_only":false,
+        "limit_mm_per_prompt":{
+
+        }
+    },
+    "lora_config":{
+        "enable_lora":true,
+        "max_loras": 1,
+        "max_lora_rank": 16,
+        "lora_dtype": "auto"
+    },
+    "observability_config":{
+
+    },
+    "env_config":{
+        "MXC500":{
+            "Intel":{
+                "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE":"1",
+                "MACA_GRAPH_LAUNCH_MODE": "5"
+            },
+            "AMD":{
+                "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE":"1",
+                "MACA_GRAPH_LAUNCH_MODE": "5"
+            },
+            "Hygon":{
+                "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE":"1",
+                "MACA_GRAPH_LAUNCH_MODE": "5"
+            }
+        },
+        "MXC550":{
+            "Intel":{
+                "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE":"1",
+                "MACA_GRAPH_LAUNCH_MODE": "5"
+            },
+            "AMD":{
+                "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE":"1",
+                "MACA_GRAPH_LAUNCH_MODE": "5"
+            },
+            "Hygon":{
+                "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE":"1",
+                "MACA_GRAPH_LAUNCH_MODE": "5"
+            }
+        },
+        "MXC588":{
+           "Intel":{
+                "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE":"1",
+                "MACA_GRAPH_LAUNCH_MODE": "5"
+            },
+            "AMD":{
+                "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE":"1",
+                "MACA_GRAPH_LAUNCH_MODE": "5"
+            },
+            "Hygon":{
+                "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE":"1",
+                "MACA_GRAPH_LAUNCH_MODE": "5"
+            }
+        },
+        "MXC600":{
+            "Intel":{
+                "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE":"1",
+                "MACA_GRAPH_LAUNCH_MODE": "5"
+            },
+            "AMD":{
+                "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE":"1",
+                "MACA_GRAPH_LAUNCH_MODE": "5"
+            },
+            "Hygon":{
+                "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE":"1",
+                "MACA_GRAPH_LAUNCH_MODE": "5"
+            }
+        }
+    }
+}

@@ -1,0 +1,11 @@
+MACA_SMALL_PAGESIZE_ENABLE=1 MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE=1 MACA_VLLM_ENABLE_MCTLASS_PYTHON_API=1 MACA_DIRECT_DISPATCH=1 CUDA_VISIBLE_DEVICES=0,1,2,3,6,5,4,7,10,11,8,9,14,13,12,15 MACA_VISIBLE_DEVICES=0,1,2,3,6,5,4,7,10,11,8,9,14,13,12,15 VLLM_DISABLE_SHARED_EXPERTS_STREAM=1 PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128,garbage_collection_threshold:0.6,expandable_segments:True vllm serve \
+/pde_ai/models/llm/ChatGLM/GLM-5-W8A8/vllm_quant_model/ \
+--trust-remote-code \
+--no-async-scheduling \
+--no-enable-prefix-caching \
+--tensor-parallel-size 4 \
+--data-parallel-size 4 \
+--max-model-len 5140 \
+--max-num-seqs 64 \
+--gpu-memory-utilization 0.9 \
+--speculative-config '{"method": "mtp", "num_speculative_tokens": 1}'

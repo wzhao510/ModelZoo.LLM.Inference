@@ -1,0 +1,49 @@
+{
+    "model_type": "Qwen",
+    "model_path": "/external/ai/models/llm/Qwen/Qwen-7B/",
+    "model_param": {
+        "dtype": "float16",
+        "tensor_parallel_size": 1,
+        "gpu_memory_utilization": 0.8,
+        "batch_size": 1
+    },
+    "speculative_config":{
+        "method":"mtp",
+        "num_speculative_tokens": 1
+    }
+}
+
+//  在线serve
+/*
+Config Groups:
+  options                 
+  ModelConfig             Configuration for the model.
+  LoadConfig              Configuration for loading the model weights.
+  StructuredOutputsConfig Dataclass which contains structured outputs config for the engine.
+  ParallelConfig          Configuration for the distributed execution.
+  CacheConfig             Configuration for the KV cache.
+  MultiModalConfig        Controls the behavior of multimodal models.
+  LoRAConfig              Configuration for LoRA.
+  ObservabilityConfig     Configuration for observability - metrics and tracing.
+  SchedulerConfig         Scheduler configuration.
+  CompilationConfig       Configuration for compilation. It has three parts.
+*/
+
+// python ./code/src/benchmark_throughput.py --model=/pde_ai/models/llm/Llama/Llama-2-7b-hf/ --backend=vllm --max-model-len 2048 --num-prompts 8 --trust-remote-code --dtype float16 --input-len 128 --output-len 4 --tensor-parallel-size 1 --num-scheduler-steps=8
+
+
+// tag=1; tp=1; dp=1; mtp=""; MACA_VISIBLE_DEVICES=0,1,2,3 vllm serve /mxstorage/pde_ai/models/llm/Llama/Llama-2-7b-hf --trust-remote-code -tp ${tp} -dp ${dp} --max-model-len 4096 --max-num-seqs 2 --gpu-memory-utilization 0.9 --no-async-scheduling ${mtp:+--speculative_config "{\"method\": \"mtp\", \"num_speculative_tokens\": ${mtp}}"} --no-enable-prefix-caching 2>&1 |tee logs/Llama-2-7b-hf_log/${tag}_Llama-2-7b-hf_tp${tp}-dp${dp}${mtp:+"-mtp${mtp}"}_Server.log
+
+// tag=1; tp=1; dp=2; input=4096; output=256; bs=1; mtp=0; ratio=5; vllm bench serve --model /mxstorage/pde_ai/models/llm/ChatGLM/GLM-5-W8A8/vllm_quant_model/ --dataset-name random --random-input-len ${input} --random-output-len ${output}  --num-prompts $((ratio * bs)) --port 4567 --trust-remote-code --max-concurrency ${bs} --ignore-eos --metric-percentiles 95,99 2>&1 |tee GLM4.7_log/${tag}_zhipu_GLM4.7-W8A8_tp${tp}-dp${dp}${mtp:+"-mtp${mtp}"}-input${input}-output${output}_Client.log
+
+// 规则: TODO 
+
+// ref: vLLM官方配置 https://docs.vllm.ai/en/stable/cli/serve/
+
+// PYTHON sched.py model C500  ==> env1=1 en2=2  command  ==> print command ==> ? execute
+//platform cpu+ gpu + moe(考虑是否感知，还是全量export)  ==> 环境变量 
+// common_device.json
+//cpu 厂商id通过 cpuinfo获取
+// intel: GenuineIntel
+// amd: AuthenticAMD
+// 海光(Hygon): HygonGenuine  HygonAuthentic

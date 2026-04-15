@@ -1,0 +1,12 @@
+MACA_SMALL_PAGESIZE_ENABLE=1 MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE=1 MACA_VLLM_ENABLE_MCTLASS_PYTHON_API=1 MACA_DIRECT_DISPATCH=1 MACA_GRAPH_LAUNCH_MODE=5 vllm serve \
+/pde_ai/models/llm/MiniMax-M2.5-W8A8/ \
+--trust-remote-code \
+--no-enable-prefix-caching \
+--enable-auto-tool-choice \
+--tensor-parallel-size 8 \
+--gpu-memory-utilization 0.9 \
+--port 8010 \
+--tool-call-parser minimax_m2 \
+--swap-space 16 \
+--max-num-batched-tokens 16384 \
+--reasoning-parser minimax_m2_append_think

@@ -1,0 +1,94 @@
+{
+"MXC500":{
+        "Intel":{
+            "MACA_SMALL_PAGESIZE_ENABLE":"1",
+            "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": "1",
+            "MACA_DIRECT_DISPATCH":"1"
+        },
+        "AMD":{
+            "MACA_SMALL_PAGESIZE_ENABLE":"1",
+            "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": "1",
+            "MACA_DIRECT_DISPATCH":"1"
+        },
+        "Hygon":{
+            "MACA_SMALL_PAGESIZE_ENABLE":"1",
+            "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": "1",
+            "MACA_DIRECT_DISPATCH":"1"
+        }
+},
+"MXC550":{
+        "Intel": {
+            "MACA_SMALL_PAGESIZE_ENABLE":"1",
+            "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": "1",
+            "MACA_DIRECT_DISPATCH":"1"
+        },
+        "AMD":{
+            "MACA_SMALL_PAGESIZE_ENABLE":"1",
+            "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": "1",
+            "MACA_DIRECT_DISPATCH":"1"
+        },
+        "Hygon":{
+            "MACA_SMALL_PAGESIZE_ENABLE":"1",
+            "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": "1",
+            "MACA_DIRECT_DISPATCH":"1"
+        }
+},
+
+"MXC588":{
+        "Intel":{
+            "MACA_SMALL_PAGESIZE_ENABLE":"1",
+            "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": "1",
+            "MACA_DIRECT_DISPATCH":"1"
+        },
+        "AMD":{
+            "MACA_SMALL_PAGESIZE_ENABLE":"1",
+            "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": "1",
+            "MACA_DIRECT_DISPATCH":"1",
+            "MACA_GRAPH_LAUNCH_MODE": "5"
+        },
+        "Hygon":{
+            "MACA_SMALL_PAGESIZE_ENABLE":"1",
+            "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": "1",
+            "MACA_DIRECT_DISPATCH":"1"
+        }
+},
+
+"MXC600":{
+    "Intel":{
+        "MACA_SMALL_PAGESIZE_ENABLE":"1",
+        "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": "1",
+        "MACA_DIRECT_DISPATCH":"1"
+    },
+    "AMD":{
+        "MACA_SMALL_PAGESIZE_ENABLE":"1",
+        "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": "1",
+        "MACA_DIRECT_DISPATCH":"1",
+        "MACA_GRAPH_LAUNCH_MODE": "5"
+    },
+    "Hygon":{
+        "MACA_SMALL_PAGESIZE_ENABLE":"1",
+        "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": "1",
+        "MACA_DIRECT_DISPATCH":"1"
+    }
+},
+
+"Default":{
+    "Intel":{
+        "MACA_SMALL_PAGESIZE_ENABLE":"1",
+        "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": "1",
+        "MACA_DIRECT_DISPATCH":"1"
+    },
+    "AMD":{
+        "MACA_SMALL_PAGESIZE_ENABLE":"1",
+        "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": "1",
+        "MACA_DIRECT_DISPATCH":"1",
+        "MACA_GRAPH_LAUNCH_MODE": "5"
+    },
+    "Hygon":{
+        "MACA_SMALL_PAGESIZE_ENABLE":"1",
+        "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API": "1",
+        "MACA_DIRECT_DISPATCH":"1"
+    }
+}
+
+}
