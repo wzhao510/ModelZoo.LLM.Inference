@@ -762,7 +762,7 @@ class BenchSweepWorker(Worker):
         for key, value in env.items():
             if key in ref_env:
                 res_env[key] = value
-        return ref_env
+        return res_env
 
     def run(self, stop_event: threading.Event, alloc_time_out: int = 14400):
         self.stop_event = stop_event
@@ -788,7 +788,10 @@ class BenchSweepWorker(Worker):
                 "command": serve_cmd
             }
             result["client_command"] = self.get_client_cmd(bench_cmd)
-            result["env"] = self.select_envs(env)
+            result["env"] = {
+                "type": "normal",
+                "server_cmd_env": self.select_envs(env)
+            }
 
         except RuntimeError as e:
             self.warp_failure(str(e))
