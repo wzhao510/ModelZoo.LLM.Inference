@@ -316,7 +316,7 @@ def process_performance(model_info: 'TaskInfo', df: 'pd.DataFrame', threshold: '
         key = (model_name, tp, pp, dp, r['max_concurrency'], r['input_len'], r['output_len'], device_type)
         current_tps = r['output_throughput']
         history = remote_best.get(key, (-math.inf, r['date']))
-        best_tps_infos[f"bs{r['max_concurrency']}_input{r['input_len']}_outout{r['output_len']}"] = {
+        best_tps_infos[f"bs{r['max_concurrency']}_input{r['input_len']}_output{r['output_len']}"] = {
             "current_tps": r['output_throughput'],
             "best_tps": history[0],
             "best_date": str(history[1].replace(tzinfo=timezone(timedelta(hours=8)))),
@@ -342,7 +342,7 @@ def parse_string_to_json(client_cmd_list):
             output_val = int(output_match.group(1))
             bs_val = int(bs_match.group(1))
 
-            key = f"bs{bs_val}_input{input_val}_outout{output_val}"
+            key = f"bs{bs_val}_input{input_val}_output{output_val}"
 
             result[key] = item
     return result
