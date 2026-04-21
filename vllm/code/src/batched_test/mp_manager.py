@@ -22,6 +22,7 @@ from typing import Any, Literal, Optional
 import paramiko
 import regex as re
 from pprint import pprint
+import os 
 
 AuthType = Literal["password", "key"]
 
@@ -176,6 +177,7 @@ class MPClusterManager:
             "MCCL_SOCKET_IFNAME": node.nic,
             "MACA_PATH": "/opt/maca",
             "MACA_DIRECT_DISPATH": "1",
+            "LD_LIBRARY_PATH": os.environ.get("LD_LIBRARY_PATH", ""),
         }
         if node.extra_env:
             env.update(node.extra_env)
@@ -220,6 +222,9 @@ class MPClusterManager:
         remote_inner = wrap_command_with_env(["exec", *cmd], full_env)  
         remote_cmd = (
             f"nohup setsid {remote_inner} > {shlex.quote(log_path)} 2>&1 < /dev/null & echo $!"
+        )
+        print(
+            f"node_idx [{node_idx}] execute command: {remote_cmd}"
         )
         output = remote_command(node.ssh, remote_cmd)
         pid = self._parse_pid(output)
