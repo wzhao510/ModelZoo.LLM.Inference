@@ -3,3 +3,4 @@ paramiko
 pymysql
 tabulate
 argparse
+sqlalchemy
