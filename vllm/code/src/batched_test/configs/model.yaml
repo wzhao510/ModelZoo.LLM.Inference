@@ -1810,3 +1810,35 @@
   extra_env:
   tags:
   - moe
+
+- name: Hy3-preview
+  model_path: /mxstorage/pde_ai/models/llm/Hunyuan/Hy3-preview 
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags: 
+  - moe
+
+- name: Gemma-4-26B-A4B-it
+  model_path: /mxstorage/pde_ai/models/llm/Gemma/gemma-4-26B-A4B-it
+  serve_config:
+    tp: 2
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
