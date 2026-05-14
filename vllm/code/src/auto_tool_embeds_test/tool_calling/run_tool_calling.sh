@@ -4,7 +4,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 LOGFILE="$SCRIPT_DIR/../tool_calling.log"
 echo "Starting vllm serve, logging to $LOGFILE"
 echo "Starting vllm serve..."
-vllm serve /mxstorage/pde_ai/models/llm/Llama/Llama-3.2-1B-Instruct \
+setsid vllm serve /mxstorage/pde_ai/models/llm/Llama/Llama-3.2-1B-Instruct \
 	--port 8080 \
 	--enable-auto-tool-choice \
 	--tool-call-parser llama3_json \
@@ -15,7 +15,7 @@ VLLM_PID=$!
 echo "vllm serve started with PID: $VLLM_PID"
 
 echo "Waiting for service to start..."
-sleep 60
+sleep 240
 
 echo "Running python tool_calling.py..."
 python "$SCRIPT_DIR/tool_calling.py"
@@ -24,5 +24,7 @@ python "$SCRIPT_DIR/tool_calling.py"
 sleep 10
 
 echo "Stopping vllm serve..."
-kill $VLLM_PID
+kill -TERM -- -$VLLM_PID
+sleep 5
+kill -KILL -- -$VLLM_PID 2>/dev/null
 echo "Done."

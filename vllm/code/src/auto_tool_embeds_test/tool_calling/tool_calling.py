@@ -30,6 +30,7 @@ response = client.chat.completions.create(
     messages=[{"role": "user", "content": "What's the weather like in San Francisco?"}],
     tools=tools,
     tool_choice="auto",
+    temperature=0,
 )
 
 tool_call = response.choices[0].message.tool_calls[0].function
