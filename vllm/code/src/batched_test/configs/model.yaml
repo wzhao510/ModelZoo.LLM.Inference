@@ -870,6 +870,7 @@
     tp: 4
     dp: 1
     pp: 1
+    gpu_memory_utilization: 0.9
     extra_args:
   infer_type:
   - single-image
@@ -1843,4 +1844,68 @@
     sweep_num_runs: 1
   extra_env:
   tags:
+  - moe
+
+- name: MiniMax-M2.7-w8a8
+  model_path: /mxstorage/pde_ai/models/llm/MiniMax/MiniMax-M2.7-W8A8
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags: 
+  - moe
+
+- name: MiMo-V2-Flash-w8a8
+  model_path: /mxstorage/pde_ai/models/llm/MiMo/MiMo-V2-Flash-W8A8
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags: 
+  - moe
+
+- name: step-3.5-Flash
+  model_path: /mxstorage/pde_ai/models/llm/stepfun-ai/Step-3.5-Flash
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags: 
+  - moe
+
+- name: Qwen3.5-397B-A17B-w8a8
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3.5-397B-A17B-W8A8
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags: 
   - moe
