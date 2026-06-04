@@ -2,6 +2,7 @@ lmcache/test_lmcache_1p2d_tp2.py
 lmcache/test_kv_offload_lmcache.py
 lmcache/test_kv_share_lmcache.py
 mooncake/test_mooncake_1p2d_tp2.py
+mooncake/test_mooncake_kvcache_offload.py
 nixl/test_nixl_1p2d_tp2.py
 p2pnccl/test_p2pnccl_1p2d_tp2.py
 
