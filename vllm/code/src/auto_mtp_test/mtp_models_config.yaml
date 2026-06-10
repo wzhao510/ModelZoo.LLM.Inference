@@ -40,13 +40,13 @@ models:
     expected_keyword: "北京"
     min_acceptance_rate: 0.70
 
-  - name: "Qwen3-14B-Eagle"
-    model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B/"
+  - name: "Qwen3-32B-Eagle"
+    model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-32B/"
     tp: 2
     gpu_memory_utilization: 0.85
     max_model_len: 16384
     max_num_seqs: 64
-    speculative_config: '{"method": "eagle", "model": "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B_eagle/", "num_speculative_tokens": 1}'
+    speculative_config: '{"method": "eagle3", "model": "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B_eagle3/", "num_speculative_tokens": 1}'
     prompt: "请详细介绍一下中国的首都，字数不少于300字。"
     expected_keyword: "北京"
     min_acceptance_rate: 0.20
