@@ -1,0 +1,1073 @@
+# Long-context inference test cases (10 cases, ~3k-token input / ~1k-token output)
+#
+# Each case:
+#   question:   the full prompt (context + question)
+#   keywords:   expected substrings in the response (any match = correct)
+#   max_tokens: max output tokens
+#
+# Dataset patterns: GovReport / Multi-News / NarrativeQA / QMSum /
+#   HotpotQA / LongBench-Summarization / Needle-in-Haystack / Code-Review /
+#   Sci-Paper / SAMSum
+
+- question: |
+    You are a senior technical analyst. Read the following comprehensive report on a major cloud infrastructure incident and write a detailed post-incident summary covering: (1) timeline of events, (2) root cause analysis, (3) impact assessment, (4) immediate remediation actions taken, (5) long-term preventative measures recommended. Be thorough — include specific technical details.
+
+    ===========================================================================
+    INCIDENT REPORT: Global CDN Edge Failure — Incident #INC-2024-0892
+    Classification: SEV-0 (Critical) | Duration: 4h 17m | Date: 2024-08-14
+    ===========================================================================
+
+    1. EXECUTIVE SUMMARY
+
+    On August 14, 2024, at 14:32 UTC, a cascading failure in the Global Edge CDN service caused complete disruption of static asset delivery across all regions, affecting approximately 3.2 million end users and resulting in an estimated revenue loss of $4.7M. The incident was traced to a faulty configuration deployment in the edge routing layer that triggered an unexpected cache-invalidation storm across all 142 Points of Presence (PoPs) worldwide. Service was fully restored at 18:49 UTC.
+
+    2. DETAILED TIMELINE (All times UTC)
+
+    14:30:00 — Engineer A merges PR #28491, which updates the edge-routing configuration schema to support a new WebSocket-over-HTTP/3 feature. The PR passes all CI checks, including unit tests, integration tests, and a canary deployment to the staging environment (pop-nyc3-staging).
+
+    14:31:15 — The CI/CD pipeline (Spinnaker v2.8) begins rolling deployment of edge-router v4.17.3 to production PoPs. Deployment strategy: canary (5% → 15% → 50% → 100%) with 5-minute bake periods between stages.
+
+    14:32:08 — During the 5% canary phase, the first affected PoPs (pop-sfo5, pop-lhr3, pop-nrt2) begin receiving the new configuration. Within 40 seconds, these PoPs report a 400x spike in cache-invalidation traffic on the internal message bus (NATS JetStream).
+
+    14:33:12 — Monitoring alerts fire: "CacheInvalidationRateHigh" threshold breached (actual: 847,000/s vs threshold: 10,000/s). The on-call SRE (Engineer B) acknowledges the alert at 14:33:45.
+
+    14:34:30 — The invalidation storm spreads to adjacent PoPs due to the mesh topology of the edge network. Each PoP that receives the invalidated configuration begins broadcasting invalidation messages to its peers, creating a positive feedback loop. Total invalidation rate reaches 2.1M messages/second.
+
+    14:36:00 — Engineer B declares SEV-0 and escalates to the Incident Commander (Engineer C). The war room is convened at 14:38:00 with representatives from Edge Networking, CDN Operations, Core Infrastructure, and Customer Support.
+
+    14:40:00 — First customer-facing impact: users in APAC region report broken images and missing CSS on major e-commerce platforms. Social media reports begin surfacing.
+
+    14:42:00 — Engineer C orders an immediate halt to the deployment. Spinnaker pipeline is paused, but the 5% canary phase has already completed, affecting 7 PoPs.
+
+    14:45:00 — Attempt to rollback: the team deploys edge-router v4.17.2 (previous stable). However, the configuration schema change in v4.17.3 included a database migration that is not automatically reversed. The rollback restores the routing binary but does NOT fix the corrupted cache-invalidation state.
+
+    14:52:00 — The invalidation storm has now propagated to 89 of 142 PoPs. Global cache hit ratio drops from 94.2% to 7.8%. Origin servers experience a sudden 53x traffic surge as the CDN falls back to origin-fetch for nearly all requests. Three of the eight origin data centers begin experiencing thermal throttling due to the load spike.
+
+    15:10:00 — Emergency measure: ops team manually applies a configuration freeze via the edge-router admin API, bypassing the normal deployment pipeline. This stops the propagation of new invalidations but does not clear the corrupted state already present in affected PoPs.
+
+    15:30:00 — Incident Commander approves "Operation Clean Slate": force-restart all 142 edge-router instances with a known-good configuration snapshot from 14:00 UTC (pre-deployment). Each PoP restart takes approximately 8-12 minutes for the cache to warm up from cold state.
+
+    16:00:00 — Restart of PoPs in Americas region begins (priority: highest traffic volume).
+
+    17:00:00 — Restart of PoPs in EMEA region begins.
+
+    17:45:00 — Final PoPs in APAC region restarted. Cache hit ratio begins recovering: 7.8% → 45% → 72% → 89%.
+
+    18:30:00 — Monitoring shows all PoPs operational with cache hit ratio above 90%. Origin server load returning to normal levels.
+
+    18:49:00 — Incident Commander declares the incident resolved. Post-incident review scheduled.
+
+    3. ROOT CAUSE ANALYSIS
+
+    The proximate cause was a schema migration in edge-router v4.17.3 that introduced a new field (`websocket_upgrade_ttl`) to the route configuration protobuf definition. The migration script (`00142_add_ws_upgrade_ttl.up.sql`) correctly added the column with a default value. However, when the new router binary deserialized cached route configurations that lacked this field, it treated the missing field as a "zero value" (TTL = 0), which the cache-invalidation logic interpreted as "immediately invalidate all associated cache entries."
+
+    The deeper contributing factors were:
+
+    a) Protobuf backward-compatibility gap: The route configuration used proto3 syntax, which does not distinguish between "field not present" and "field set to default value." The deserialization path in the Go edge-router codebase (`pkg/cache/invalidator.go:247`) used `HasField()` incorrectly — the method always returns false for default-valued scalar fields in proto3.
+
+    b) Missing integration test: The test suite included a "schema migration + old binary" compatibility test, but this test used a pre-warmed empty cache. The invalidation-storm behavior only manifests when the cache contains millions of populated entries, triggering the positive feedback loop through the mesh invalidation protocol.
+
+    c) Inadequate canary monitoring: The 5-minute bake period between canary stages was insufficient to detect the cascading failure. The invalidation storm took approximately 90 seconds to build to critical levels, but the monitoring dashboards had a 3-minute data aggregation delay (due to the metrics pipeline using 3-minute rollup windows in Thanos).
+
+    d) Mesh protocol design flaw: The edge-network mesh topology used a gossip-based invalidation protocol (based on SWIM with custom extensions). When a PoP received an invalidation for a cache key it didn't hold, it forwarded the invalidation to its 8 nearest neighbors. Under normal operation, this gossip fan-out is bounded because each invalidation carries a hop-limit of 3. However, the configuration-corrupted PoPs were generating new (unique) cache keys for each invalidation, effectively bypassing the hop-limit mechanism.
+
+    4. IMPACT ASSESSMENT
+
+    | Metric | Normal | During Incident | Peak Deviation |
+    |--------|--------|-----------------|----------------|
+    | Cache Hit Ratio | 94.2% | 7.8% (min) | -86.4pp |
+    | Origin Requests/s | 2.1M | 113M (max) | +53x |
+    | Edge Response P99 | 45ms | 8,200ms | +182x |
+    | Users Affected | 0 | 3.2M | — |
+    | Revenue Loss | $0 | $4.7M (est.) | — |
+    | Data Transferred | 840 TB | 5,200 TB (excess) | +6.2x |
+
+    Customer-facing impact by region:
+    - APAC: 100% of users affected for 2h 15m (complete static asset failure)
+    - EMEA: 78% of users affected for 1h 50m (intermittent failures)
+    - Americas: 62% of users affected for 1h 20m (degraded performance)
+
+    5. IMMEDIATE REMEDIATION
+
+    - Halted deployment pipeline and performed emergency rollback of edge-router binary
+    - Applied configuration freeze via admin API to stop invalidation storm propagation
+    - Force-restarted all 142 edge-router PoPs with known-good configuration snapshot
+    - Temporarily increased origin server capacity by 200% via cloud burst (AWS auto-scaling)
+    - Deployed emergency cache-warming scripts to pre-populate caches post-restart
+
+    6. LONG-TERM PREVENTATIVE MEASURES
+
+    - Implement "blast radius" control: limit configuration deployments to single-region canary with 30-minute bake period
+    - Add cache-invalidation rate circuit breaker (hard limit: 50,000 invalidations/s per PoP)
+    - Fix protobuf deserialization: migrate critical path to use wrapper types (`google.protobuf.Int32Value`) to distinguish unset vs default
+    - Add chaos engineering test: simulate invalidation storms in staging to validate circuit breaker behavior
+    - Reduce metrics pipeline latency: deploy streaming alert pipeline (Kafka Streams) with sub-30-second detection latency
+    - Architectural review: evaluate replacing gossip-based mesh invalidation with a centralized invalidation coordinator to eliminate positive feedback loops
+
+    Please write a comprehensive post-incident summary based on this report.
+
+  keywords:
+    - "cache invalidation"
+    - "protobuf"
+    - "gossip"
+    - "circuit breaker"
+    - "canary"
+    - "configuration freeze"
+    - "force-restart"
+    - "blast radius"
+  max_tokens: 1024
+
+- question: |
+    You are an expert software architect. Read the following detailed system design proposal for a distributed rate limiter and write a thorough design review covering: (1) whether the architecture meets the stated requirements, (2) potential failure modes and edge cases, (3) specific recommendations for improvement, (4) a risk assessment of the proposed approach. Be specific and reference details from the proposal.
+
+    ========================================================================
+    DESIGN PROPOSAL: Global Rate Limiting Service (GRLS) — Revision 3
+    Author: Infrastructure Team | Status: Under Review | Date: 2024-09-20
+    ========================================================================
+
+    1. REQUIREMENTS
+
+    Functional:
+    - FR1: Enforce per-tenant rate limits across all API gateway instances globally
+    - FR2: Support limit dimensions: requests/second, concurrent connections, bytes/minute
+    - FR3: Provide a "dry-run" mode that logs violations without blocking traffic
+    - FR4: Expose real-time usage metrics via a /limits API endpoint per tenant
+    - FR5: Support hierarchical rate limits (organization → project → service-account)
+
+    Non-Functional:
+    - NFR1: P99 decision latency < 5ms
+    - NFR2: Accuracy: limit enforcement within ±1% of configured threshold
+    - NFR3: Availability: 99.999% uptime (failure must default to ALLOW)
+    - NFR4: Scale: 10M requests/second peak across 200+ API gateway instances
+    - NFR5: Consistency: at-most 500ms staleness for limit state across regions
+
+    2. PROPOSED ARCHITECTURE
+
+    2.1 Overview
+    The GRLS uses a two-tier architecture:
+    - Tier 1 (Fast Path): A per-instance in-process token bucket (embedded as a sidecar library) that handles 99.9% of rate-limit decisions locally with sub-microsecond latency.
+    - Tier 2 (Global Path): A Redis Cluster (7 nodes, sharded by tenant_id) that synchronizes token state across instances every 100ms via a background goroutine.
+
+    2.2 Tier 1 — Local Token Bucket
+    Each gateway instance maintains a local LRU cache (max 100,000 entries) of token buckets. Each bucket stores:
+    - tokens: current token count (float64)
+    - last_refill: Unix timestamp of last refill
+    - limit_config: rate, burst, window
+    - generation: monotonically increasing version number
+
+    Decision flow:
+    1. Look up bucket in local LRU (hash map, O(1))
+    2. If missing, create new bucket with full tokens = burst size, generation = 0
+    3. Refill tokens based on elapsed time: tokens += rate * (now - last_refill)
+    4. If tokens >= 1.0: decrement, return ALLOW
+    5. If tokens < 1.0: check overflow queue; if queue not full, enqueue and return ALLOW with metadata
+    6. Otherwise: return DENY with retry-after header
+
+    The overflow queue is an optimization for burst-handling: it allows a configurable number of requests (default: 10% of burst) to pass even when the token bucket is empty, buffering against token synchronization lag.
+
+    2.3 Tier 2 — Redis Synchronization
+    A background sync loop runs every 100ms:
+    1. Batch-collect all locally-modified buckets (those with generation > last_synced_generation)
+    2. Send a Lua script to Redis that atomically:
+       a. Fetches the current global token count for each key
+       b. Subtracts the local consumption since last sync
+       c. Returns the updated global token count
+       d. Stores the new generation number
+    3. Update local buckets with the globally-consistent token count
+
+    The Lua script uses Redis HASH data type with fields:
+    - global_tokens: remaining tokens (float64 stored as string)
+    - last_sync_ts: timestamp of last synchronization
+    - generation: version number for conflict detection
+
+    2.4 Conflict Resolution
+    If two instances sync simultaneously, Redis's single-threaded execution ensures atomic updates. The Lua script detects "stale" local generations (generation < stored generation) and applies only the delta rather than overwriting, preventing lost updates.
+
+    2.5 Failure Modes
+    - Redis unavailable: local bucket continues operating independently (fail-open); when Redis recovers, accumulated local tokens are reconciled
+    - Local instance crash: token state is lost; Redis holds the authoritative global state
+    - Network partition: each partition operates independently; upon healing, the Lua reconciliation script resolves discrepancies
+
+    3. DEPLOYMENT TOPOLOGY
+
+    - 200+ API gateway instances across 5 regions (us-east, us-west, eu-west, ap-southeast, ap-northeast)
+    - Each region has a dedicated Redis Cluster (7 nodes per region) with cross-region async replication (500ms lag)
+    - ZooKeeper ensemble (5 nodes) for Redis cluster discovery and leader election for the background sync coordinator
+    - Prometheus + Grafana for monitoring with custom dashboards
+
+    4. KNOWN LIMITATIONS (acknowledged by the proposal authors)
+
+    - The 500ms cross-region replication lag means a tenant can briefly exceed their global limit if traffic is distributed across regions
+    - The LRU cache eviction policy can cause a cold-start latency spike when a tenant's bucket is evicted and must be re-created
+    - The overflow queue can be exploited: a sophisticated attacker could sustain bursts near the overflow threshold indefinitely
+    - The float64 representation of tokens loses precision for very large token counts (> 2^53)
+
+    5. ALTERNATIVES CONSIDERED
+
+    - Centralized Redis-only: rejected due to P99 latency > 5ms (measured at 8-12ms for cross-AZ Redis calls)
+    - Gossip-based sync (SWIM): rejected due to complexity of conflict resolution and debugging
+    - Hardware token bucket (smart NIC offload): rejected due to cost ($12K per NIC × 200 instances)
+
+    Please write a detailed design review.
+
+  keywords:
+    - "token bucket"
+    - "Redis"
+    - "fail-open"
+    - "overflow queue"
+    - "reconciliation"
+    - "cross-region"
+    - "cold-start"
+    - "precision"
+  max_tokens: 1024
+
+- question: |
+    You are a senior data engineer reviewing a migration strategy. Read the following detailed proposal for migrating a 360TB data warehouse from an on-premises Teradata system to a cloud-native architecture, and write a comprehensive risk assessment and implementation critique. You must: (1) identify the top 5 risks in order of severity, (2) for each risk, explain the potential blast radius and provide a concrete mitigation, (3) evaluate whether the proposed timeline is realistic, and (4) suggest at least 3 improvements the authors should consider before execution.
+
+    ===========================================================================
+    DATA WAREHOUSE MIGRATION STRATEGY: Teradata On-Prem → Cloud-Native
+    Platform: AWS (Primary) / GCP (DR) | Target: Snowflake + dbt + Airflow
+    ===========================================================================
+
+    CURRENT STATE
+
+    The existing Teradata system (v17.20) runs on a 24-node MPP cluster in the company's primary data center (Dallas, TX). Key statistics:
+    - Total compressed storage: 360 TB across 8,247 tables
+    - Daily ingestion: 3.2 TB across 1,840 ETL pipelines (Informatica PowerCenter)
+    - Concurrent users: 850 (450 analysts, 250 BI tools, 150 automated jobs)
+    - Peak query throughput: 340 queries/minute
+    - Largest single table: `fact_customer_events` — 84 TB, 2.1 trillion rows, partitioned by date with 2,190 partitions
+    - UDF library: 312 custom Teradata UDFs written in C and Java
+    - Stored procedures: 1,840 stored procedures, totaling ~420,000 lines of code
+    - Data retention policy: 7 years for financial data (PCI-DSS), 3 years for operational data
+
+    TARGET ARCHITECTURE
+
+    The target platform consists of:
+    - Snowflake Enterprise Edition (multi-cluster warehouse, 3XL for heavy ETL, L for ad-hoc queries)
+    - dbt Cloud for data transformation (replacing Informatica)
+    - Apache Airflow 2.9 for orchestration
+    - AWS S3 as the data lake staging layer
+    - AWS Glue Data Catalog for schema registry
+    - Fivetran for SaaS data source ingestion
+    - Monte Carlo for data observability and quality monitoring
+
+    MIGRATION PHASES (Proposed Timeline: 14 months)
+
+    Phase 1 — Discovery & Assessment (Months 1-2):
+    - Inventory all 8,247 tables with metadata (row counts, data types, null ratios, update patterns)
+    - Classify tables: "lift-and-shift" (6,200 tables), "refactor" (1,800 tables), "deprecate" (247 tables)
+    - Identify incompatible data types: Teradata-specific types (PERIOD, INTERVAL, UDT, JSON) must be converted
+    - Audit UDF library: determine which 312 UDFs can be replaced with Snowflake native functions vs. rewritten in Python/Java UDFs vs. retired
+    - Map 1,840 stored procedures to dbt models + Airflow DAGs
+
+    Phase 2 — Infrastructure & Tooling (Months 2-4):
+    - Provision Snowflake accounts (prod, staging, dev) with RBAC integration (Okta SSO)
+    - Set up AWS Direct Connect (10 Gbps) between on-prem data center and AWS us-east-1
+    - Deploy Apache Airflow on Kubernetes (EKS) with 50 worker nodes
+    - Configure dbt Cloud with git integration (GitHub Enterprise) and CI/CD pipeline
+    - Implement data quality framework using dbt tests + Monte Carlo monitors (200+ checks)
+
+    Phase 3 — Initial Bulk Migration (Months 3-6):
+    - Use AWS Snowball Edge (8 devices, 80 TB each) for the initial 360 TB bulk transfer
+    - Teradata TPT (Teradata Parallel Transporter) to export tables in parallel (16 streams × 24 nodes)
+    - Convert exported data to Parquet format (Snappy compression) during extraction
+    - Load Parquet files to S3, then COPY INTO Snowflake using auto-ingest
+    - Validate row counts, checksums (MD5 per partition), and schema integrity
+
+    Phase 4 — Incremental Sync & Cutover (Months 5-10):
+    - Implement Change Data Capture (CDC) using Teradata's Change Data Capture feature
+    - Develop a Python-based CDC consumer that writes to S3 in micro-batches (every 5 minutes)
+    - Run old and new systems in parallel for 6 weeks: compare query results between Teradata and Snowflake for top-500 most-queried tables
+    - Gradual cutover by business unit (Finance → Marketing → Operations → Supply Chain)
+
+    Phase 5 — Optimization & Decommission (Months 10-14):
+    - Tune Snowflake clustering keys based on query patterns observed during parallel run
+    - Optimize dbt models: implement incremental models, reduce materialization overhead
+    - Decommission Teradata: final backup → data validation sign-off by each BU → power down
+    - Post-migration performance baseline: ensure all SLA queries meet targets
+
+    KNOWN CHALLENGES (identified by the migration team):
+
+    1. The `fact_customer_events` table (84 TB, 2.1T rows) is append-only with 8,000 columns (wide-table design). Snowflake has a hard limit of 1,000 columns per table for certain operations (e.g., clustering). The team proposes splitting this into 8 vertical partitions (1,000 columns each) with a view that UNIONs them.
+
+    2. Teradata UDFs that use C extensions for statistical computation (e.g., custom quantile functions, Holt-Winters forecasting) cannot be directly translated to Snowflake SQL UDFs. The team proposes rewriting these as Python UDFs in Snowflake, with an estimated effort of 4 person-weeks per UDF for the 40 most complex UDFs.
+
+    3. The 10 Gbps Direct Connect may be insufficient for the CDC sync during parallel run. At 3.2 TB/day ingestion, the CDC stream alone will consume ~296 Mbps continuously, leaving only ~700 Mbps for the ongoing business traffic between on-prem and AWS.
+
+    4. The 6-week parallel run window may be too short to catch all discrepancies, especially for monthly and quarterly batch jobs that only execute once per reporting cycle.
+
+    Please write your risk assessment and implementation critique.
+
+  keywords:
+    - "schema mismatch"
+    - "Direct Connect"
+    - "parallel run"
+    - "UDF"
+    - "Snowball"
+    - "wide-table"
+    - "CDC"
+    - "validation"
+  max_tokens: 1024
+
+- question: |
+    You are a technical writer reviewing a complex open-source project. Read the following README and architecture documentation for "River" — a distributed workflow engine — and write a comprehensive "Getting Started" guide aimed at senior backend engineers. Your guide should cover: (1) core concepts and architecture overview, (2) installation and basic configuration, (3) a complete "Hello World" workflow example with code, (4) explanation of key design decisions and trade-offs, (5) production deployment considerations. Use specific details from the documentation provided.
+
+    ========================================================================
+    RIVER: Distributed Workflow Engine v2.0.0 — Project Documentation
+    ========================================================================
+
+    OVERVIEW
+
+    River is an open-source distributed workflow engine designed for orchestrating long-running, stateful business processes across microservice boundaries. It draws inspiration from Temporal and AWS Step Functions but is purpose-built for Kubernetes-native deployments with a focus on operational simplicity and observability. River implements the Saga pattern for distributed transactions and supports pluggable persistence backends.
+
+    CORE CONCEPTS
+
+    Workflow: A deterministic, durable function that defines the orchestration logic. Workflows are written in TypeScript, Python, or Go and are compiled to a deterministic bytecode that River's runtime executes. A workflow can pause for days or weeks waiting for external events, and River guarantees exactly-once execution semantics.
+
+    Activity: A non-deterministic function that performs side effects — calling external APIs, writing to databases, sending emails. Activities are the ONLY place where non-deterministic operations are allowed. They have built-in retry logic (configurable: max retries, backoff policy, timeout) and are idempotency-guaranteed via a user-provided idempotency key.
+
+    Signal: An asynchronous message sent to a running workflow to notify it of an external event. Workflows can `await` signals with a timeout: `const event = await signal('payment_received', { timeout: '24h' })`.
+
+    State: River automatically persists workflow state after every activity completion and signal delivery using an event-sourcing model. The entire workflow history is stored as an append-only event log (journal). On failure or restart, the workflow is replayed from the event log, and River guarantees the workflow produces the same result as the original execution (determinism guarantee).
+
+    ARCHITECTURE
+
+    River consists of six core components:
+
+    1. River Server (Go): The central control plane. Handles workflow scheduling, activity dispatch, timer management, and event log compaction. Uses Raft consensus (via Hashicorp Raft library) for leader election with 3-5 server nodes recommended for production. Exposes a gRPC API (port 7233) and an HTTP API (port 8080) for management.
+
+    2. Worker Pool: Stateless processes that execute Activity code. Workers pull activity tasks from the River Server via long-polling gRPC streams. Each worker registers the activity types it can handle at startup. Workers are designed to run as Kubernetes Deployments with HPA (Horizontal Pod Autoscaler) based on activity queue depth.
+
+    3. Event Store: An append-only log that records every workflow event. By default, River uses an embedded event store based on BadgerDB (LSM-tree) for single-node deployments. For production multi-node deployments, River supports PostgreSQL (v14+) and CockroachDB as external event stores. The event store is sharded by workflow_id with a configurable number of shards (default: 256).
+
+    4. Timer Service: A distributed timer wheel implementation that manages workflow timers (sleep, await-with-timeout, schedule-at). Timers are durably stored in the event store and loaded into memory in time-sorted buckets. The timer service uses a hierarchical timing wheel (3 levels: millisecond, second, minute) to handle timers from 1ms to 30 days.
+
+    5. Query Service: Provides a SQL-like query interface for inspecting workflow state. Supports queries like: `SELECT workflow_id, status, start_time FROM workflows WHERE workflow_type = 'OrderFulfillment' AND status = 'RUNNING'`. The query engine uses a custom parser that translates queries into index scans on the event store. Materialized views (workflows_by_type, workflows_by_status) are maintained for common query patterns.
+
+    6. Web UI: A React-based dashboard for monitoring workflows. Shows real-time workflow execution graphs, activity metrics (P50/P95/P99 latency, success/error rate), timer status, and server health. The UI communicates with River Server via the HTTP API and uses Server-Sent Events (SSE) for real-time updates.
+
+    DEPLOYMENT MODEL
+
+    Minimum production deployment:
+    - 3 River Server pods (Raft quorum)
+    - 1 PostgreSQL instance (or external CockroachDB cluster) for event storage
+    - 2+ Worker Deployments (one per activity type group, HPA enabled)
+    - 1 Prometheus instance for metrics collection
+    - Optional: River Web UI (1 pod)
+
+    Resource requirements per River Server pod:
+    - CPU: 2-4 cores (64-bit ARM or x86)
+    - Memory: 4-8 GB RAM (event log cache is memory-mapped)
+    - Disk: 100 GB SSD (only for Raft log; workflow data goes to external event store)
+    - Network: 1 Gbps recommended for inter-server Raft communication
+
+    SDK SUPPORT
+
+    River provides SDKs for three languages:
+    - TypeScript/JavaScript (Node.js 18+): Primary SDK. Supports both CommonJS and ESM. Integrates with Express, Fastify, and NestJS. Type-safe workflow and activity definitions using TypeScript decorators.
+    - Python (3.10+): Supports asyncio-based workflows. Integrates with FastAPI and Django. Uses Python type hints for workflow parameter validation.
+    - Go (1.21+): Minimal SDK focused on performance. Workflows are defined as functions with `river.Context` as the first parameter. Activities use `river.ActivityContext`.
+
+    SDK design principle: All SDKs produce identical bytecode for the same workflow logic, ensuring cross-language compatibility. A workflow written in TypeScript can send signals to a workflow written in Python.
+
+    EXAMPLE: ORDER FULFILLMENT WORKFLOW (TypeScript)
+
+    ```typescript
+    import { workflow, activity, signal, sleep } from '@riverhq/sdk';
+
+    @activity({ retries: 3, backoff: 'exponential', timeout: '30s' })
+    async function chargeCustomer(orderId: string, amount: number): Promise<string> {
+      // Calls Stripe API — this is a non-deterministic side effect
+      const result = await fetch('https://api.stripe.com/v1/charges', {
+        method: 'POST',
+        body: JSON.stringify({ amount, currency: 'usd', metadata: { orderId } }),
+      });
+      return result.json().id;
+    }
+
+    @activity({ retries: 5, timeout: '60s' })
+    async function reserveInventory(sku: string, quantity: number): Promise<boolean> { ... }
+
+    @activity({ retries: 0 }) // no retries for shipping — if it fails, manual intervention needed
+    async function shipOrder(orderId: string, address: string): Promise<string> { ... }
+
+    @workflow({ name: 'OrderFulfillment', version: '1.0' })
+    async function orderFulfillmentWorkflow(order: Order): Promise<string> {
+      // Step 1: Charge
+      const chargeId = await chargeCustomer(order.id, order.total);
+
+      // Step 2: Reserve — with compensation (Saga pattern)
+      try {
+        await reserveInventory(order.sku, order.quantity);
+      } catch (err) {
+        await refundCustomer(chargeId); // compensating action
+        throw new Error('Insufficient inventory');
+      }
+
+      // Step 3: Wait for warehouse confirmation (SIGNAL — can wait days)
+      const confirmed = await signal('warehouse_confirmed', { timeout: '72h' });
+      if (!confirmed) {
+        await refundCustomer(chargeId);
+        throw new Error('Warehouse could not confirm within 72 hours');
+      }
+
+      // Step 4: Ship
+      const trackingId = await shipOrder(order.id, order.shippingAddress);
+
+      return trackingId; // workflow result
+    }
+    ```
+
+    KEY DESIGN DECISIONS
+
+    1. Why Raft instead of etcd/ZooKeeper? We embed Raft directly into River Server to avoid external dependencies. An embedded consensus library reduces operational complexity (no separate etcd cluster to manage) and allows River Server to directly couple its scheduling state machine with the Raft log. The trade-off is that Raft membership changes (adding/removing servers) require careful orchestration — we've seen operators accidentally break quorum during rolling restarts.
+
+    2. Why BadgerDB as default event store? BadgerDB provides excellent read performance for the event-replay use case (sequential reads of workflow history) and is written in pure Go (no CGo). The LSM-tree structure naturally supports append-heavy workloads. However, BadgerDB does not support multi-node access — for HA deployments, you MUST use PostgreSQL or CockroachDB.
+
+    3. Why bytecode compilation? Workflows must be deterministic — given the same event history, a workflow MUST produce the same sequence of activity calls and signals. By compiling workflows to a deterministic bytecode (similar to the JVM approach), River isolates non-deterministic operations (random, Date.now(), Math.random()) to activities, which are the ONLY place where non-determinism is allowed. The bytecode VM enforces this at runtime: any attempt to call a non-deterministic API from workflow code throws a `DeterminismViolationError`.
+
+    4. Why event sourcing instead of snapshotting? Event sourcing provides an audit trail for every state transition (critical for financial workflows). It also enables "workflow replay" for debugging: you can replay a workflow's entire execution history to reproduce bugs. The trade-off is storage cost — a long-running workflow with thousands of activities will accumulate a large event history. We mitigate this with event log compaction (configurable: keep last N events, or keep events newer than T days).
+
+    KNOWN ISSUES & LIMITATIONS
+
+    - Signal timeouts are wall-clock based and do not account for workflow pause/resume. A workflow that is paused for maintenance will still accumulate signal timeout.
+    - The maximum event log size for a single workflow is 2 GB (hard limit in BadgerDB value size). Workflows exceeding this must be split into child workflows.
+    - Cross-region workflow execution is not supported natively. Each River cluster is region-scoped. Multi-region orchestration must be implemented at the application layer.
+    - Activity heartbeats are poll-based (default: 10s interval) rather than stream-based, which can cause up to 10s of delay in detecting worker failures.
+
+    Please write a comprehensive Getting Started guide based on this documentation.
+
+  keywords:
+    - "workflow"
+    - "activity"
+    - "event sourcing"
+    - "Raft"
+    - "Saga"
+    - "deterministic"
+    - "signal"
+    - "deployment"
+  max_tokens: 1024
+
+- question: |
+    You are an experienced machine learning engineer. Read the following detailed experiment log from a team fine-tuning a 70B-parameter language model for code generation, and write a thorough analysis covering: (1) what went wrong in each failed experiment, (2) which changes had the most positive impact and why, (3) specific recommendations for the next iteration of experiments, (4) a summary of the key lessons learned. Reference specific metrics and experiment numbers.
+
+    ========================================================================
+    EXPERIMENT LOG: CodeLLM-70B Fine-Tuning for Python Code Generation
+    Base Model: CodeLlama-70B-Instruct | Dataset: The Stack v2 (Python subset, 240K samples)
+    ========================================================================
+
+    BASELINE (Experiment #0 — No fine-tuning):
+    - Model: CodeLlama-70B-Instruct (baseline, no FT)
+    - HumanEval pass@1: 67.2%
+    - MBPP pass@1: 58.4%
+    - LiveCodeBench (2024-01 to 2024-06): 42.8%
+    - Training loss: N/A
+    - Notes: Strong baseline. Main weakness: poor at generating type-annotated Python (only 31% of completions include type hints when asked). Struggles with multi-file context and complex class hierarchies.
+
+    EXPERIMENT #1 — Full Fine-Tune (All Parameters):
+    - Method: Full-parameter supervised fine-tuning on 240K Python samples
+    - Hardware: 32× NVIDIA A100-80GB (4 nodes × 8 GPUs)
+    - Configuration: FSDP (Full Shard), bf16 mixed precision, AdamW (lr=2e-5, cosine schedule, warmup=500 steps), global batch size=128, max_seq_len=4096
+    - Training duration: 72 hours
+    - HumanEval pass@1: 61.8% (↓ 5.4pp from baseline)
+    - MBPP pass@1: 52.1% (↓ 6.3pp from baseline)
+    - LiveCodeBench: 38.2% (↓ 4.6pp from baseline)
+    - Training loss: converged normally (2.3 → 0.87)
+    - Analysis: CATASTROPHIC FORGETTING. The model lost general reasoning capabilities while overfitting to the
+      narrow distribution of The Stack. Evaluation on non-code benchmarks (MMLU: 71.2 → 54.3, HellaSwag: 83.1 → 67.8)
+      confirmed significant degradation. The full fine-tune also introduced a syntax bias: the model became
+      overly aggressive about generating complete, syntactically-valid Python even when the prompt asked for
+      pseudocode or explanations. Hypothesis: the dataset was too homogeneous; needed data mixing.
+
+    EXPERIMENT #2 — LoRA Fine-Tune (r=64, alpha=128):
+    - Method: LoRA on all linear layers (q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj)
+    - LoRA rank: r=64, alpha=128, dropout=0.05
+    - Trainable parameters: 0.8% of total (560M / 70B)
+    - Hardware: 8× NVIDIA A100-80GB (1 node)
+    - Training duration: 18 hours
+    - HumanEval pass@1: 69.1% (↑ 1.9pp from baseline)
+    - MBPP pass@1: 60.2% (↑ 1.8pp from baseline)
+    - LiveCodeBench: 45.3% (↑ 2.5pp from baseline)
+    - Training loss: 2.3 → 1.12
+    - Analysis: MODEST IMPROVEMENT with no forgetting (MMLU: 70.8, HellaSwag: 82.9 — within noise).
+      The LoRA approach preserved general capabilities while adding Python-specific knowledge. However,
+      the improvement was smaller than expected. The team hypothesized that r=64 might be too small
+      to capture the complexity of code generation patterns. Additionally, the dataset still had quality
+      issues: ~15% of samples contained broken code (identified in post-hoc analysis via Pyright type-checking).
+
+    EXPERIMENT #3 — Data Filtering + LoRA (r=128):
+    - Method: Same as Exp #2 but with filtered dataset (removed samples that fail Pyright type-checking
+      with strict mode, removed duplicate/near-duplicate samples via MinHash LSH with threshold 0.85)
+    - Dataset after filtering: 184K samples (down from 240K, 23.3% removed)
+    - LoRA rank: r=128, alpha=256, dropout=0.05
+    - Trainable parameters: 1.6% of total
+    - Hardware: 8× NVIDIA A100-80GB (1 node)
+    - Training duration: 22 hours
+    - HumanEval pass@1: 72.4% (↑ 5.2pp from baseline)
+    - MBPP pass@1: 64.8% (↑ 6.4pp from baseline)
+    - LiveCodeBench: 49.7% (↑ 6.9pp from baseline)
+    - Training loss: 2.3 → 0.94
+    - Analysis: SIGNIFICANT IMPROVEMENT. Data quality mattered more than parameter count.
+      The Pyright filtering removed syntactically-invalid and type-inconsistent samples, which had
+      been teaching the model bad habits. MinHash deduplication removed 18K near-duplicate samples
+      that were biasing the model toward common patterns in the training data.
+
+    EXPERIMENT #4 — Data Mixing (Code + General):
+    - Method: Mixed dataset — 70% filtered Python (184K samples) + 30% general instructions
+      (OpenHermes-2.5, 60K samples). This was based on the insight from Exp #1 that pure code
+      data led to forgetting.
+    - LoRA rank: r=128, alpha=256, dropout=0.05
+    - Hardware: 8× NVIDIA A100-80GB (1 node)
+    - Training duration: 26 hours
+    - HumanEval pass@1: 73.1% (↑ 5.9pp from baseline)
+    - MBPP pass@1: 65.2% (↑ 6.8pp from baseline)
+    - LiveCodeBench: 51.3% (↑ 8.5pp from baseline)
+    - MMLU: 71.0 (↓ 0.2pp from baseline — within noise)
+    - HellaSwag: 83.0 (↓ 0.1pp from baseline — within noise)
+    - Analysis: BEST RESULT SO FAR. Adding general instruction data prevented forgetting entirely
+      while achieving the highest code generation scores. The ratio 70:30 was chosen somewhat
+      arbitrarily — the team did not perform a systematic sweep of mixing ratios.
+
+    EXPERIMENT #5 — DPO (Direct Preference Optimization) on Top of Exp #4:
+    - Method: DPO fine-tuning on top of Exp #4 checkpoint, using 12K preference pairs
+      (chosen: human-written solution, rejected: model-generated solution from Exp #4)
+    - Preference pairs constructed from HumanEval+ training split and internal code review data
+    - LoRA rank: r=64, beta=0.1, learning_rate=5e-6
+    - Hardware: 8× NVIDIA A100-80GB
+    - Training duration: 8 hours
+    - HumanEval pass@1: 75.8% (↑ 8.6pp from baseline, ↑ 2.7pp from Exp #4)
+    - MBPP pass@1: 67.1% (↑ 8.7pp from baseline)
+    - LiveCodeBench: 54.2% (↑ 11.4pp from baseline)
+    - Analysis: DPO PROVIDED MEANINGFUL GAINS beyond SFT. The model learned to prefer
+      human-like code style (better variable names, more idiomatic patterns, fewer unnecessary
+      comments). However, the 12K preference pairs were relatively few; the team noted that
+      DPO performance was sensitive to the quality of the "rejected" samples. Bad rejections
+      (where the model output was actually reasonable) confused the training signal.
+
+    EXPERIMENT #6 — Sequence Length Extension (RoPE theta scaling):
+    - Method: Extended max_seq_len from 4096 to 16384 using RoPE theta scaling
+      (scale factor = 4.0, dynamic NTK-aware scaling). Applied to Exp #5 checkpoint.
+    - Additional training: 500 steps of continued LoRA fine-tuning on long-context code
+      samples (RepoBench dataset, 8K samples with 8K-16K token contexts)
+    - Hardware: 8× NVIDIA A100-80GB
+    - Training duration: 6 hours
+    - HumanEval pass@1: 75.2% (↓ 0.6pp from Exp #5)
+    - RepoBench (long-context, multi-file): 62.3% (baseline CodeLlama-70B: 48.7%, Exp #5: 51.4%)
+    - Analysis: TRADE-OFF ACCEPTED. Slight regression on short-form benchmarks in exchange for
+      dramatic improvement on long-context code tasks (+13.6pp on RepoBench vs baseline).
+      The RoPE scaling approach worked well for extending context without full re-training,
+      but the 500-step fine-tuning was insufficient for the model to fully adapt its attention
+      patterns to the longer context. The team believes additional training steps would close
+      the short-form gap.
+
+    SUMMARY TABLE:
+    | Exp# | Method | HumanEval | MBPP | LiveCodeBench | MMLU | Notes |
+    |------|--------|-----------|------|---------------|------|-------|
+    | 0 | Baseline | 67.2 | 58.4 | 42.8 | 71.2 | — |
+    | 1 | Full FT | 61.8 | 52.1 | 38.2 | 54.3 | Catastrophic forgetting |
+    | 2 | LoRA r=64 | 69.1 | 60.2 | 45.3 | 70.8 | Safe but small gains |
+    | 3 | LoRA r=128 + filtered | 72.4 | 64.8 | 49.7 | 71.0 | Data quality is key |
+    | 4 | LoRA + mixed data | 73.1 | 65.2 | 51.3 | 71.0 | Best SFT result |
+    | 5 | DPO on Exp #4 | 75.8 | 67.1 | 54.2 | 70.9 | DPO adds 2-3pp |
+    | 6 | +RoPE scaling | 75.2 | 66.8 | 55.8 | 70.5 | Long context trade-off |
+
+    Please write a thorough experiment analysis.
+
+  keywords:
+    - "catastrophic forgetting"
+    - "data quality"
+    - "LoRA"
+    - "DPO"
+    - "RoPE"
+    - "mixing ratio"
+    - "preference pairs"
+    - "deduplication"
+  max_tokens: 1024
+
+- question: |
+    You are a legal technology consultant. Read the following detailed requirements document for an AI-powered contract review system and write a comprehensive technical specification covering: (1) system architecture and component design, (2) data model and schema design for contract storage and analysis, (3) API design for the core endpoints, (4) security and compliance considerations, (5) a phased implementation roadmap. Be specific and reference the requirements.
+
+    ========================================================================
+    REQUIREMENTS: AI Contract Review System — v1.0
+    Client: LegalTech Corp (AmLaw 50 Firm) | Priority: Critical | Budget: $3.2M
+    ========================================================================
+
+    BUSINESS CONTEXT
+
+    LegalTech Corp reviews approximately 15,000 contracts per year across M&A, commercial leasing, employment, intellectual property licensing, and vendor procurement. The average contract is 85 pages (range: 3-400 pages). Current review process: junior associates spend 8-12 hours per contract identifying key clauses, flagging risks, and comparing against the firm's clause library (a SharePoint repository of 45,000+ approved clauses organized by contract type and jurisdiction). The goal of this system is to reduce initial review time from 8-12 hours to under 45 minutes while improving risk-detection recall from the current ~78% (human baseline, measured via internal audits) to 95%+.
+
+    FUNCTIONAL REQUIREMENTS
+
+    FR1 — Document Ingestion & Parsing:
+    - Accept PDF, DOCX, and scanned-image PDF (via integrated OCR)
+    - Extract and structure: clauses (with hierarchy), defined terms, cross-references, dates, parties, monetary amounts, governing law, jurisdiction, and force majeure provisions
+    - Handle multi-language contracts: English (primary), Spanish, French, German, Mandarin, Japanese, Arabic
+    - Maintain original formatting as a reference view alongside the structured representation
+
+    FR2 — Clause Identification & Classification:
+    - Identify 127 predefined clause types (based on the firm's clause taxonomy v4.2: Limitation of Liability, Indemnification, Assignment, Termination for Convenience, Non-Compete, Data Privacy, IP Ownership, Confidentiality, etc.)
+    - For each clause: extract the exact text, classify the clause type, assign a risk score (1-5), flag missing "standard" sub-clauses, and identify unusual or non-standard language
+    - Detect clause conflicts: e.g., a contract that has BOTH a non-compete clause AND an assignment clause that contradicts it under specific jurisdictional law
+
+    FR3 — Risk Assessment:
+    - Generate a structured risk report per contract containing: overall risk score (weighted composite), per-clause risk breakdown, missing clauses (clauses that SHOULD be present for this contract type but are absent), unusual language flags, regulatory compliance gaps (GDPR, CCPA, SOX, HIPAA — auto-detected based on contract context), and jurisdiction-specific risk factors
+    - For each flagged risk: provide the specific text that triggered the flag, the relevant clause from the firm's approved clause library, and a suggested replacement language
+    - Risk scores must be explainable: the system must provide a natural-language justification for each risk score, not just a number
+
+    FR4 — Clause Library Integration:
+    - Full-text search across 45,000+ approved clauses with filters: contract type, jurisdiction, risk level, governing law, clause type, date last updated, approving partner
+    - Semantic similarity search: given a clause from a contract under review, find the top-5 most similar approved clauses (measured by legal meaning, not just text overlap)
+    - Version tracking: all approved clauses are versioned; the system must flag if a contract uses language from a deprecated clause version
+
+    FR5 — Collaboration & Workflow:
+    - Multi-user review: senior partner, junior associate, and specialist (tax/IP/employment) can review the same contract simultaneously with real-time comment threads tied to specific clauses
+    - Approval workflow: Junior Associate → Senior Associate → Partner → Client Delivery
+    - Each reviewer can: accept/reject system-generated flags, add manual flags, annotate clauses, propose alternative language from the clause library
+    - Audit trail: every action (flag accepted, clause modified, comment added) is logged with user, timestamp, and before/after state
+
+    NON-FUNCTIONAL REQUIREMENTS
+
+    NFR1 — Performance:
+    - 400-page contract ingestion + full clause extraction + risk report: < 5 minutes
+    - Clause library semantic search (45K clauses): P99 < 500ms
+    - Concurrent users: 500 with < 2s page load time
+
+    NFR2 — Accuracy:
+    - Clause type classification: F1 > 0.92 (measured against firm's manually-labeled test set of 5,000 clauses)
+    - Risk flag precision: > 85% (flags that are accepted by human reviewers)
+    - Risk flag recall: > 95% (actual risks found by human reviewers that were also flagged by the system)
+
+    NFR3 — Security & Compliance:
+    - SOC 2 Type II certified
+    - End-to-end encryption (TLS 1.3 in transit, AES-256 at rest)
+    - Role-based access control with granular permissions (read, annotate, approve, admin)
+    - Data residency: contracts must be stored in the jurisdiction of the governing law (US contracts in us-east-1, EU contracts in eu-west-1, APAC contracts in ap-southeast-1)
+    - Full audit logging of all data access (retained 7 years for SOX compliance)
+
+    NFR4 — Integration:
+    - iManage (Document Management System) integration: contracts checked out from iManage are automatically ingested; reviewed contracts are checked back in as new versions
+    - Single Sign-On via Okta with MFA enforcement
+    - Slack notifications for workflow transitions (review complete, approval needed)
+    - REST API with OpenAPI 3.0 specification for custom integrations
+
+    EXISTING INFRASTRUCTURE
+
+    - Kubernetes clusters in AWS (us-east-1, eu-west-1, ap-southeast-1)
+    - PostgreSQL 15 (primary database, multi-AZ)
+    - Elasticsearch 8.x (full-text search, existing cluster)
+    - Redis Cluster (caching, session management)
+    - Kong API Gateway (existing, handles auth and rate limiting)
+    - Datadog (monitoring and APM)
+    - PagerDuty (incident response)
+    - GitHub Enterprise (source control, CI/CD via GitHub Actions)
+
+    CONSTRAINTS
+
+    - Must be deployable in the firm's existing AWS VPCs (no new AWS accounts)
+    - All AI/ML components must run on GPU nodes already provisioned for the firm's existing e-discovery system (4× NVIDIA A10G per region, shared with e-discovery workload with guaranteed 50% GPU capacity for contract review)
+    - Cannot use external AI APIs (OpenAI, Anthropic, Google) due to client confidentiality requirements — all LLM inference must be self-hosted
+    - iManage integration must use their SOAP API (iManage v10.3, REST API not available until Q3 2025)
+
+    Please write a comprehensive technical specification based on these requirements.
+
+  keywords:
+    - "clause classification"
+    - "risk score"
+    - "self-hosted"
+    - "iManage"
+    - "multi-region"
+    - "semantic search"
+    - "audit trail"
+    - "OCR"
+  max_tokens: 1024
+
+- question: |
+    You are a seasoned PostgreSQL DBA. Read the following detailed investigation report on a mysterious database performance degradation and write a comprehensive root cause analysis and remediation plan. Cover: (1) the full causal chain from symptom to root cause, (2) why each diagnostic step was necessary and what it revealed, (3) the specific PostgreSQL internals involved, (4) immediate fixes applied, (5) long-term architectural changes recommended. Use specific details from the report.
+
+    ========================================================================
+    POSTGRESQL PERFORMANCE DEGRADATION INVESTIGATION — Case #DB-2024-0731
+    System: Core Transaction Database | PostgreSQL 15.4 | AWS RDS db.r6g.16xlarge
+    ========================================================================
+
+    INITIAL SYMPTOMS (Reported 2024-09-03 08:30 UTC)
+
+    At approximately 07:15 UTC, the payment-processing application began reporting elevated P99 latency: normally 45ms, now spiking to 3,200ms. Error rate remained 0% — no failed transactions, just extreme slowness. The degradation was gradual, building over approximately 45 minutes rather than a sudden step change.
+
+    DIAGNOSTIC STEP 1 — CHECK ACTIVE QUERIES (08:35 UTC)
+
+    Ran: `SELECT pid, now() - pg_stat_activity.query_start AS duration, query FROM pg_stat_activity WHERE state != 'idle' ORDER BY duration DESC;`
+
+    Finding: No long-running queries. The longest-running query was 4.2 seconds (a normal batch reconciliation job). Nothing was stuck or blocking. This ruled out: uncommitted transactions holding locks, a single slow query causing queueing, and deadlocks.
+
+    DIAGNOSTIC STEP 2 — CHECK WAIT EVENTS (08:38 UTC)
+
+    Ran: `SELECT wait_event_type, wait_event, count(*) FROM pg_stat_activity WHERE state != 'idle' GROUP BY 1, 2 ORDER BY 3 DESC;`
+
+    Finding:
+    ```
+    wait_event_type | wait_event  | count
+    ----------------+-------------+-------
+    IO              | DataFileRead|   47
+    LWLock          | WALWrite    |   23
+    LWLock          | BufferMapping|  12
+    IO              | WALRead     |    8
+    ```
+
+    This was the first strong signal: 47 backends were waiting on DataFileRead (random disk reads). The database was I/O-bound, not CPU-bound or lock-bound. The WALWrite contention (23 backends) was secondary but notable — it suggested write throughput was also elevated.
+
+    DIAGNOSTIC STEP 3 — CHECK CHECKPOINT ACTIVITY (08:42 UTC)
+
+    Ran: `SELECT * FROM pg_stat_bgwriter;`
+
+    Finding:
+    - checkpoints_timed: 847 (normal for uptime)
+    - checkpoints_req: 1,294 in the last hour (NORMAL: ~20/hour)
+    - buffers_checkpoint: 3.2 million pages in the last hour (NORMAL: ~50,000)
+    - buffers_clean: 12.4 million pages in the last hour (NORMAL: ~200,000)
+    - maxwritten_clean: 847,000 in the last hour (NORMAL: ~1,000)
+
+    INTERPRETATION: The database was experiencing EXTREME checkpoint pressure. Instead of ~20 checkpoints per hour, we were triggering 1,294 — roughly one checkpoint every 2.8 seconds. Each checkpoint was writing an enormous number of dirty buffers (3.2M pages/hour vs normal 50K — 64x the normal rate). The background writer was also struggling, with `maxwritten_clean` at 847x normal levels, indicating that the bgwriter was being interrupted mid-scan because it kept finding more dirty pages to clean.
+
+    DIAGNOSTIC STEP 4 — CHECK WAL ACTIVITY (08:45 UTC)
+
+    Ran: `SELECT pg_current_wal_lsn(), pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0') AS wal_bytes;` (waited 60 seconds, then repeated)
+
+    Finding: WAL generation rate was 384 MB/minute (NORMAL: ~15 MB/minute). This is 25x normal. At this rate, the 200 GB WAL volume would fill in approximately 8.7 hours, triggering an emergency shutdown if not addressed.
+
+    DIAGNOSTIC STEP 5 — CHECK TABLE WRITE ACTIVITY (08:48 UTC)
+
+    Ran: `SELECT relname, n_tup_ins, n_tup_upd, n_tup_del, n_tup_hot_upd, seq_scan, idx_scan FROM pg_stat_user_tables ORDER BY (n_tup_ins + n_tup_upd + n_tup_del) DESC LIMIT 10;` (captured, waited 60s, captured again, computed delta)
+
+    Finding:
+    | Table | Inserts/min | Updates/min | Deletes/min | HOT Updates |
+    |-------|-------------|-------------|-------------|-------------|
+    | payment_transactions | 12,400 | 8,200 | 0 | 820 (10%) |
+    | payment_audit_log | 97,000 | 0 | 0 | N/A |
+    | transaction_events | 43,000 | 0 | 0 | N/A |
+    | user_sessions | 0 | 62,000 | 1,200 | 61,800 (99.7%) |
+    | All other tables | <1,000 | <500 | <100 | Normal |
+
+    THE SMOKING GUN: `payment_audit_log` was receiving 97,000 inserts per minute (normal: ~3,000). `transaction_events` was receiving 43,000 inserts per minute (normal: ~1,500). Total combined: 140,000 rows/minute of insert activity that shouldn't exist.
+
+    DIAGNOSTIC STEP 6 — TRACE THE SOURCE (08:52 UTC)
+
+    Queried `payment_audit_log` for recent entries:
+    ```sql
+    SELECT event_type, COUNT(*), MIN(created_at), MAX(created_at)
+    FROM payment_audit_log
+    WHERE created_at > NOW() - INTERVAL '2 hours'
+    GROUP BY event_type
+    ORDER BY 2 DESC;
+    ```
+
+    Finding:
+    | event_type | count | min_created_at | max_created_at |
+    |------------|-------|----------------|----------------|
+    | payment_retry_check | 4,821,403 | 07:15 | 08:52 |
+    | payment_status_poll | 2,103,921 | 07:15 | 08:52 |
+    | All other types | 12,482 | 06:00 | 08:52 |
+
+    99.8% of audit log entries were `payment_retry_check` — a debug event that was introduced in a code change deployed at 07:10 UTC (5 minutes before the degradation began). The PR (#18734, "Add retry diagnostics for payment timeout investigation") added a `logger.info()` call inside the payment retry loop, and the logger was configured to write to the database audit log.
+
+    ROOT CAUSE IDENTIFIED (08:55 UTC)
+
+    1. PR #18734 deployed at 07:10 UTC added verbose logging inside a tight retry loop
+    2. The retry loop executes up to 5 retries per payment, at ~2,000 payments/second peak throughput
+    3. Each retry generates 2 DB audit log entries (retry_check + status_poll)
+    4. Maximum DB writes: 2,000 × 5 × 2 = 20,000 writes/second above normal
+    5. These writes: filled WAL at 25x normal rate, triggered checkpoints every 2.8s instead of every 3 minutes, saturated the EBS volume's IOPS (20,000 provisioned IOPS on gp3), and caused all other queries to queue behind the checkpoint I/O storm
+    6. The P99 latency spike to 3,200ms was entirely due to I/O wait — the same queries ran at 45ms once the audit log flood was stopped
+
+    IMMEDIATE REMEDIATION (09:02 UTC)
+
+    - Reverted PR #18734 via emergency deployment pipeline
+    - Manually issued `CHECKPOINT` to flush all pending dirty buffers (took 4 minutes)
+    - Ran `VACUUM ANALYZE payment_audit_log` to update statistics (the autovacuum had fallen behind due to the write volume)
+    - P99 latency returned to 45ms by 09:08 UTC
+
+    LONG-TERM OBSERVATIONS
+
+    This incident exposed several systemic weaknesses:
+    - The audit log table had NO rate limiting. Any code path could write unlimited entries.
+    - There was no alert on `checkpoints_req` rate (the team was only alerting on `checkpoints_timed`, which was normal)
+    - The EBS volume's 20,000 IOPS was the bottleneck; the team had provisioned for normal throughput but had no headroom for anomalies
+    - The deployment pipeline had no canary stage for backend service changes (unlike the frontend, which had a full canary → staging → production pipeline)
+    - The relationship between DB write volume → WAL pressure → checkpoint frequency → I/O saturation was well-understood by the DBA team but not documented in the developer onboarding guide
+
+    Please write the full root cause analysis and remediation plan.
+
+  keywords:
+    - "audit log"
+    - "checkpoint"
+    - "WAL"
+    - "IOPS"
+    - "retry loop"
+    - "EBS"
+    - "canary"
+    - "rate limiting"
+  max_tokens: 1024
+
+- question: |
+    You are a compiler engineer. Read the following detailed description of a novel intermediate representation optimization pass and write a thorough evaluation covering: (1) explanation of the optimization in simpler terms, (2) analysis of correctness — does the optimization always preserve program semantics?, (3) performance analysis — in which scenarios does it help and when might it hurt?, (4) comparison with existing approaches in LLVM and GCC, (5) suggestions for improvement or further research. Reference specific details.
+
+    ========================================================================
+    PROPOSAL: Context-Aware Dead Code Elimination via Abstract Interpretation
+    Author: Research Team (Compiler Optimization Group)
+    ========================================================================
+
+    MOTIVATION
+
+    Traditional Dead Code Elimination (DCE) operates at the function or module level: it identifies instructions whose results are never used and removes them. However, DCE is conservative in the presence of function calls, pointer aliasing, and conditional branches that depend on runtime values. We propose Context-Aware DCE (CA-DCE), which uses abstract interpretation to track value ranges and pointer relationships across function boundaries, enabling the elimination of code that is provably dead under ALL POSSIBLE calling contexts.
+
+    TECHNICAL APPROACH
+
+    CA-DCE operates in three phases:
+
+    Phase 1 — Interprocedural Value Range Analysis (IVRA):
+    We extend the classical value range analysis to operate across function boundaries. For each function, we compute a summary: a mapping from (argument_value_ranges) → (return_value_range, modified_global_state). The summary is computed via abstract interpretation using the interval domain [l, u] for integers and a points-to graph for pointers.
+
+    For example, given:
+    ```c
+    int clamp(int x) {
+      if (x < 0) return 0;
+      if (x > 100) return 100;
+      return x;
+    }
+    ```
+    IVRA computes the summary: ∀x ∈ [-∞, +∞]: clamp(x) ∈ [0, 100]
+
+    Recursive functions are handled via widening with a convergence threshold (default: 5 iterations before widening to top).
+
+    Phase 2 — Context-Sensitive Reachability:
+    Using the function summaries from Phase 1, we perform a top-down reachability analysis starting from each entry point (main, exported API functions, and signal handlers). At each call site, we instantiate the callee's summary with the concrete argument ranges from the caller context. If a code path is only reachable when a condition is true, but abstract interpretation proves the condition is ALWAYS FALSE under all calling contexts, that path is marked as dead.
+
+    For example:
+    ```c
+    void process(int mode) {
+      setup();
+      if (mode == 3) {          // 'mode' is always 0, 1, or 2 in all callers
+        dangerous_operation();  // THIS IS DEAD — mode is never 3
+      }
+      cleanup();
+    }
+    ```
+
+    Phase 3 — Safe Elimination:
+    Dead paths identified in Phase 2 are eliminated. However, we apply three safety checks before elimination:
+    a) The dead path must not contain any `volatile` operations (memory-mapped I/O)
+    b) The dead path must not be the target of any computed goto (labels_taken)
+    c) Elimination must not change the relative addresses of any function that has its address taken (to preserve pointer equality)
+
+    IMPLEMENTATION STATUS
+
+    Prototype implemented as an LLVM pass (LLVM 18, C++17). Approximately 8,400 lines of code. Tested on SPEC CPU 2017 benchmarks. Current limitations:
+    - Only supports C input (no C++ virtual dispatch, exceptions, or RTTI)
+    - Pointer analysis uses field-insensitive Steensgaard's algorithm (fast but imprecise for nested structs)
+    - Interval domain cannot represent discontiguous ranges (e.g., x ∈ [0,10] ∪ [20,30] is approximated as [0,30])
+    - No support for multi-threaded programs (assumes sequential consistency)
+
+    BENCHMARK RESULTS (SPEC CPU 2017, -O2 baseline vs -O2 + CA-DCE):
+
+    | Benchmark | Static Instructions Eliminated | Runtime Change | Compile Time Increase |
+    |-----------|------------------------------|----------------|----------------------|
+    | 500.perlbench_r | 3.2% | -1.8% (faster) | +14% |
+    | 502.gcc_r | 5.7% | -3.1% | +28% |
+    | 505.mcf_r | 0.8% | -0.3% | +6% |
+    | 520.omnetpp_r | 4.1% | -2.2% | +19% |
+    | 523.xalancbmk_r | 12.3% | -7.8% | +42% |
+    | 531.deepsjeng_r | 0.2% | 0.0% | +3% |
+    | 541.leela_r | 1.1% | -0.6% | +8% |
+    | 548.exchange2_r | 0.0% | 0.0% | +2% |
+    | 557.xz_r | 2.4% | -1.1% | +11% |
+
+    The pass is most effective on C++ benchmarks (omnetpp, xalancbmk) where virtual dispatch and template instantiation create many unreachable specializations. It is ineffective on Fortran benchmarks (exchange2) where the array-access patterns are already highly optimized.
+
+    KNOWN FALSE POSITIVES (Dead code INCORRECTLY identified):
+    - 2 instances in SPEC (0.002% of all eliminations): both involve union type-punning where the abstract interpretation loses type information
+    - 0 instances in the Linux kernel allyesconfig build
+    - Known limitation: `longjmp`/`setjmp` control flow is not modeled, so any code reachable only via longjmp is incorrectly kept alive (conservative)
+
+    COMPARISON WITH EXISTING APPROACHES
+
+    LLVM's existing interprocedural DCE (IPDCE) only eliminates functions and globals that are provably unreferenced — it does NOT eliminate code within reachable functions. GCC's tree-ssa-dce operates at the SSA level but is purely intra-procedural. The closest existing work is the "Global Value Numbering with Function Summarization" pass in GCC (disabled by default), which achieves similar results but uses a different theoretical framework (predicate-based summarization vs abstract interpretation).
+
+    Please write your evaluation of this optimization pass.
+
+  keywords:
+    - "abstract interpretation"
+    - "function summary"
+    - "interval domain"
+    - "false positive"
+    - "Steensgaard"
+    - "interprocedural"
+    - "longjmp"
+    - "union"
+  max_tokens: 1024
+
+- question: |
+    You are an experienced network security engineer. Read the following incident report about a sophisticated network intrusion and write a detailed security post-mortem covering: (1) reconstruction of the attack timeline with MITRE ATT&CK technique mappings, (2) analysis of the attacker's TTPs (Tactics, Techniques, and Procedures), (3) what controls failed and why, (4) detection gaps that allowed the attacker to persist for 47 days, (5) prioritized remediation recommendations with effort estimates. Reference specific details.
+
+    ========================================================================
+    SECURITY INCIDENT REPORT: Advanced Persistent Threat Intrusion
+    Incident ID: IR-2024-0042 | Classification: CRITICAL | Date Range: 2024-06-12 to 2024-07-29
+    ========================================================================
+
+    EXECUTIVE SUMMARY
+
+    On July 29, 2024, during a routine threat-hunting exercise, the internal security team discovered an active command-and-control (C2) beacon on a Jenkins build server (build-node-14.internal.corp). Subsequent investigation revealed that an attacker had maintained persistent access to the corporate network for 47 days, exfiltrating approximately 4.7 GB of data including source code for 3 proprietary products, customer PII for 180,000 users, and internal design documents for unreleased products. The initial intrusion vector was a compromised CI/CD pipeline credential that was used to deploy a malicious Docker container to the build cluster.
+
+    DETAILED TIMELINE
+
+    Day 0 (June 12) — Initial Access:
+    - 14:22 UTC: A developer's GitLab Personal Access Token (PAT) was exfiltrated via a credential-harvesting malware on the developer's personal laptop (macOS, unmanaged device). The developer had created a PAT with `api`, `read_repository`, and `write_repository` scopes on 2024-01-05 for a home automation project and had never rotated it.
+    - 14:28 UTC: The attacker used the PAT to clone 14 private repositories, identifying the `infra/deployments` repo which contained Kubernetes deployment manifests and Helm charts.
+    - 14:35 UTC: From the deployment manifests, the attacker identified the Harbor registry credentials stored as Kubernetes Secrets (base64-encoded, not encrypted with a KMS). These credentials had push access to the `build-images` project in Harbor.
+
+    Day 0 (June 12) — Execution:
+    - 15:10 UTC: The attacker built a malicious Docker image (`build-cache:v2.4.1`) containing a reverse-shell payload hidden in the image's ENTRYPOINT script. The payload was a Python-based C2 agent using WebSocket-over-TLS to communicate with a command server at `185.243.112.89` (a bulletproof hosting provider in a jurisdiction with weak law enforcement cooperation).
+    - 15:18 UTC: The attacker pushed the malicious image to Harbor using the compromised credentials.
+    - 15:22 UTC: The attacker modified the Jenkins pipeline definition (`Jenkinsfile`) for the `backend-services` project, changing the builder image from `build-cache:v2.4.0` to `build-cache:v2.4.1`. Because the Jenkinsfile was in a protected branch, the attacker created a merge request from a fork and approved it themselves using the compromised PAT (the PAT owner had Maintainer role).
+
+    Day 1-3 (June 13-15) — Persistence:
+    - The malicious container executed on build-node-14 during the nightly build. The C2 agent established a connection and the attacker began reconnaissance.
+    - June 13: Attacker deployed a secondary persistence mechanism — a systemd timer (`systemd-dbus-service.timer`) that re-downloaded the C2 agent from a GitHub gist every 30 minutes. This ensured persistence even if the malicious container was removed.
+    - June 14: Attacker discovered an SSH private key (`id_rsa_deploy`) on build-node-14, left in `/home/jenkins/.ssh/` without a passphrase. This key had passwordless SSH access to 847 servers (all backend production nodes, staging, and QA environments).
+    - June 15: Attacker used the SSH key to deploy the C2 agent to 12 additional servers, including the primary database server (db-master-01) and the internal package registry (pkg-registry-01).
+
+    Day 4-39 (June 16 - July 21) — Lateral Movement & Collection:
+    - Attacker enumerated the network using `nmap`, `masscan`, and `ldapsearch` queries against Active Directory. They mapped the entire internal network topology (approximately 2,400 hosts) within 4 days.
+    - June 18: Attacker accessed the internal Confluence wiki and exfiltrated documentation for 3 proprietary products (total: 2.1 GB).
+    - June 22: Attacker dumped the PostgreSQL database for the customer-facing application from db-master-01 using `pg_dump`. The database contained PII (names, emails, hashed passwords, phone numbers, addresses) for 180,000 customers. Data exfiltration was chunked into 5 MB archives and sent via DNS tunneling (TXT queries to a domain controlled by the attacker). DNS tunneling was chosen because outbound DNS was unrestricted — the corporate firewall blocked direct TCP connections to unknown IPs but allowed all outbound DNS queries.
+    - July 5: Attacker accessed the internal GitLab instance and exfiltrated full git history (including deleted branches and force-pushed commits) for 22 repositories. They used `git bundle` to package the repositories for exfiltration.
+    - July 10: Attacker discovered credentials for the corporate AWS account (access key + secret key) stored in a configuration file on a staging server. These credentials had `AdministratorAccess` policy attached (no IAM boundary). The attacker used them to enumerate S3 buckets (found 840 buckets) and exfiltrated data from 12 buckets containing product design documents and financial projections.
+
+    Day 40-47 (July 22-29) — Detection:
+    - July 29, 10:00 UTC: A threat-hunting query on Zeek (network monitoring) logs looking for "unusual DNS query volume by source IP" flagged build-node-14 as the #1 source of DNS TXT queries on the network, with 3,200x the median volume. The security analyst (Jane) escalated for investigation.
+    - July 29, 10:30 UTC: Jane examined build-node-14 and found: the systemd timer `systemd-dbus-service.timer` (suspicious, named to look like a system service), outbound connections to 185.243.112.89:443, the unauthorized SSH key in /home/jenkins/.ssh/, and the malicious Docker image still active in the build pipeline
+    - July 29, 11:00 UTC: Security Incident declared. Incident Response team convened.
+
+    IMMEDIATE CONTAINMENT (July 29):
+    - 11:15 UTC: Isolated build-node-14 and the 12 other compromised hosts from the network (switch port shutdown)
+    - 11:30 UTC: Revoked all compromised credentials (GitLab PAT, Harbor credentials, SSH deploy key, AWS access keys) — total: 16 credentials across 5 systems
+    - 12:00 UTC: Blocked 185.243.112.89 and associated IP range (185.243.112.0/24) at the perimeter firewall
+    - 12:30 UTC: Initiated forced password reset for all 1,200 employees
+    - 14:00 UTC: Engaged external incident response firm (Mandiant) for forensic investigation
+
+    CONTROL FAILURES IDENTIFIED:
+
+    1. No PAT rotation policy: GitLab Personal Access Tokens had no expiry enforcement (the company policy recommended 90-day rotation but did not enforce it technically). The compromised PAT was 190 days old.
+
+    2. Kubernetes Secrets not encrypted at rest: The cluster used base64-encoded Secrets without envelope encryption via KMS. Any user with `get secrets` permission (which included all Jenkins service accounts) could decode the Harbor credentials.
+
+    3. Missing egress filtering: The corporate firewall allowed all outbound DNS (TCP/UDP 53) to any destination. DNS tunneling was a known technique in the threat model but was accepted as a risk due to "operational complexity of DNS filtering."
+
+    4. SSH key sprawl: The `id_rsa_deploy` key on build-node-14 provided passwordless access to 847 servers. No SSH key inventory existed, and no certificate-based SSH authentication was in place.
+
+    5. No canary/deception technology: The attacker moved laterally undetected for 47 days. No honeytokens, canary files, or deception hosts were deployed that could have triggered an alert.
+
+    6. IAM privilege escalation path: The AWS credentials on the staging server had AdministratorAccess. The principle of least privilege was not applied.
+
+    7. Developer personal devices: The initial compromise vector (developer's personal laptop) was unmanaged, had no EDR agent, and was not subject to corporate security policies.
+
+    8. Blind spot in monitoring: The security team had dashboards for "top talkers by bytes" but NOT "top talkers by DNS query count." The DNS tunneling was detected by a manual threat-hunting query, not by an automated alert.
+
+    ENCRYPTED DATA AT REST: The exfiltrated database contained bcrypt-hashed passwords (cost factor 12). No plaintext passwords were exposed.
+
+    REGULATORY NOTIFICATION STATUS: GDPR notification required (180,000 EU data subjects). 72-hour notification deadline met on August 1. CCPA notification required (affected California residents). SEC 8-K filing under consideration (potential material impact).
+
+    Please write the full security post-mortem.
+
+  keywords:
+    - "DNS tunneling"
+    - "personal access token"
+    - "SSH key"
+    - "IAM"
+    - "egress filtering"
+    - "Kubernetes Secret"
+    - "honeytoken"
+    - "EDR"
+  max_tokens: 1024
+
+- question: |
+    You are a site reliability engineer. Read the following detailed retrospective on a major cloud region outage and write a comprehensive reliability improvement plan covering: (1) detailed timeline reconstruction with contributing factors at each stage, (2) analysis of why each layer of defense failed (the "Swiss cheese" model), (3) specific architectural changes needed to prevent recurrence, (4) monitoring and alerting gaps, (5) a prioritized action plan with SLOs. Reference specific details from the retrospective.
+
+    ========================================================================
+    CLOUD REGION OUTAGE RETROSPECTIVE — us-east-1
+    Date: 2024-10-07 | Duration: 6h 23m | Impact: 47 services fully down, 112 degraded
+    ========================================================================
+
+    SUMMARY
+
+    On October 7, 2024, at 10:14 UTC, a routine failover test of the us-east-1 region's primary network egress router (Juniper MX960) triggered a cascading failure that took down the entire region's API serving capacity. The outage affected 47 services in hard-down state and degraded 112 others for a total duration of 6 hours and 23 minutes. Root cause: a combination of a firmware bug in the router's BGP implementation, a misconfigured BGP community string that caused route leaking, and an overloaded control plane that prevented operators from applying corrective changes.
+
+    TIMELINE
+
+    09:45 — Scheduled maintenance window opens. The network engineering team initiates the quarterly failover test: gracefully drain traffic from the primary egress router (rtr-us-east-1a) to the standby (rtr-us-east-1b). Procedure: (1) set BGP LOCAL_PREF to 50 on primary, (2) wait for BGP convergence, (3) verify traffic on standby, (4) shutdown primary BGP sessions.
+
+    09:47 — Step 1 completed. BGP LOCAL_PREF reduced to 50 on primary router.
+
+    09:48 — BGP begins reconverging. However, the router's firmware (JunOS 22.4R2.4) contains a known bug (PR-1764821) where reducing LOCAL_PREF on a route reflector client causes the router to incorrectly withdraw the routes from its BGP RIB rather than keeping them as backup paths. Instead of 45,000 routes with lowered preference, the router now has 847 routes. The 44,153 withdrawn routes were ALL of the internal service mesh routes (Kubernetes pod CIDRs for the entire region).
+
+    09:49 — The standby router (rtr-us-east-1b) receives the route withdrawals and also removes them from its RIB (correct BGP propagation). Now NEITHER router has the internal service routes. All Kubernetes pods become unreachable from the API gateway tier.
+
+    09:50 — The API gateway health checks begin failing. The global traffic manager (AWS Route 53 with custom health checks) detects us-east-1 API endpoints as unhealthy and begins failing over traffic to us-west-2.
+
+    09:52 — us-west-2 (the failover region) receives a sudden 15x traffic surge. Its auto-scaling triggers but the scale-up latency is 4-7 minutes for EC2 instances. Connection pools in the API gateway layer in us-west-2 saturate, causing cascading 502 errors. The global traffic manager now sees BOTH us-east-1 AND us-west-2 as degraded and begins serving traffic from cached responses (stale-while-revalidate, 30s TTL).
+
+    09:55 — Network engineers realize the BGP table is corrupted. They attempt to restore the previous configuration by reapplying the saved config from 09:40. However, the router's control plane CPU is now at 100% (processing the BGP withdraw/readvertise storm from the attempted failover). The `commit` command queues behind 8,400 pending BGP UPDATE messages. The configuration takes 47 minutes to apply.
+
+    10:14 — SEV-0 declared. Incident Command takes over.
+
+    10:42 — After 47 minutes of waiting, the configuration restore completes. However, the restored configuration includes the BGP community string `65001:888` which is tagged as "no-export-to-regional-peers." This community string was part of a traffic engineering policy from 2023 that should have been removed. The restored routes carry this community tag, and the regional peer routers (in us-east-1a, 1b, 1c AZs) honor it by NOT re-advertising the routes to their downstream peers. The routes are in the primary router's RIB but are not propagated. The region is still effectively down.
+
+    10:58 — A senior network engineer (15 years experience, the only person who understood the community string setup) identifies the problem. She manually strips the community string and re-advertises the routes.
+
+    11:05 — Internal service routes are available again. The API gateway tier begins recovering. However, recovery is slow because all 47 hard-down services are restarting simultaneously, creating a "thundering herd" problem: connection pools, database connection limits, and thread pools are all cold. Services experience cascading crash-loops as they overwhelm each other's startup sequences.
+
+    11:45 — Engineers implement a staged service restart: core infrastructure (DNS, service discovery, secrets management) → data layer (databases, caches, queues) → API tier → dependent services. The staged restart prevents further crash-loops but extends the recovery time.
+
+    13:30 — 80% of services operational. Two database clusters (PostgreSQL primary and Cassandra) are still recovering: they accumulated 6 hours of replication lag and are replaying WAL/commitlog from their replicas in us-west-2.
+
+    16:37 — Final service restored. SEV-0 resolved.
+
+    ROOT CAUSE ANALYSIS (5-Why)
+
+    1. Why did the region go down? Because all internal service routes were withdrawn from BGP.
+    2. Why were the routes withdrawn? Because a firmware bug caused the router to withdraw routes instead of lowering their preference when LOCAL_PREF was changed.
+    3. Why wasn't the firmware bug known? Because the bug (PR-1764821) was published in Juniper's release notes 3 months ago but was not triaged into the team's vulnerability management queue. The team's policy was to review release notes only when upgrading firmware, not continuously.
+    4. Why did the restore take 47 minutes? Because the router's control plane CPU was saturated, and there was no out-of-band management interface (console server) configured for emergency access.
+    5. Why did the restored config still fail? Because a stale BGP community string from 2023 was still present in the configuration, and no automated config validation caught it.
+
+    CONTRIBUTING FACTORS
+
+    - Single point of failure: Despite having two routers in an active/standby pair, the firmware bug affected both because BGP correctly propagated the route withdrawals. True hardware redundancy was defeated by a software defect.
+    - No pre-flight config validation: The restored config was applied without checking for community strings that would block route propagation.
+    - Thundering herd on recovery: All services restarted simultaneously, causing cascading failures during recovery. The staged restart procedure was developed ad-hoc during the incident.
+    - Knowledge silo: Only one engineer understood the BGP community string setup. She was not on-call and was reached by phone 63 minutes into the incident.
+    - Metrics gap: The team monitored BGP session state (up/down) but not BGP RIB route count. The route count dropping from 45,000 to 847 was the earliest signal but was not alerted on.
+
+    DETECTION TIMELINE
+    | Time | Event | Detected By | Delay |
+    |------|-------|-------------|-------|
+    | 09:48 | Routes withdrawn | Nothing (no alert) | — |
+    | 09:50 | Health checks failing | Automated (DataDog) | 2 min |
+    | 09:52 | us-west-2 saturation | Automated (DataDog) | 2 min |
+    | 10:14 | SEV-0 declared | Manual (on-call) | 24 min |
+    | 10:58 | Community string identified | Manual (senior engineer) | 44 min |
+    | 16:37 | Full recovery | Automated monitoring | — |
+
+    The longest gap was the 44 minutes between SEV-0 declaration and root cause identification. During this period, the team was focused on the wrong hypothesis: they believed the firmware bug was the only problem and did not check whether the restored routes were actually propagating.
+
+    Please write the full reliability improvement plan.
+
+  keywords:
+    - "BGP"
+    - "firmware bug"
+    - "community string"
+    - "thundering herd"
+    - "staged restart"
+    - "route count"
+    - "console server"
+    - "knowledge silo"
+  max_tokens: 1024
