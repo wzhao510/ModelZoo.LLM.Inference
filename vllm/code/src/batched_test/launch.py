@@ -10,7 +10,9 @@ import os
 import pandas as pd
 import yaml
 import csv
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import time as time_module
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
 
 from pprint import pprint
 import net_utils
@@ -28,12 +30,14 @@ class SchedularArgs:
 
     text_case: str
     image_case: str
+    long_text_case: str | None = None
     resume_csv: str | None = None
 
     cluster_config: str | None = None
     infer: bool = False
     perf: bool = False
     concurrency: int | None = None  # Max concurrent models. None=default(GPU count local, 1 on cluster)
+    model_timeout: int = 3600  # Hard per-model timeout in seconds (default: 1 hour)
 
     gpus: str = None  # comma-separated GPU counts to run (e.g., '1,2,4,8')
     tag: str | None = (
@@ -59,10 +63,12 @@ class SchedularArgs:
             cluster_config=args.cluster_config,
             text_case=args.text_case,
             image_case=args.image_case,
+            long_text_case=args.long_text_case,
             resume_csv=args.resume_csv,
             infer=args.infer,
             perf=args.perf,
             concurrency=args.concurrency,
+            model_timeout=args.model_timeout,
             gpus=args.gpus,
             tag=args.tag,
             dump_selected=args.dump_selected,
@@ -120,6 +126,16 @@ class SchedularArgs:
         )
 
         parser.add_argument(
+            "--long-text-case",
+            metavar="LONG_TEXT_CASE_FILE",
+            type=str,
+            default=None,
+            help="Optional long-context text cases (YAML). When specified, these cases are "
+            "run in addition to the short text cases. Each case may specify 'max_tokens' "
+            "(default 512). Example: configs/inference/long_text_case.yaml",
+        )
+
+        parser.add_argument(
             "--resume-csv",
             metavar="RESUME_CSV",
             type=str,
@@ -171,6 +187,13 @@ class SchedularArgs:
             type=int,
             default=None,
             help="Max number of models to run concurrently. Default: GPU count on local machine; 1 on cluster. Use 1 for serial.",
+        )
+
+        parser.add_argument(
+            "--model-timeout",
+            type=int,
+            default=3600,
+            help="Hard per-model timeout in seconds. If a model exceeds this, it is killed and marked as TIMEOUT. Default: 3600 (1 hour).",
         )
 
 stop_event = threading.Event()
@@ -373,8 +396,17 @@ class Scheduler:
             f.write(env_info)
 
     def run_inference(self):
+        """Run inference tests for all selected models with per-model timeout.
+
+        Each model gets at most ``--model-timeout`` seconds from submission to
+        completion.  Models that exceed the deadline are recorded as TIMEOUT,
+        their worker is signalled to stop, and the scheduler moves on.
+        """
         all_results = []
-        futures = []
+        # future -> model_cfg (so we can build error rows for timeouts)
+        future_map: dict[concurrent.futures.Future, dict] = {}
+        # Track submission time per future for timeout detection
+        future_submit_time: dict[concurrent.futures.Future, float] = {}
 
         assert os.path.exists(self.args.text_case), (
             f"Case file not found: {self.args.text_case}"
@@ -396,11 +428,38 @@ class Scheduler:
                 model_cfg=cfg,
                 text_case=self.args.text_case,
                 image_case=self.args.image_case,
+                long_text_case=self.args.long_text_case,
                 last_resume=self.args.resume_csv,
                 gpu_manager=self.gpu_manager,
             )
-            future = self.executor.submit(self._run_with_gate, worker.run, stop_event)
-            futures.append(future)
+            future = self.executor.submit(
+                self._run_with_gate, worker.run, stop_event
+            )
+            future_map[future] = cfg
+            future_submit_time[future] = time_module.time()
+
+        # --- helper: build a result row for a model that never returned ---
+        def _make_timeout_row(cfg: dict, elapsed: float) -> dict:
+            serve_cfg = cfg.get("serve_config", {})
+            tag = (
+                f"{cfg.get('name', '?')}"
+                f"[tp{serve_cfg.get('tp', 1)}"
+                f"pp{serve_cfg.get('pp', 1)}"
+                f"dp{serve_cfg.get('dp', 1)}]"
+            )
+            return {
+                "Model": tag,
+                "Correct Ratio": "0%",
+                "Stage": "TIMEOUT",
+                "Reason": (
+                    f"Exceeded per-model timeout "
+                    f"({self.args.model_timeout}s, elapsed {elapsed:.0f}s)"
+                ),
+                "Model Path": cfg.get("model_path", ""),
+            }
+
+        POLL_SECONDS = 30  # check for timeouts every N seconds
+        remaining = set(future_map.keys())
 
         with open(csv_file_path, mode="w", newline="", encoding="utf-8") as f_csv:
             csv_writer = csv.DictWriter(
@@ -409,8 +468,9 @@ class Scheduler:
                 restval="",
             )
             csv_writer.writeheader()
+
             with tqdm(
-                total=len(self.model_list),
+                total=len(future_map),
                 desc="Inference",
                 unit="model",
                 mininterval=0.5,
@@ -427,21 +487,111 @@ class Scheduler:
                 refresher_thread.start()
 
                 try:
-                    for f in as_completed(futures):
-                        result = f.result()
-                        pbar.update(1)
-                        all_results.append(result)
-                        csv_writer.writerow(result)
-                        f_csv.flush()
+                    while remaining:
+                        # Wait for at least one future to finish, or poll for
+                        # timeouts every POLL_SECONDS.
+                        done, remaining = concurrent.futures.wait(
+                            remaining,
+                            timeout=POLL_SECONDS,
+                            return_when=concurrent.futures.FIRST_COMPLETED,
+                        )
+
+                        # --- process completed futures ---
+                        for f in done:
+                            cfg = future_map[f]
+                            name = cfg.get("name", "?")
+                            try:
+                                result = f.result()
+                            except Exception as exc:
+                                serve_cfg = cfg.get("serve_config", {})
+                                tag = (
+                                    f"{name}"
+                                    f"[tp{serve_cfg.get('tp', 1)}"
+                                    f"pp{serve_cfg.get('pp', 1)}"
+                                    f"dp{serve_cfg.get('dp', 1)}]"
+                                )
+                                result = {
+                                    "Model": tag,
+                                    "Correct Ratio": "0%",
+                                    "Stage": "CRASH",
+                                    "Reason": f"{type(exc).__name__}: {exc}",
+                                    "Model Path": cfg.get("model_path", ""),
+                                }
+                                print(f"\n[{name}] Worker crashed: {type(exc).__name__}: {exc}")
+
+                            all_results.append(result)
+                            csv_writer.writerow(result)
+                            f_csv.flush()
+                            pbar.update(1)
+
+                        # --- kill overdue futures ---
+                        now = time_module.time()
+                        for f in list(remaining):
+                            elapsed = now - future_submit_time[f]
+                            if elapsed > self.args.model_timeout:
+                                cfg = future_map[f]
+                                name = cfg.get("name", "?")
+                                print(
+                                    f"\n[{name}] TIMEOUT after {elapsed:.0f}s "
+                                    f"(limit: {self.args.model_timeout}s) — killing"
+                                )
+                                stop_event.set()    # signal worker to stop
+                                f.cancel()          # best-effort for pending futures
+                                remaining.discard(f)
+
+                                row = _make_timeout_row(cfg, elapsed)
+                                all_results.append(row)
+                                csv_writer.writerow(row)
+                                f_csv.flush()
+                                pbar.update(1)
+
+                                # Reset stop_event for subsequent models
+                                stop_event.clear()
+
                 finally:
                     refresh_stop.set()
                     refresher_thread.join()
 
+        # --- summary ---
+        self._print_inference_summary(all_results)
         pprint(all_results)
 
+    @staticmethod
+    def _print_inference_summary(results: list[dict]) -> None:
+        """Print a compact summary of inference results."""
+        if not results:
+            return
+
+        passed = [r for r in results if r.get("Stage") == "NORMAL_END"]
+        failed = [r for r in results if r.get("Stage") not in ("NORMAL_END",)]
+
+        print(f"\n{'='*60}")
+        print(f"Inference Summary: {len(results)} total | "
+              f"{len(passed)} PASS | {len(failed)} FAIL")
+        print(f"{'='*60}")
+
+        # Group by status
+        by_stage: dict[str, list[dict]] = {}
+        for r in failed:
+            stage = r.get("Stage", "?")
+            by_stage.setdefault(stage, []).append(r)
+
+        for stage, items in by_stage.items():
+            print(f"\n  [{stage}] ({len(items)}):")
+            for r in items:
+                reason = (r.get("Reason", "") or "")[:150]
+                print(f"    - {r['Model']}: {reason}")
+
+        # Print passed models compactly
+        if passed:
+            names = [r["Model"] for r in passed]
+            print(f"\n  [PASSED] ({len(passed)}): {', '.join(names)}")
+
     def run_performance(self):
+        """Run performance benchmarks for all selected models with per-model timeout."""
         all_results = []
-        futures = []
+        future_map: dict[concurrent.futures.Future, dict] = {}
+        future_submit_time: dict[concurrent.futures.Future, float] = {}
 
         bench_work_dir = os.path.join(self.work_dir, "performance")
         from model_worker import BenchSweepWorker
@@ -450,18 +600,73 @@ class Scheduler:
             worker = BenchSweepWorker(
                 work_dir=bench_work_dir, model_cfg=cfg, gpu_manager=self.gpu_manager
             )
-            future = self.executor.submit(self._run_with_gate, worker.run, stop_event, 3600 if self.args.concurrency == 1 else 14400)
-            futures.append(future)
+            # GPU allocation timeout: shorter for serial, generous for parallel
+            alloc_timeout = 3600 if self.args.concurrency == 1 else 14400
+            future = self.executor.submit(
+                self._run_with_gate, worker.run, stop_event, alloc_timeout
+            )
+            future_map[future] = cfg
+            future_submit_time[future] = time_module.time()
 
-        for f in as_completed(futures):
-            result = f.result()
-            all_results.append(result)
-        
+        POLL_SECONDS = 30
+        remaining = set(future_map.keys())
+
+        while remaining:
+            done, remaining = concurrent.futures.wait(
+                remaining,
+                timeout=POLL_SECONDS,
+                return_when=concurrent.futures.FIRST_COMPLETED,
+            )
+
+            # Process completed futures
+            for f in done:
+                cfg = future_map[f]
+                name = cfg.get("name", "?")
+                try:
+                    result = f.result()
+                except Exception as exc:
+                    result = {
+                        "task_name": name,
+                        "status": "error",
+                        "log_dir": None,
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "server_command": None,
+                        "client_command": None,
+                        "env": None,
+                    }
+                    print(f"\n[{name}] Benchmark worker crashed: {type(exc).__name__}: {exc}")
+                all_results.append(result)
+
+            # Kill overdue futures
+            now = time_module.time()
+            for f in list(remaining):
+                elapsed = now - future_submit_time[f]
+                if elapsed > self.args.model_timeout:
+                    cfg = future_map[f]
+                    name = cfg.get("name", "?")
+                    print(
+                        f"\n[{name}] TIMEOUT after {elapsed:.0f}s "
+                        f"(limit: {self.args.model_timeout}s) — killing"
+                    )
+                    stop_event.set()
+                    f.cancel()
+                    remaining.discard(f)
+                    all_results.append({
+                        "task_name": name,
+                        "status": "timeout",
+                        "log_dir": None,
+                        "error": f"Exceeded per-model timeout ({self.args.model_timeout}s)",
+                        "server_command": None,
+                        "client_command": None,
+                        "env": None,
+                    })
+                    stop_event.clear()
+
         # deal with the result and create the bench_tasks_result.csv
         df = pd.DataFrame(all_results)
         df = df[
             [
-                'task_name', 'status', 
+                'task_name', 'status',
                 'log_dir', 'error',
                 'server_command', 'client_command', 'env'
             ]
@@ -469,6 +674,19 @@ class Scheduler:
         csv_path = Path(bench_work_dir) / "bench_tasks_result.csv"
         csv_path.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(csv_path, index=False, encoding='utf-8')
+
+        # Print summary
+        ok = sum(1 for r in all_results if r.get("status") == "success")
+        err = sum(1 for r in all_results if r.get("status") == "error")
+        to = sum(1 for r in all_results if r.get("status") == "timeout")
+        print(f"\n{'='*60}")
+        print(f"Performance Summary: {len(all_results)} total | "
+              f"{ok} OK | {err} ERROR | {to} TIMEOUT")
+        print(f"{'='*60}")
+        for r in all_results:
+            if r.get("status") != "success":
+                print(f"  [{r['status'].upper()}] {r['task_name']}: "
+                      f"{(r.get('error') or '')[:120]}")
 
     def run_all(self):
         self.record_environment()

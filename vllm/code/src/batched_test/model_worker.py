@@ -5,6 +5,7 @@ import psutil
 import os
 import abc
 import json
+import urllib.request
 from enum import Enum, auto
 
 import threading
@@ -267,6 +268,7 @@ class InferWorker(Worker):
         image_case: str,
         model_cfg: dict,
         work_dir: str,
+        long_text_case: str | None = None,
         last_resume: str | None = None,
         gpu_manager: MPClusterManager | GPUManager = None,
     ):
@@ -276,7 +278,9 @@ class InferWorker(Worker):
 
         self.text_case = text_case
         self.image_case = image_case
+        self.long_text_case = long_text_case
         self.api_serve_process = None
+        self.serve_log_file = None
         self.status = self.InferenceStatus.INIT
         self.serve_cfg = model_cfg.get("serve_config", {})
         self.model_tag = f"{model_cfg['name']}[tp{self.serve_cfg.get('tp', 1)}pp{self.serve_cfg.get('pp', 1)}dp{self.serve_cfg.get('dp', 1)}]"
@@ -322,38 +326,65 @@ class InferWorker(Worker):
                 return item
         return None
 
-    def _do_text_only_inference(self, log_file: str) -> float:
+    def _run_text_cases(self, cases: list[dict], log_file: str,
+                         default_max_tokens: int = 256) -> int:
+        """Run a list of text cases, return count of correct responses.
+
+        Each case dict may have an optional ``max_tokens`` field; falls back
+        to *default_max_tokens*.  Cases are grouped by max_tokens and sent in
+        one batch per distinct value to minimise round-trips.
+        """
+        from collections import defaultdict
         client = ChatCompletionClient(host="localhost", port=self.port)
-        text_cases = self._load_cases(self.text_case)
-        questions = [case["question"] for case in text_cases]
 
-        # Get generator for responses
-        content_gen = client.run_text_only(
-            questions=questions, max_completion_tokens=256
-        )
+        # Group cases by their max_tokens value
+        groups: dict[int, list[tuple[int, dict]]] = defaultdict(list)
+        for idx, case in enumerate(cases):
+            mt = case.get("max_tokens", default_max_tokens)
+            groups[mt].append((idx, case))
 
-        corrected_responses = 0
-        # Zip test cases with yielded responses to match them
-        for test_case, content in zip(text_cases, content_gen):
+        # Collect responses in original order
+        responses: dict[int, str] = {}
+        for mt, indexed_cases in groups.items():
+            indices = [ic[0] for ic in indexed_cases]
+            questions = [ic[1]["question"] for ic in indexed_cases]
+            content_gen = client.run_text_only(
+                questions=questions, max_completion_tokens=mt
+            )
+            for i, content in zip(indices, content_gen):
+                responses[i] = content
+
+        # Score
+        corrected = 0
+        for idx, case in enumerate(cases):
+            content = responses.get(idx, "")
             if death_indication := self._check_critical_words(content):
                 raise RuntimeError(
                     f"client received: {death_indication}, "
                     "which indicate that vllm serve might crashed. Aborting..."
                 )
-            keywords = test_case.get("keywords", [])
-
-            # Check if any keyword is in the content (case-insensitive)
+            keywords = case.get("keywords", [])
             if any(str(k).lower() in content.lower() for k in keywords):
-                corrected_responses += 1
+                corrected += 1
 
             with open(log_file, "a") as f:
+                question_text = case["question"]
+                # Truncate very long questions in the log for readability
+                if len(question_text) > 2000:
+                    question_text = question_text[:2000] + "\n... [truncated]"
                 f.write(
-                    f"[{self.model_cfg['name']}] Question: {test_case['question']}\n"
+                    f"[{self.model_cfg['name']}] Question: {question_text}\n"
                 )
                 f.write(f"[{self.model_cfg['name']}] Response:\n")
                 f.write(content + "\n")
                 f.write("-" * 40 + "\n")
-        return corrected_responses / len(text_cases)
+
+        return corrected
+
+    def _do_text_only_inference(self, log_file: str) -> float:
+        text_cases = self._load_cases(self.text_case)
+        corrected = self._run_text_cases(text_cases, log_file, default_max_tokens=256)
+        return corrected / len(text_cases)
 
     def _do_single_image_inference(self, log_file: str) -> float:
         client = ChatCompletionClient(host="localhost", port=self.port)
@@ -457,6 +488,7 @@ class InferWorker(Worker):
         log_file = net_utils.prepare_dir(
             os.path.join(self.work_dir, f"{self.model_tag}_serve.log")
         )
+        self.serve_log_file = log_file  # expose for health-check log scanning
 
         # Prepare command (built below; may include mp multi-node args)
 
@@ -575,31 +607,107 @@ class InferWorker(Worker):
         )
 
     def _check_api_service_ready(self, blocking=True, timeout=1200):
-        # Block until the API service is up or timeout
+        """Block until the API service is healthy, or raise on error/timeout.
+
+        Mirrors the shell ``wait_for_server()`` pattern:
+        1. Process-alive check  (poll)
+        2. Log scan for Traceback / critical errors
+        3. HTTP endpoint check  (/health)
+        4. Wall-clock timeout
+        """
         t0 = time.time()
+        last_log_size = 0  # incremental scanning to avoid re-reading the whole log
 
         print(f"[{self.model_cfg['name']}] Waiting for service on port {self.port}...")
         while time.time() - t0 < timeout:
-            # Check if process has exited
+            # --- 0. external stop signal ---
             if self.stop_event.is_set():
                 raise KeyboardInterrupt("Stop event set, terminating service check.")
 
-            return_code = self.api_serve_process.poll()
-            if return_code is not None:
-                raise RuntimeError(
-                    f"[{self.model_cfg['name']}] vLLM serve process exited unexpectedly with code {return_code}."
-                )
+            # --- 1. process-alive check ---
+            if self.api_serve_process is not None:
+                return_code = self.api_serve_process.poll()
+                if return_code is not None:
+                    tail = ""
+                    if self.serve_log_file and os.path.exists(self.serve_log_file):
+                        try:
+                            with open(self.serve_log_file, "r", encoding="utf-8", errors="replace") as lf:
+                                lines = lf.readlines()
+                                tail = "".join(lines[-50:])
+                        except Exception:
+                            pass
+                    raise RuntimeError(
+                        f"[{self.model_cfg['name']}] vLLM serve process exited "
+                        f"unexpectedly with code {return_code}.\n"
+                        f"=== Last 50 lines of serve log ===\n{tail}"
+                    )
 
-            # Check if port is open
-            if not self.port_manager.is_port_available(self.port):
-                print(f"[{self.model_cfg['name']}] Service is up on port {self.port}.")
-                return True
+            # --- 2. scan log for Traceback / critical errors ---
+            if self.serve_log_file and os.path.exists(self.serve_log_file):
+                try:
+                    with open(self.serve_log_file, "r", encoding="utf-8", errors="replace") as lf:
+                        lf.seek(last_log_size)
+                        new_content = lf.read()
+                        last_log_size = lf.tell()  # advance cursor
+                except Exception:
+                    new_content = ""
+
+                if new_content:
+                    if "Traceback" in new_content:
+                        # Collect the Traceback block
+                        tb_lines: list[str] = []
+                        in_tb = False
+                        for line in new_content.splitlines():
+                            if "Traceback" in line:
+                                in_tb = True
+                            if in_tb:
+                                tb_lines.append(line)
+                                if len(tb_lines) > 40:
+                                    break
+                        raise RuntimeError(
+                            f"[{self.model_cfg['name']}] Traceback found in serve log:\n"
+                            + "\n".join(tb_lines)
+                        )
+
+                    for word in CRITICAL_WORDS:
+                        if word in new_content:
+                            raise RuntimeError(
+                                f"[{self.model_cfg['name']}] Critical error in serve log: "
+                                f"'{word}'"
+                            )
+
+            # --- 3. HTTP endpoint check (/health) ---
+            try:
+                url = f"http://localhost:{self.port}/health"
+                req = urllib.request.Request(url)
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    if resp.status == 200:
+                        elapsed = time.time() - t0
+                        print(
+                            f"[{self.model_cfg['name']}] Service is ready on port "
+                            f"{self.port} (took {elapsed:.0f}s)."
+                        )
+                        return True
+            except Exception:
+                pass  # not ready yet
 
             if not blocking:
                 return False
 
+            time.sleep(2)
+
+        # --- 4. timeout ---
+        tail = ""
+        if self.serve_log_file and os.path.exists(self.serve_log_file):
+            try:
+                with open(self.serve_log_file, "r", encoding="utf-8", errors="replace") as lf:
+                    lines = lf.readlines()
+                    tail = "".join(lines[-50:])
+            except Exception:
+                pass
         raise TimeoutError(
-            f"[{self.model_cfg['name']}] Service did not start within {timeout} seconds, aborted."
+            f"[{self.model_cfg['name']}] Service did not start within {timeout}s.\n"
+            f"=== Last 50 lines of serve log ===\n{tail}"
         )
 
     def _chat_completion(self) -> float:
@@ -628,7 +736,35 @@ class InferWorker(Worker):
             log_file = net_utils.prepare_dir(
                 os.path.join(self.work_dir, f"{self.model_tag}_text_only_inference.log")
             )
-            return self._do_text_only_inference(log_file)
+
+            # Load short text cases
+            cases = self._load_cases(self.text_case)
+
+            # When --long-text-case is specified, pick one long case and mix it in
+            # so every model run includes at least one long-context request.
+            if self.long_text_case:
+                assert os.path.exists(self.long_text_case), (
+                    f"Long text case file not found: {self.long_text_case}"
+                )
+                long_cases = self._load_cases(self.long_text_case)
+                # Pick a different long case per model (round-robin by port offset)
+                idx = (self.port % len(long_cases)) if long_cases else 0
+                picked = long_cases[idx]
+                picked["max_tokens"] = picked.get("max_tokens", 1024)
+                cases = list(cases) + [picked]
+                print(
+                    f"[{self.model_cfg['name']}] Mixed 1 long case "
+                    f"(#{idx + 1}/{len(long_cases)}, max_tokens={picked['max_tokens']}) "
+                    f"into {len(cases)} total cases."
+                )
+
+            corrected = self._run_text_cases(
+                cases, log_file, default_max_tokens=256
+            )
+
+            if len(cases) == 0:
+                return 0.0
+            return corrected / len(cases)
 
     def _shutdown_process(self):
         serve_process = self.api_serve_process
