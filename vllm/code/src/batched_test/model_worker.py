@@ -20,7 +20,10 @@ from gpu_manager import GPUManager
 from mp_manager import MPClusterManager
 from utils import cal_gpu_count
 
-CRITICAL_WORDS = ["EngineCore encountered an issue"]
+CRITICAL_WORDS = [
+    "EngineCore encountered an issue",
+    "ioctl create queue block timeout",
+]
 
 
 class Worker(abc.ABC):
@@ -456,11 +459,15 @@ class InferWorker(Worker):
         }
 
     def _warp_failure(self, e: str):
+        # Sanitize: replace newlines and truncate to keep CSV rows valid
+        reason = str(e).replace("\n", " | ").replace("\r", "")
+        if len(reason) > 500:
+            reason = reason[:500] + "..."
         return {
             "Model": self.model_tag,
             "Correct Ratio": "0%",
             "Stage": self.status.name,
-            "Reason": str(e),
+            "Reason": reason,
             "Model Path": self.model_cfg["model_path"],
         }
 
@@ -636,10 +643,14 @@ class InferWorker(Worker):
                                 tail = "".join(lines[-50:])
                         except Exception:
                             pass
+                    # Print full tail to stderr; keep exception message short for CSV
+                    if tail:
+                        print(
+                            f"[{self.model_cfg['name']}] Serve log tail:\n{tail}",
+                            flush=True,
+                        )
                     raise RuntimeError(
-                        f"[{self.model_cfg['name']}] vLLM serve process exited "
-                        f"unexpectedly with code {return_code}.\n"
-                        f"=== Last 50 lines of serve log ===\n{tail}"
+                        f"vLLM serve exited with code {return_code}"
                     )
 
             # --- 2. scan log for Traceback / critical errors ---
@@ -654,7 +665,9 @@ class InferWorker(Worker):
 
                 if new_content:
                     if "Traceback" in new_content:
-                        # Collect the Traceback block
+                        # Collect first + last line of the Traceback for a short summary.
+                        # Full dump goes to stderr; only a one-liner goes into the
+                        # exception (and therefore the CSV Reason column).
                         tb_lines: list[str] = []
                         in_tb = False
                         for line in new_content.splitlines():
@@ -664,9 +677,12 @@ class InferWorker(Worker):
                                 tb_lines.append(line)
                                 if len(tb_lines) > 40:
                                     break
+                        full_tb = "\n".join(tb_lines)
+                        print(f"[{self.model_cfg['name']}] Traceback in serve log:\n{full_tb}", flush=True)
+                        summary = tb_lines[0] if tb_lines else "Traceback"
+                        last = tb_lines[-1] if len(tb_lines) > 1 else ""
                         raise RuntimeError(
-                            f"[{self.model_cfg['name']}] Traceback found in serve log:\n"
-                            + "\n".join(tb_lines)
+                            f"Traceback in serve log: {summary} ... {last}"
                         )
 
                     for word in CRITICAL_WORDS:
@@ -705,9 +721,13 @@ class InferWorker(Worker):
                     tail = "".join(lines[-50:])
             except Exception:
                 pass
+        if tail:
+            print(
+                f"[{self.model_cfg['name']}] Serve log tail:\n{tail}",
+                flush=True,
+            )
         raise TimeoutError(
-            f"[{self.model_cfg['name']}] Service did not start within {timeout}s.\n"
-            f"=== Last 50 lines of serve log ===\n{tail}"
+            f"Service did not start within {timeout}s"
         )
 
     def _chat_completion(self) -> float:
