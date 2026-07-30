@@ -1567,7 +1567,24 @@
     bench_param: configs/bench_params/bench_high.json
     sweep_num_runs: 1
   extra_env:
-  tags: 
+  tags:
+  - moe
+
+- name: DeepSeek-V4-Flash-W8A8
+  timeout: 3600
+  model_path: /mxstorage/pde_ai/models/model_quant_opt/DeepSeek/DeepSeek-V4-Flash_FlexSMQ-AWQ_W8A8/vllm_quant_model
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_high.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
   - moe
 
 - name: DeepSeek-V3-671B-W8A8-MTP
