@@ -5,6 +5,7 @@
     dp: 1
     pp: 1
     extra_args:
+      --max-num-seqs: 256
   infer_type:
   - text-only
   benchmark:
@@ -23,6 +24,7 @@
     pp: 1
     extra_args:
       --compilation-config: '{"mode":3,"pass_config":{"fuse_minimax_qk_norm":true}}'
+      --enable-expert-parallel:
   infer_type:
   - text-only
   benchmark:
@@ -34,12 +36,14 @@
   - moe
 
 - name: MiniMax-M3_MXFP8
-  model_path: /pde_ai/models/diwang/MiniMax/MiniMax-M3-FP8_BLOCK/vllm_quant_model
+  model_path: /mxstorage/pde_ai/models/llm/MiniMax/MiniMax-M3-FP8_BLOCK/vllm_quant_model
   serve_config:
-    tp: 8
-    dp: 1
+    tp: 2
+    dp: 4
     pp: 1
     extra_args:
+      --block-size: 128
+      --max-num-batched-tokens: 2048
   infer_type:
   - text-only
   benchmark:
@@ -114,7 +118,6 @@
     dp: 1
     pp: 1
     extra_args:
-      --attention-config: '{"indexer_kv_dtype":"fp8"}'
   infer_type:
   - text-only
   benchmark:
@@ -128,8 +131,8 @@
 - name: MiMo-V2-Flash_FP8
   model_path: /mxstorage/pde_ai/models/llm/MiMo/MiMo-V2-Flash
   serve_config:
-    tp: 8
-    dp: 1
+    tp: 4
+    dp: 2
     pp: 1
     extra_args:
   infer_type:
@@ -149,6 +152,7 @@
     dp: 1
     pp: 1
     extra_args:
+      --max-num-seqs: 256
   infer_type:
   - text-only
   benchmark:
