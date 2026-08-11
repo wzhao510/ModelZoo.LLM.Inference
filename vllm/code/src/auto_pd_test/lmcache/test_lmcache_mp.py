@@ -1,8 +1,6 @@
 import contextlib
 import json
 import os
-import signal
-import socket
 import subprocess
 import time
 
@@ -10,12 +8,20 @@ import pytest
 
 
 try:
-    import torch
     from openai import OpenAI
     from transformers import AutoTokenizer
 except ImportError:
     print("Please install 'torch', 'openai' and 'transformers' first.")
     raise SystemExit(1)
+
+from common import (
+    dump_file as _dump_file,
+    popen_own_group as _popen_own_group,
+    query_and_measure_ttft,
+    terminate_process_group as _terminate,
+    wait_for_free_gpu_memory as _wait_for_free_gpu_memory,
+    wait_for_port as _wait_for_port,
+)
 
 
 VLLM_MODEL_PATH = "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B"
@@ -50,117 +56,6 @@ SLOT_B = {
 }
 
 
-def _dump_file(log_file, tail_lines=200):
-    print("\n" + "=" * 80)
-    print(f"DEBUG LOG DUMP: {log_file}")
-    print("=" * 80)
-    try:
-        with open(log_file, "r", errors="ignore") as f:
-            lines = f.readlines()
-    except FileNotFoundError:
-        print("(log file not found)")
-        print("=" * 80)
-        return
-
-    if not lines:
-        print("(log file is empty)")
-    else:
-        print("".join(lines[-tail_lines:]).rstrip())
-    print("=" * 80)
-
-
-def _wait_for_port(host, port, timeout=180, process=None, log_file=None, stage="startup"):
-    start_time = time.monotonic()
-    print(f"Waiting for port {host}:{port} ...")
-    while True:
-        if process is not None:
-            retcode = process.poll()
-            if retcode is not None:
-                print(f"[FATAL] Process exited unexpectedly during {stage} with code {retcode}.")
-                if log_file:
-                    _dump_file(log_file)
-                raise RuntimeError(f"Process exited unexpectedly during {stage} with code {retcode}.")
-        try:
-            with socket.create_connection((host, port), timeout=10):
-                print(f"Port {port} is ready.")
-                return
-        except (ConnectionRefusedError, OSError):
-            if time.monotonic() - start_time >= timeout:
-                print(f"[FATAL] Timeout waiting for {host}:{port} during {stage}.")
-                if log_file:
-                    _dump_file(log_file)
-                raise TimeoutError(f"Timed out waiting for port {port} ({timeout}s).")
-            time.sleep(1)
-
-
-def _popen_own_group(cmd, **kwargs):
-    """`subprocess.Popen` wrapper that puts the child in its OWN process
-    group/session (`start_new_session=True`, POSIX `setsid` equivalent).
-
-    `vllm serve` forks its own child processes (e.g. a separate EngineCore
-    process, visible in its logs as a different pid than the `vllm` process
-    itself). Signaling only the top-level pid leaves those children running
-    and holding GPU memory -- exactly what caused test_02/03 above to fail
-    with "not enough free GPU memory": test_01's orphaned EngineCore process
-    never released its ~58GB. `_terminate` below signals the whole group,
-    not just this one pid, to actually clean everything up.
-    """
-    return subprocess.Popen(cmd, start_new_session=True, **kwargs)
-
-
-def _terminate(process, name):
-    if process is None:
-        return
-    pgid = os.getpgid(process.pid)
-    try:
-        os.killpg(pgid, signal.SIGTERM)
-    except ProcessLookupError:
-        return
-    try:
-        process.wait(timeout=20)
-    except subprocess.TimeoutExpired:
-        print(f"{name} (pid={process.pid}) did not exit on SIGTERM, sending SIGKILL to its process group.")
-        try:
-            os.killpg(pgid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        try:
-            process.wait(timeout=15)
-        except subprocess.TimeoutExpired:
-            print(f"{name} (pid={process.pid}) STILL did not exit after SIGKILL -- check for leaked GPU memory.")
-
-
-def _wait_for_free_gpu_memory(cuda_device, min_free_ratio=0.85, timeout=60):
-    """Poll `torch.cuda.mem_get_info()` until the device has mostly-free memory.
-
-    Process exit is not the same as the driver actually reclaiming GPU
-    memory: on this MACA platform (especially with MACA_MPS_MODE=1), a
-    cleanly-terminated vLLM instance can still leave the device showing only
-    a fraction of its memory free for tens of seconds afterward, which made
-    the very next vLLM startup fail with "not enough free GPU memory" even
-    though the previous process was already gone. This blocks the *next*
-    service from starting until the previous one's memory is actually back.
-    """
-    device_index = int(cuda_device)
-    start = time.monotonic()
-    while True:
-        free_bytes, total_bytes = torch.cuda.mem_get_info(device_index)
-        free_ratio = free_bytes / total_bytes
-        free_gib = free_bytes / (1024**3)
-        total_gib = total_bytes / (1024**3)
-        if free_ratio >= min_free_ratio:
-            print(f"GPU {cuda_device}: {free_gib:.1f}/{total_gib:.1f} GiB free, proceeding.")
-            return
-        if time.monotonic() - start >= timeout:
-            print(
-                f"[WARN] GPU {cuda_device} still only {free_gib:.1f}/{total_gib:.1f} GiB "
-                f"free after waiting {timeout}s for memory reclaim; proceeding anyway "
-                "-- the next service may fail to start."
-            )
-            return
-        time.sleep(2)
-
-
 @contextlib.contextmanager
 def lmcache_coordinator(tmp_path_factory):
     """Start `lmcache coordinator` (membership only, never touches KV data).
@@ -182,7 +77,7 @@ def lmcache_coordinator(tmp_path_factory):
         process = _popen_own_group(cmd, stdout=log_handle, stderr=subprocess.STDOUT)
         _wait_for_port(
             COORDINATOR_HOST, COORDINATOR_PORT, timeout=30,
-            process=process, log_file=log_file, stage="coordinator startup",
+            process=process, log_paths=log_file, stage="coordinator startup",
         )
         print("lmcache coordinator is ready.")
         yield
@@ -266,7 +161,7 @@ def lmcache_mp_service(
         )
         _wait_for_port(
             "localhost", slot["lmcache_http_port"], timeout=60,
-            process=lmcache_process, log_file=lmcache_log,
+            process=lmcache_process, log_paths=lmcache_log,
             stage=f"{name} lmcache server startup",
         )
         print("lmcache server is ready.")
@@ -297,7 +192,7 @@ def lmcache_mp_service(
         print("Waiting for vLLM service to load the model...")
         _wait_for_port(
             VLLM_HOST, slot["vllm_port"], timeout=180,
-            process=vllm_process, log_file=vllm_log,
+            process=vllm_process, log_paths=vllm_log,
             stage=f"{name} vllm startup",
         )
         print("vLLM service is ready.")
@@ -368,43 +263,6 @@ def _get_long_prompt():
 
     print(f"Generated prompt tokens: {len(final_tokens)}")
     return prompt, tokenizer
-
-
-def query_and_measure_ttft(client, model_id, prompt):
-    """Run one greedy (temperature=0) streaming query.
-
-    Returns (ttft_seconds, generated_text). `generated_text` lets callers
-    check correctness (does cache reuse change the output?) in addition to
-    the TTFT speed comparison -- a KV cache bug can corrupt generation
-    without necessarily making it slower, so speed alone can't catch it.
-    """
-    start_time = time.perf_counter()
-    first_token_time = None
-    text_parts = []
-    try:
-        stream = client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model=model_id,
-            temperature=0.0,
-            max_tokens=150,
-            stream=True,
-        )
-        for chunk in stream:
-            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                content = chunk.choices[0].delta.content
-                if first_token_time is None:
-                    first_token_time = time.perf_counter()
-                    print(f"First token: '{content}'", end="", flush=True)
-                else:
-                    print(content, end="", flush=True)
-                text_parts.append(content)
-        print("\nStreaming response finished.")
-        if first_token_time is None:
-            raise RuntimeError("No token content received from the stream.")
-        return first_token_time - start_time, "".join(text_parts)
-    except Exception as e:
-        print(f"\nQuery failed: {e}")
-        return 9999.0, ""
 
 
 def _client_for(service_info):

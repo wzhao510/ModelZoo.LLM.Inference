@@ -1,7 +1,5 @@
 import json
 import os
-import signal
-import socket
 import subprocess
 import textwrap
 import time
@@ -9,6 +7,14 @@ from pathlib import Path
 
 import pytest
 import requests
+
+from common import (
+    dump_logs as _dump_process_logs,
+    popen_own_group,
+    terminate_all,
+    wait_for_free_gpu_memory,
+    wait_for_port as _wait_for_port,
+)
 
 
 TEST_DIR = Path(__file__).resolve().parent
@@ -29,58 +35,6 @@ PROXY_INTERNAL_PORT = 7500
 PROXY_SCRIPT_PATH = TEST_DIR / "disagg_proxy_lmcache_server.py"
 FIXED_BUFFER_SIZE = 3355443200
 GPU_MEMORY_UTILIZATION = 0.85
-
-
-def _dump_process_logs(log_paths, log_handles=None, tail_lines=200):
-    print("\n" + "=" * 80)
-    print("STARTUP DEBUG LOG DUMP")
-    print("=" * 80)
-    if log_handles:
-        for handle in log_handles.values():
-            try:
-                handle.flush()
-            except Exception:
-                pass
-
-    for name, log_path in log_paths.items():
-        print(f"\n--- {name}: {log_path} ---")
-        try:
-            with open(log_path, "r", errors="ignore") as f:
-                lines = f.readlines()
-        except FileNotFoundError:
-            print("(log file not found)")
-            continue
-
-        if not lines:
-            print("(log file is empty)")
-            continue
-
-        print("".join(lines[-tail_lines:]).rstrip())
-
-    print("\n" + "=" * 80)
-
-
-def _wait_for_port(host, port, timeout, processes=None, log_paths=None, log_handles=None, stage="startup"):
-    start = time.time()
-    while time.time() - start < timeout:
-        if processes:
-            for name, proc in processes.items():
-                retcode = proc.poll()
-                if retcode is not None:
-                    print(f"[FATAL] Process {name} exited unexpectedly during {stage} with code {retcode}.")
-                    if log_paths:
-                        _dump_process_logs(log_paths, log_handles)
-                    raise RuntimeError(f"Process {name} exited unexpectedly during {stage} with code {retcode}.")
-        try:
-            with socket.create_connection((host, port), timeout=1):
-                return
-        except OSError:
-            time.sleep(1)
-
-    if log_paths:
-        print(f"[FATAL] Timeout waiting for {host}:{port} during {stage}.")
-        _dump_process_logs(log_paths, log_handles)
-    raise TimeoutError(f"Port {port} not ready in {timeout}s")
 
 
 @pytest.fixture(scope="module")
@@ -175,7 +129,7 @@ def cluster_1p2d_tp2(tmp_path_factory):
                 },
             }),
         ]
-        processes["decoder1"] = subprocess.Popen(d1_cmd, env=d1_env, stdout=logs["d1"], stderr=subprocess.STDOUT, start_new_session=True)
+        processes["decoder1"] = popen_own_group(d1_cmd, env=d1_env, stdout=logs["d1"], stderr=subprocess.STDOUT)
 
         logs["d2"] = open(log_paths["decoder2"], "w")
         d2_env = base_env.copy()
@@ -199,7 +153,7 @@ def cluster_1p2d_tp2(tmp_path_factory):
                 },
             }),
         ]
-        processes["decoder2"] = subprocess.Popen(d2_cmd, env=d2_env, stdout=logs["d2"], stderr=subprocess.STDOUT, start_new_session=True)
+        processes["decoder2"] = popen_own_group(d2_cmd, env=d2_env, stdout=logs["d2"], stderr=subprocess.STDOUT)
 
         logs["pre"] = open(log_paths["prefiller"], "w")
         p_env = base_env.copy()
@@ -222,7 +176,7 @@ def cluster_1p2d_tp2(tmp_path_factory):
                 },
             }),
         ]
-        processes["prefiller"] = subprocess.Popen(p_cmd, env=p_env, stdout=logs["pre"], stderr=subprocess.STDOUT, start_new_session=True)
+        processes["prefiller"] = popen_own_group(p_cmd, env=p_env, stdout=logs["pre"], stderr=subprocess.STDOUT)
 
         _wait_for_port(HOST, DECODER1_PORT, 300, processes=processes, log_paths=log_paths, log_handles=logs, stage="decoder1 startup")
         _wait_for_port(HOST, DECODER2_PORT, 300, processes=processes, log_paths=log_paths, log_handles=logs, stage="decoder2 startup")
@@ -241,30 +195,27 @@ def cluster_1p2d_tp2(tmp_path_factory):
             "--proxy-host", HOST, "--proxy-port", str(PROXY_INTERNAL_PORT),
             "--num-decoders", "2",
         ]
-        processes["proxy"] = subprocess.Popen(proxy_cmd, stdout=logs["proxy"], stderr=subprocess.STDOUT, start_new_session=True)
+        processes["proxy"] = popen_own_group(proxy_cmd, stdout=logs["proxy"], stderr=subprocess.STDOUT)
         _wait_for_port(HOST, PROXY_PORT, 60, processes=processes, log_paths=log_paths, log_handles=logs, stage="proxy startup")
         yield run_dir
 
     finally:
-        for p in processes.values():
-            try:
-                pgid = os.getpgid(p.pid)
-                os.killpg(pgid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-
-        time.sleep(3)
-
-        for p in processes.values():
-            try:
-                if p.poll() is None:
-                    pgid = os.getpgid(p.pid)
-                    os.killpg(pgid, signal.SIGKILL)
-            except Exception as e:
-                print(f"Error killing process {p.pid}: {e}")
+        # Signal every process's whole group (proxy + the 3 vLLM instances)
+        # together -- waiting out the proxy's full teardown timeout before
+        # even signalling the heavy GPU-holding vLLM processes needlessly
+        # delays their shutdown/reclaim.
+        terminate_all(processes)
 
         for f in logs.values():
             f.close()
+
+        # Confirm the GPUs used by prefiller (0,1) / decoder1 (2,3) /
+        # decoder2 (4,5) are actually free before the next test starts --
+        # terminate_all only confirms the processes are gone, not that the
+        # driver has finished reclaiming their memory (can lag by tens of
+        # seconds on this platform).
+        for cuda_device in range(6):
+            wait_for_free_gpu_memory(cuda_device)
 
 
 def send_chat_request(request_id, prompt):

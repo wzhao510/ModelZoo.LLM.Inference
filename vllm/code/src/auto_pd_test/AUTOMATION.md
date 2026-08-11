@@ -32,3 +32,16 @@ chmod +x ./run_all_tests.sh
 3. Re-run `./run_all_tests.sh`.
 
 If `test_manifest.txt` is removed, the script falls back to auto-discovering `test_*.py`.
+
+## Shared infrastructure
+
+`common.py` (root of `auto_pd_test/`) holds the process lifecycle, port-waiting,
+log-dumping, and TTFT/correctness-assertion helpers every test file uses — import
+from it instead of re-deriving `_wait_for_port` / `_dump_file` / process cleanup in
+a new test file. `conftest.py` registers pytest markers (`pd`, `kvoffload`,
+`kvshare`, `backend`, `slow`) and makes `auto_pd_test/` importable from any
+subdirectory test.
+
+See `TEST_PLAN.md` for the current test inventory, the framework issues found in
+the last audit (and which are already fixed vs. still open), and the phased plan
+for expanding coverage.

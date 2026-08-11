@@ -1,9 +1,12 @@
 import pytest
 import os
-import subprocess
-import time
 import socket
+import subprocess
+import threading
+import time
 import textwrap
+import urllib.error
+import urllib.request
 from pathlib import Path
 import contextlib
 import json
@@ -14,6 +17,133 @@ try:
 except ImportError:
     print("错误：请先安装 'openai' 和 'transformers' 库 (pip install openai transformers)")
     exit(1)
+
+from common import (
+    assert_cache_speedup,
+    popen_own_group,
+    terminate_process_group,
+    wait_for_free_gpu_memory,
+    wait_for_port as _wait_for_port,
+)
+
+
+def _port_reachable(host, port, timeout=1):
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _controller_http_alive(host, port, timeout=1.5):
+    """Whether the controller's FastAPI app (not just its listening socket)
+    is actually responding. After the bind-race shutdown, the OS process
+    hangs around forever without exiting, and its listening socket on
+    `port` keeps accepting TCP connections at the kernel level (the 3-way
+    handshake succeeds) even though nothing will ever answer -- so a plain
+    `socket.create_connection()` reads as "up" whether the app is alive or
+    already dead inside. A real HTTP GET against its own `/` route only
+    completes if the ASGI app is actually still serving requests."""
+    try:
+        with urllib.request.urlopen(f"http://{host}:{port}/", timeout=timeout):
+            return True
+    except urllib.error.HTTPError:
+        return True  # any HTTP response (even an error status) means it's alive
+    except (urllib.error.URLError, OSError, TimeoutError):
+        return False
+
+
+def _spawn_controller_health_monitor(host, port, pull_port, reply_port, log_path, interval=1.0):
+    """Background thread that timestamps controller health every `interval`
+    seconds for the rest of the test's lifetime, so a delayed failure (one
+    that doesn't show up in the first few seconds after startup) can be
+    pinpointed instead of guessed at from buffered log timestamps. Returns
+    a `threading.Event` -- set it to stop the thread."""
+    stop_event = threading.Event()
+
+    def _run():
+        with open(log_path, "a") as f:
+            while not stop_event.is_set():
+                t0 = time.monotonic()
+                http_ok = _controller_http_alive(host, port)
+                pull_ok = _port_reachable(host, pull_port)
+                reply_ok = _port_reachable(host, reply_port)
+                f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] http={http_ok} pull={pull_ok} reply={reply_ok}\n")
+                f.flush()
+                stop_event.wait(max(0.0, interval - (time.monotonic() - t0)))
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    return stop_event
+
+
+def _start_controller_with_retry(controller_cmd, controller_env, log_path, host, port, pull_port, reply_port,
+                                  max_attempts=3, verify_window=20.0):
+    """Start `lmcache_controller`, retrying if its ZMQ registration channels
+    die a few seconds after startup.
+
+    Root cause (fully traced, not a guess -- see TEST_PLAN.md): this
+    container runs with `--net=host`, so its ports are the *host's* ports.
+    Port 9000 was already permanently held by an unrelated container on the
+    same shared GPU host (`mx-exporter`, a metrics exporter with an explicit
+    `0.0.0.0:9000->9000/tcp` publish -- visible in `docker ps`), so every
+    single `lmcache_controller` startup's real listen-socket bind
+    (`loop.create_server(host, port)` inside uvicorn's `Server.startup()`)
+    failed with EADDRINUSE, deterministically, no matter how many times you
+    retried the exact same port. That's why callers should pass a `port`
+    that isn't a well-known default (moved off 9000/8300/8400 for exactly
+    this reason).
+
+    The *mechanism* by which that bind failure breaks P2P sharing is still
+    worth knowing, independent of which port collided: uvicorn's
+    `Server.startup()` runs the FastAPI lifespan startup event (which starts
+    `controller_manager.start_all()` as a background task handling the ZMQ
+    pull/reply registration channels) *before* it attempts the real socket
+    bind. If that bind then fails, it calls `await self.lifespan.shutdown()`
+    -- cancelling that background task -- and `sys.exit()`. Since vLLM
+    workers register over those ZMQ channels (not an HTTP endpoint), this is
+    what actually breaks P2P sharing. This retry loop is kept as a defensive
+    fallback for the case where the *new* port also turns out to collide
+    with something else on a shared host -- not as the primary fix, which is
+    picking a port nobody else is using.
+    """
+    process = None
+    for attempt in range(1, max_attempts + 1):
+        log_handle = open(log_path, "a")
+        process = popen_own_group(controller_cmd, env=controller_env, stdout=log_handle, stderr=subprocess.STDOUT)
+        try:
+            _wait_for_port(host, port, process=process)
+            _wait_for_port(host, pull_port, process=process)
+            _wait_for_port(host, reply_port, process=process)
+        except Exception:
+            terminate_process_group(process, f"lmcache_controller (attempt {attempt})")
+            if attempt == max_attempts:
+                raise
+            print(f"lmcache_controller attempt {attempt} failed to come up, retrying...")
+            time.sleep(1)
+            continue
+
+        # The ZMQ pull/reply channels are the ones that actually matter for
+        # registration and are the ones observed to die ~9s in -- watch them
+        # (not just the HTTP port, which stays healthy either way) for a
+        # window well past that before trusting this instance.
+        still_up = True
+        deadline = time.monotonic() + verify_window
+        while time.monotonic() < deadline:
+            time.sleep(0.5)
+            if not (_port_reachable(host, pull_port) and _port_reachable(host, reply_port)):
+                still_up = False
+                break
+        if still_up:
+            return process
+
+        print(f"lmcache_controller (attempt {attempt})'s ZMQ pull/reply channels died a few seconds after startup, retrying...")
+        terminate_process_group(process, f"lmcache_controller (attempt {attempt})")
+        if attempt == max_attempts:
+            raise RuntimeError(f"lmcache_controller's ZMQ channels kept dying after startup after {max_attempts} attempts")
+        time.sleep(1)
+
+    return process
 
 # --- 测试配置常量 ---
 VLLM_MODEL_PATH = "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B"
@@ -29,9 +159,15 @@ GPU_ID_2 = "4"
 CENTRALIZED_SERVER_PORT = 65432
 
 # --- P2P v2 (Controller) 新增常量 ---
-CONTROLLER_PORT = 9000
-CONTROLLER_PULL_PORT = 8300
-CONTROLLER_REPLY_PORT = 8400
+# 9000/8300/8400 之前和这台共享 GPU 主机上另一个容器(mx-exporter，一个跟
+# 本测试完全无关的监控/指标导出服务)的端口冲突了：本测试所在容器用的是
+# `--net=host`，与主机共享同一套端口空间，而 mx-exporter 显式映射了
+# `0.0.0.0:9000->9000/tcp`（`docker ps` 可见），所以 controller 每次绑定
+# 9000 都会失败——这不是 LMCache 自身的 bug，纯粹是端口选得不够独特，在多租户
+# 共享主机上撞了别人的车。换成一段更不容易和别的服务/别的用户撞掉的端口。
+CONTROLLER_PORT = 19000
+CONTROLLER_PULL_PORT = 19300
+CONTROLLER_REPLY_PORT = 19400
 
 # P2P v2 vLLM 1 的端口
 P2P_INIT_PORT_1 = 8200
@@ -84,9 +220,9 @@ def centralized_sharing_service(tmp_path_factory):
         lmcache_env["LMCACHE_LOG_LEVEL"] = "DEBUG"
         lmcache_env["VLLM_DISABLE_REQUEST_ID_RANDOMIZATION"] = "1"
 
-        p_lmcache = subprocess.Popen(lmcache_cmd, stdout=log_handles["lmcache_server"], stderr=subprocess.STDOUT)
+        p_lmcache = popen_own_group(lmcache_cmd, stdout=log_handles["lmcache_server"], stderr=subprocess.STDOUT)
         processes.append(p_lmcache)
-        _wait_for_port(VLLM_HOST, CENTRALIZED_SERVER_PORT)
+        _wait_for_port(VLLM_HOST, CENTRALIZED_SERVER_PORT, process=p_lmcache)
 
         # 3. 准备 vLLM 环境变量
         vllm_env = original_env.copy()
@@ -99,19 +235,19 @@ def centralized_sharing_service(tmp_path_factory):
         log_handles["vllm1"] = open(log_paths["vllm1"], "w")
         vllm_env1 = vllm_env.copy(); vllm_env1["CUDA_VISIBLE_DEVICES"] = GPU_ID_1
         vllm_cmd1 = _get_vllm_cmd(VLLM_PORT_1)
-        p_vllm1 = subprocess.Popen(vllm_cmd1, env=vllm_env1, stdout=log_handles["vllm1"], stderr=subprocess.STDOUT)
+        p_vllm1 = popen_own_group(vllm_cmd1, env=vllm_env1, stdout=log_handles["vllm1"], stderr=subprocess.STDOUT)
         processes.append(p_vllm1)
 
         log_handles["vllm2"] = open(log_paths["vllm2"], "w")
         vllm_env2 = vllm_env.copy(); vllm_env2["CUDA_VISIBLE_DEVICES"] = GPU_ID_2
         vllm_cmd2 = _get_vllm_cmd(VLLM_PORT_2)
-        p_vllm2 = subprocess.Popen(vllm_cmd2, env=vllm_env2, stdout=log_handles["vllm2"], stderr=subprocess.STDOUT)
+        p_vllm2 = popen_own_group(vllm_cmd2, env=vllm_env2, stdout=log_handles["vllm2"], stderr=subprocess.STDOUT)
         processes.append(p_vllm2)
 
         # 5. 等待所有服务就绪
         print("\n--- 等待所有服务端口开放 ---")
-        _wait_for_port(VLLM_HOST, VLLM_PORT_1)
-        _wait_for_port(VLLM_HOST, VLLM_PORT_2)
+        _wait_for_port(VLLM_HOST, VLLM_PORT_1, process=p_vllm1)
+        _wait_for_port(VLLM_HOST, VLLM_PORT_2, process=p_vllm2)
         print("✅ 所有服务已成功启动并准备就绪!")
 
         # 6. 将控制权交给测试函数
@@ -121,11 +257,14 @@ def centralized_sharing_service(tmp_path_factory):
         }
 
     finally:
-        # 7. 测试结束后，清理所有资源
+        # 7. 测试结束后，清理所有资源 -- stop vLLM clients before the shared
+        # lmcache server they depend on (reverse start order).
         print("\n--- 正在关闭所有服务 ---")
-        _terminate_processes(processes)
+        _terminate_processes(list(reversed(processes)))
         for f in log_handles.values(): f.close()
         os.environ.clear(); os.environ.update(original_env)
+        wait_for_free_gpu_memory(GPU_ID_1)
+        wait_for_free_gpu_memory(GPU_ID_2)
 
 # --- 上下文管理器 2: P2P KVCache 共享服务 ---
 @contextlib.contextmanager
@@ -204,34 +343,43 @@ def p2p_sharing_service(tmp_path_factory):
     try:
         # --- 3. 启动 LMCache Controller (替换 Redis) ---
         print("\n--- 正在启动 LMCache Controller ---")
-        log_handles["controller"] = open(log_paths["controller"], "w")
-        
+
         # 构造 --monitor-ports 的 JSON 字符串参数
         monitor_ports_config = json.dumps({
-            "pull": CONTROLLER_PULL_PORT, 
+            "pull": CONTROLLER_PULL_PORT,
             "reply": CONTROLLER_REPLY_PORT
         })
-        
+
         controller_cmd = [
             "lmcache_controller",
-            "--host", VLLM_HOST,
+            "--host", "127.0.0.1",
             "--port", str(CONTROLLER_PORT),
             "--monitor-ports", monitor_ports_config
         ]
-        
+
         controller_env = original_env.copy()
         controller_env["PYTHONHASHSEED"] = "1289" # 保持哈希种子一致
         controller_env["LMCACHE_LOG_LEVEL"] = "DEBUG"
         controller_env["VLLM_DISABLE_REQUEST_ID_RANDOMIZATION"] = "1"
-        
-        p_controller = subprocess.Popen(controller_cmd, env=controller_env, stdout=log_handles["controller"], stderr=subprocess.STDOUT)
+
+        # 见 _start_controller_with_retry 的说明：controller 偶尔会在自己的
+        # "Application startup complete" 之后立刻因为一次 asyncio 内部的绑定
+        # 冲突自行优雅退出，_wait_for_port 抓不住这个瞬间窗口，所以这里失败会重试。
+        p_controller = _start_controller_with_retry(
+            controller_cmd, controller_env, log_paths["controller"],
+            VLLM_HOST, CONTROLLER_PORT, CONTROLLER_PULL_PORT, CONTROLLER_REPLY_PORT,
+        )
+        log_handles["controller"] = open(log_paths["controller"], "a")
         processes.append(p_controller)
-        
-        # 等待 Controller 的所有端口
-        _wait_for_port(VLLM_HOST, CONTROLLER_PORT)
-        _wait_for_port(VLLM_HOST, CONTROLLER_PULL_PORT)
-        _wait_for_port(VLLM_HOST, CONTROLLER_REPLY_PORT)
-        
+
+        # Temporary diagnostic: timestamp controller health every second for
+        # the rest of the test so a delayed failure can be pinpointed instead
+        # of guessed at from buffered uvicorn log timestamps (see TEST_PLAN.md).
+        health_log_path = Path(log_paths["controller"]).with_name("controller_health.log")
+        health_monitor_stop = _spawn_controller_health_monitor(
+            VLLM_HOST, CONTROLLER_PORT, CONTROLLER_PULL_PORT, CONTROLLER_REPLY_PORT, health_log_path,
+        )
+
         # --- 4. 准备 vLLM 环境变量 (UCX_TLS) ---
         vllm_base_env = original_env.copy()
         vllm_base_env["PYTHONHASHSEED"] = "1289"
@@ -247,7 +395,7 @@ def p2p_sharing_service(tmp_path_factory):
         vllm_env1["LMCACHE_CONFIG_FILE"] = str(config1_file)
         vllm_env1["CUDA_VISIBLE_DEVICES"] = GPU_ID_1
         vllm_cmd1 = _get_vllm_cmd(VLLM_PORT_1)
-        p_vllm1 = subprocess.Popen(vllm_cmd1, env=vllm_env1, stdout=log_handles["vllm1"], stderr=subprocess.STDOUT)
+        p_vllm1 = popen_own_group(vllm_cmd1, env=vllm_env1, stdout=log_handles["vllm1"], stderr=subprocess.STDOUT)
         processes.append(p_vllm1)
 
         log_handles["vllm2"] = open(log_paths["vllm2"], "w")
@@ -255,26 +403,33 @@ def p2p_sharing_service(tmp_path_factory):
         vllm_env2["LMCACHE_CONFIG_FILE"] = str(config2_file)
         vllm_env2["CUDA_VISIBLE_DEVICES"] = GPU_ID_2
         vllm_cmd2 = _get_vllm_cmd(VLLM_PORT_2)
-        p_vllm2 = subprocess.Popen(vllm_cmd2, env=vllm_env2, stdout=log_handles["vllm2"], stderr=subprocess.STDOUT)
+        p_vllm2 = popen_own_group(vllm_cmd2, env=vllm_env2, stdout=log_handles["vllm2"], stderr=subprocess.STDOUT)
         processes.append(p_vllm2)
 
         # --- 6. 等待 vLLM 服务就绪 ---
         print("\n--- 等待所有服务端口开放 ---")
-        _wait_for_port(VLLM_HOST, VLLM_PORT_1)
-        _wait_for_port(VLLM_HOST, VLLM_PORT_2)
+        _wait_for_port(VLLM_HOST, VLLM_PORT_1, process=p_vllm1)
+        _wait_for_port(VLLM_HOST, VLLM_PORT_2, process=p_vllm2)
         print("✅ 所有服务已成功启动并准备就绪!")
-        
+
         yield {
             "vllm1_port": VLLM_PORT_1, "vllm2_port": VLLM_PORT_2,
             "host": VLLM_HOST, "type": "P2P v2" # 更新测试类型名称
         }
 
     finally:
-        # --- 7. 清理逻辑 ---
+        # --- 7. 清理逻辑 -- stop vLLM clients before the controller they
+        # depend on (reverse start order). ---
         print("\n--- 正在关闭所有服务 (包括 lmcache_controller) ---")
-        _terminate_processes(processes) # 会终止所有进程
+        try:
+            health_monitor_stop.set()
+        except NameError:
+            pass
+        _terminate_processes(list(reversed(processes)))
         for f in log_handles.values(): f.close()
         os.environ.clear(); os.environ.update(original_env)
+        wait_for_free_gpu_memory(GPU_ID_1)
+        wait_for_free_gpu_memory(GPU_ID_2)
 
 # --- 辅助函数 ---
 def _get_vllm_cmd(port):
@@ -290,29 +445,22 @@ def _get_vllm_cmd(port):
 
 
 def _terminate_processes(processes):
-    """终止给定的子进程列表"""
-    for p in processes: p.terminate()
+    """终止给定的子进程列表（对每个进程的整个进程组发信号，见 common.terminate_process_group）"""
     for p in processes:
-        try: p.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            p.kill(); print(f"  > 进程 {p.pid} 被强制终止。")
+        terminate_process_group(p, f"pid={p.pid}")
 
-def _wait_for_port(host, port, timeout=180):
-    """在指定时间内持续检查端口是否开放"""
-    start_time = time.monotonic()
-    print(f"  > 正在等待端口 {host}:{port} ...")
-    while True:
-        try:
-            with socket.create_connection((host, port), timeout=10):
-                print(f"  > 端口 {port} 已开放。")
-                return
-        except (ConnectionRefusedError, OSError):
-            if time. monotonic() - start_time >= timeout:
-                raise TimeoutError(f"等待端口 {port} 超时 ({timeout}s)。服务可能启动失败。")
-            time.sleep(1)
+def _get_long_prompt(num_tokens=16384):
+    """创建一个较长的提示语来有效测试 KVCache
 
-def _get_long_prompt(num_tokens=3072):
-    """创建一个较长的提示语来有效测试 KVCache"""
+    之前是 3072：端口冲突修复后用日志确认 P2P 传输本身是正常工作的(91% 的
+    token 命中，从对端检索 2304/2304 个 token 只花了 7ms)，但 3072 token 的
+    提示在这台 GPU 上，prefill 计算本身占总 TTFT 的比例太小，命中 91% 缓存后
+    省下的计算时间被请求的固定开销(网络/调度/tokenize)盖过去了，冷热 TTFT
+    只差 1.1x，够不到 0.7 的阈值——这不是共享失败，是提示太短、信号太弱。调到
+    8192 后比例升到 0.75，已经很接近但仍不够；用两组数据(3072/8192)反推冷热
+    TTFT 各自随 token 数增长的斜率，外推需要 >~10700 token 才能压到 0.7 以下，
+    这里取 16384 留出安全余量。
+    """
     print(f"  > 正在生成约 {num_tokens} tokens 的长提示...")
     # 使用一个简单的重复文本来构造长上下文
     base_text = "This is a long context to test the Key-Value Cache sharing feature in LMCache with vLLM. Repeating this sentence multiple times generates a significant number of tokens. "
@@ -322,7 +470,7 @@ def _get_long_prompt(num_tokens=3072):
     return long_context + question
 
 def query_completions_and_measure_ttft(client, model_id, prompt):
-    """使用 /v1/completions 接口发送请求并测量 TTFT"""
+    """使用 /v1/completions 接口发送请求并测量 TTFT，同时返回生成文本以便校验正确性"""
     start_time = time.perf_counter()
     try:
         response = client.completions.create(
@@ -332,13 +480,13 @@ def query_completions_and_measure_ttft(client, model_id, prompt):
             max_tokens=128,
         )
         first_token_time = time.perf_counter() # 对于非流式，响应返回时间即为 TTFT
-        
+
         text = response.choices[0].text.strip().replace('\n', ' ')
-        print(f"  > 收到响应: '{text[:50]}...'")
-        return first_token_time - start_time
+        print(f"  > 收到响应: '{text[:50]}...'")
+        return first_token_time - start_time, text
     except Exception as e:
-        print(f"\n  > 查询时发生错误: {e}")
-        return 9999.0
+        print(f"\n  > 查询时发生错误: {e}")
+        return 9999.0, ""
 
 def _run_sharing_test(service_info):
     """可重用的函数，封装了完整的共享测试逻辑"""
@@ -346,14 +494,14 @@ def _run_sharing_test(service_info):
     port1 = service_info['vllm1_port']
     port2 = service_info['vllm2_port']
     test_type = service_info['type']
-    
+
     # 准备两个 OpenAI 客户端
     client1 = OpenAI(api_key="dummy-key", base_url=f"http://{host}:{port1}/v1")
     client2 = OpenAI(api_key="dummy-key", base_url=f"http://{host}:{port2}/v1")
-    
+
     try:
         model_id = client1.models.list().data[0].id
-        print(f"  > 成功连接到 vLLM 服务, 模型 ID: {model_id}")
+        print(f"  > 成功连接到 vLLM 服务, 模型 ID: {model_id}")
     except Exception as e:
         pytest.fail(f"无法连接到 vLLM 服务: {e}。")
 
@@ -361,30 +509,39 @@ def _run_sharing_test(service_info):
 
     # --- 1. 冷缓存查询 (实例1) ---
     print(f"\n--- [测试] 正在向实例1 (端口 {port1}) 发送请求 (冷缓存)... ---")
-    cold_ttft = query_completions_and_measure_ttft(client1, model_id, prompt)
+    cold_ttft, cold_text = query_completions_and_measure_ttft(client1, model_id, prompt)
     print(f"\n✅ 实例1 (冷) TTFT: {cold_ttft:.3f} 秒")
 
-    print("\n--- [测试] 等待 2 秒，确保 KVCache 已在对等方之间同步... ---")
-    time.sleep(2)
-    
+    # 2 秒对本文件两种共享机制都偏短: test_lmcache_mp.py 里同类场景分别用了
+    # 5 秒(等 L1->L2 异步落盘完成)和 6 秒(避开 ~5 秒的 P2P 对等发现轮询周期)
+    # 作为经验值。这里之前的 2 秒在实测中曾经导致 P2P 异步查找在 3 秒后超时放弃、
+    # 完全没有命中缓存(LMCache WARNING: "still waiting for async lookup after
+    # 3 seconds"),改成 8 秒留出安全余量。
+    print("\n--- [测试] 等待 8 秒，确保 KVCache 已在对等方之间同步... ---")
+    time.sleep(8)
+
     # --- 2. 热缓存查询 (实例2) ---
     print(f"\n--- [测试] 正在向实例2 (端口 {port2}) 发送请求 (热缓存)... ---")
-    warm_ttft = query_completions_and_measure_ttft(client2, model_id, prompt)
+    warm_ttft, warm_text = query_completions_and_measure_ttft(client2, model_id, prompt)
     print(f"\n✅ 实例2 (热) TTFT: {warm_ttft:.3f} 秒")
 
     # --- 3. 验证结果 ---
-    improvement = cold_ttft - warm_ttft
-    speedup_factor = cold_ttft / warm_ttft
-    print("\n" + "="*30)
-    print(f" KVCache {test_type} 共享测试结果:")
-    print(f"   实例1 (冷) TTFT: {cold_ttft:.3f} 秒")
-    print(f"   实例2 (热) TTFT: {warm_ttft:.3f} 秒")
-    print(f"   TTFT 提升: {improvement:.3f} 秒 ({speedup_factor:.1f}x 更快)")
-    print("="*30)
-
-    
-    assert warm_ttft < (cold_ttft * 5 / 5), f"热缓存 ({warm_ttft:.3f}s) 不够快，没有超过冷缓存 ({cold_ttft:.3f}s) 的 时间。"
-    print(f"✅ KVCache {test_type} 共享测试通过!")
+    # 用关键字包含(cold 输出开头一段是否出现在 warm 输出里)而不是只要非空就行、
+    # 不一致只打警告: 之前那种写法曾经放过一个真实 bug -- warm 端输出整段全是 "!"
+    # 这种模型读到损坏/串掉的 KV cache 时的典型退化模式, 跟跨实例浮点误差导致措辞
+    # 略有不同完全是两回事, 前者必须判失败。跨实例场景下的容忍度已经体现在
+    # assert_cache_speedup 只比较开头一段关键字、不要求逐字完全一致, 不需要再加一层
+    # 不一致就只警告的豁免。
+    #
+    # max_warm_ratio 之前是 1.0("warm 只要比 cold 快一点点就算过"),实测里出现过
+    # 一次假阳性: warm 其实完全没命中缓存(hit tokens 一直是 0/None，3 秒后超时全量
+    # 重算)，只是因为两次请求的随机波动 warm 恰好比 cold 快了 0.01 秒，1.0 这个阈值
+    # 就把这种"根本没共享"的情况判成了 PASS。真正命中缓存应该省下大部分 attention/FFN
+    # 计算，提速应该是数量级的，不会是几十毫秒这种噪音级别的差异，所以收紧到 0.7
+    # （与 mooncake 的 kv_offload 测试一致），让"没有真正共享"更可靠地表现为 FAIL。
+    assert_cache_speedup(f"KVCache {test_type} 共享测试", cold_ttft, warm_ttft, cold_text, warm_text,
+                          max_warm_ratio=0.7)
+    print(f"KVCache {test_type} 共享测试通过!")
 
 
 
