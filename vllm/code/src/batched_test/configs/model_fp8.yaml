@@ -1,4 +1,5 @@
 - name: Step3.5-Flash_FP8
+  timeout: 4800
   model_path: /mxstorage/pde_ai/models/llm/stepfun-ai/Step-3.5-Flash-FP8
   serve_config:
     tp: 4
@@ -17,6 +18,7 @@
   - moe
 
 - name: MiniMax-M2.7_FP8
+  timeout: 4800
   model_path: /mxstorage/pde_ai/models/llm/MiniMax/MiniMax-M2.7
   serve_config:
     tp: 8
@@ -36,6 +38,7 @@
   - moe
 
 - name: MiniMax-M3_MXFP8
+  timeout: 4800
   model_path: /mxstorage/pde_ai/models/llm/MiniMax/MiniMax-M3-FP8_BLOCK/vllm_quant_model
   serve_config:
     tp: 2
@@ -55,7 +58,7 @@
   - moe
 
 - name: GLM-5.2_FP8
-  timeout: 3600
+  timeout: 4800
   model_path: /mxstorage/pde_ai/models/llm/ChatGLM/GLM-5.2-FP8
   serve_config:
     tp: 16
@@ -74,12 +77,12 @@
   - moe
 
 - name: Kimi-K2.6_FP8
-  timeout: 3600
+  timeout: 4800
   model_path: /mxstorage/pde_ai/models/llm/Kimi/Kimi-K2.6-FP8-BLOCK
   serve_config:
     tp: 16
     dp: 1
-    pp: 1
+    pp: 2
     extra_args:
   infer_type:
   - text-only
@@ -92,6 +95,7 @@
   - moe
 
 - name: DeepSeek-V4-Flash_FP8
+  timeout: 4800
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V4-Flash-FP8_sgl_project
   serve_config:
     tp: 8
@@ -129,6 +133,7 @@
   - moe
 
 - name: MiMo-V2-Flash_FP8
+  timeout: 4800
   model_path: /mxstorage/pde_ai/models/llm/MiMo/MiMo-V2-Flash
   serve_config:
     tp: 4
@@ -146,6 +151,7 @@
   - moe
 
 - name: Qwen3.5-397B-A17B_FP8
+  timeout: 4800
   model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3.5-397B-A17B-FP8
   serve_config:
     tp: 8
