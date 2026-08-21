@@ -1,0 +1,267 @@
+# C588 平台日测模型配置
+# 对应测试矩阵 C588=true 的全部模型；路径取自 C600-1/C600-2/model.yaml 已有配置。
+
+# ---------- 2 卡 ----------
+- name: "Qwen3-32B"
+  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-32B/"
+  serve_config:
+    tp: 2
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "bfloat16"
+      --gpu-memory-utilization: 0.9
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+- name: "Qwen3-Next-80B-A3B-Instruct_w8a8"
+  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-Next-80B-A3B-Instruct.w8a8/"
+  serve_config:
+    tp: 2
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "bfloat16"
+      --gpu-memory-utilization: 0.9
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+- name: "Qwen3.5-27B"
+  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3.5-27B"
+  serve_config:
+    tp: 2
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "float16"
+      --gpu-memory-utilization: 0.9
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+# ---------- 4 卡 ----------
+- name: "Qwen3-Next-80B-A3B-Instruct"
+  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-Next-80B-A3B-Instruct/"
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "bfloat16"
+      --gpu-memory-utilization: 0.9
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+- name: "GLM-4.7-W8A8"
+  model_path: "/mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.7-W8A8"
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "bfloat16"
+      --gpu-memory-utilization: 0.9
+      --speculative-config: '{"num_speculative_tokens": 1, "model": "/mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.7-W8A8", "method": "mtp"}'
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
+
+- name: "InternVL3-78B"
+  model_path: "/mxstorage/pde_ai/models/llm/Internlm/InternVL3-78B/"
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "bfloat16"
+      --gpu-memory-utilization: 0.9
+  infer_type:
+    - single-image
+  benchmark:
+    bench_param: "configs/bench_params/bench_common.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+- name: "MiniMax-M3-W8A8"
+  model_path: "/pde_ai/models/llm/MiniMax-M3-W8A8"
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "bfloat16"
+      --gpu-memory-utilization: 0.9
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+- name: "Qwen2.5-VL-72B-Instruct"
+  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen2.5-VL-72B-Instruct/"
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "bfloat16"
+      --gpu-memory-utilization: 0.9
+  infer_type:
+    - single-image
+  benchmark:
+    bench_param: "configs/bench_params/bench_common.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+- name: "Qwen3-235B-A22B_w8a8"
+  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-235B-A22B.w8a8/"
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "bfloat16"
+      --gpu-memory-utilization: 0.9
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+# ---------- 8 卡（表格里 4 卡/8 卡行都有 C588=true；如只保留一种请删掉 4 卡版） ----------
+- name: "GLM-4.7-W8A8"
+  model_path: "/mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.7-W8A8"
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "bfloat16"
+      --gpu-memory-utilization: 0.9
+      --speculative-config: '{"num_speculative_tokens": 1, "model": "/mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.7-W8A8", "method": "mtp"}'
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
+
+- name: "InternVL3-78B"
+  model_path: "/mxstorage/pde_ai/models/llm/Internlm/InternVL3-78B/"
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "bfloat16"
+      --gpu-memory-utilization: 0.9
+  infer_type:
+    - single-image
+  benchmark:
+    bench_param: "configs/bench_params/bench_common.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+- name: "MiniMax-M3-W8A8"
+  model_path: "/pde_ai/models/llm/MiniMax-M3-W8A8"
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "bfloat16"
+      --gpu-memory-utilization: 0.9
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+- name: "Qwen2.5-VL-72B-Instruct"
+  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen2.5-VL-72B-Instruct/"
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "bfloat16"
+      --gpu-memory-utilization: 0.9
+  infer_type:
+    - single-image
+  benchmark:
+    bench_param: "configs/bench_params/bench_common.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+- name: "Qwen3-235B-A22B_w8a8"
+  model_path: "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-235B-A22B.w8a8/"
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "bfloat16"
+      --gpu-memory-utilization: 0.9
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+
+# ---------- 16 卡 ----------
+- name: "GLM-5.2-W8A8"
+  model_path: "/mxstorage/pde_ai/models/llm/ChatGLM/GLM-5.2-W8A8"   # TODO: 验证路径
+  serve_config:
+    tp: 16
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: "bfloat16"
+      --gpu-memory-utilization: 0.9
+      --speculative-config: '{"num_speculative_tokens": 1, "model": "/mxstorage/pde_ai/models/llm/ChatGLM/GLM-5.2-W8A8", "method": "mtp"}'
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: "configs/bench_params/bench_mainstream_highlight.json"
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
