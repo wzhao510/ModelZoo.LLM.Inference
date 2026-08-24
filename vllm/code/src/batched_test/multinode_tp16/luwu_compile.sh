@@ -32,6 +32,21 @@ if [ "$MODE" = "build" ]; then
   echo "[luwu-compile] 已获取编译锁"
 fi
 
+# 共享 NFS 上并行 mxcc 编译不稳定(HeaderSearch 段错误 / Stale file handle / 写 .o.d 失败),
+# build 模式把源码拷到容器本地磁盘构建, wheel 产物拷回共享 dist 供 worker 安装
+LOCAL_BUILD_ROOT="${LOCAL_BUILD_ROOT:-/tmp/luwu_build}"
+SRC_MCOPLIB="$CODE_ROOT/mcoplib"
+SRC_VLLM="$CODE_ROOT/vLLM-metax"
+if [ "$MODE" = "build" ]; then
+  rm -rf "$LOCAL_BUILD_ROOT"
+  mkdir -p "$LOCAL_BUILD_ROOT"
+  echo "[luwu-compile] 拷贝源码到本地构建目录 $LOCAL_BUILD_ROOT ..."
+  cp -a "$SRC_MCOPLIB" "$LOCAL_BUILD_ROOT/mcoplib"
+  cp -a "$SRC_VLLM" "$LOCAL_BUILD_ROOT/vLLM-metax"
+  SRC_MCOPLIB="$LOCAL_BUILD_ROOT/mcoplib"
+  SRC_VLLM="$LOCAL_BUILD_ROOT/vLLM-metax"
+fi
+
 # HEAD 中存在但工作区缺失的已跟踪文件(如 op/qk_rms_norm.cu)会导致 CMake
 # "Cannot find source file" 构建失败; 构建前恢复这类文件(不影响已修改文件)
 restore_deleted_files() {
@@ -83,7 +98,7 @@ pip install "pybind11>=2.13,<3" >/dev/null 2>&1 || true
 
 # 0. git safe.directory: NFS 挂载的 /sw_home/lli 属主为 lli, 容器内以 root 运行时
 #    git 会报 "dubious ownership", 导致 setuptools-scm 取不到版本、wheel 构建失败。
-for d in "$CODE_ROOT"/*/; do
+for d in "$CODE_ROOT"/*/ "$LOCAL_BUILD_ROOT"/*/; do
   d="${d%/}"
   if [ -d "$d/.git" ]; then
     git config --global --add safe.directory "$d"
@@ -98,11 +113,11 @@ if [ ! -e /root/cu-bridge/CUDA_DIR ]; then
 fi
 
 # 编译安装 mcoplib
-if [ ! -d "$CODE_ROOT/mcoplib" ]; then
-  echo "[luwu-compile] ERROR: $CODE_ROOT/mcoplib 不存在"
+if [ ! -d "$SRC_MCOPLIB" ]; then
+  echo "[luwu-compile] ERROR: $SRC_MCOPLIB 不存在"
   exit 1
 fi
-cd "$CODE_ROOT/mcoplib"
+cd "$SRC_MCOPLIB"
 restore_deleted_files
 pip uninstall -y vllm vllm_metax mcoplib
 source env.sh
@@ -110,13 +125,15 @@ pip install -r requirements/build.txt
 rm -rf build dist .deps   # 清掉旧容器的 FetchContent 缓存, 避免 CMakeCache 路径不匹配
 python setup.py bdist_wheel
 pip install dist/mcoplib*.whl
+mkdir -p "$CODE_ROOT/mcoplib/dist"
+cp -a dist/mcoplib-*.whl "$CODE_ROOT/mcoplib/dist/"
 
 # 编译安装 vllm_metax
-if [ ! -d "$CODE_ROOT/vLLM-metax" ]; then
-  echo "[luwu-compile] ERROR: $CODE_ROOT/vLLM-metax 不存在"
+if [ ! -d "$SRC_VLLM" ]; then
+  echo "[luwu-compile] ERROR: $SRC_VLLM 不存在"
   exit 1
 fi
-cd "$CODE_ROOT/vLLM-metax"
+cd "$SRC_VLLM"
 restore_deleted_files
 rm -rf build dist .deps
 source env.sh
@@ -124,5 +141,7 @@ pip install -r requirements/build.txt
 python setup.py bdist_wheel
 pip install dist/vllm_metax*.whl --no-deps
 pip install "vllm==$(ls dist/vllm_metax-*.whl | sed -E 's/.*-([0-9]+\.[0-9]+\.[0-9]+)\+.*/\1/')" --no-deps
+mkdir -p "$CODE_ROOT/vLLM-metax/dist"
+cp -a dist/vllm_metax-*.whl "$CODE_ROOT/vLLM-metax/dist/"
 
 echo "[luwu-compile] $(date '+%F %T') 编译安装完成"
