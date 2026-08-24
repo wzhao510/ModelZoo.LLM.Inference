@@ -7,7 +7,7 @@
 # 待确认项:
 #   - Qwen2.5-72B-Instruct-AWQ / GPTQ-Int4: 配置路径当前在共享存储上不存在
 #   - Qwen3-0.6B / Step-3.5-Flash-W8A8: 用户标注"需要更换"
-#   - Qwen3-VL-Embedding-8B: embedding 模型, launch.py 暂无 embedding 用例支持
+#   - Qwen3-VL-Embedding-8B: embedding 模型, 以 --task embed + /v1/embeddings 用例测试
 
 - name: Qwen2.5-72B-Instruct-AWQ
   # 注意: 该路径当前在宁夏/mxstorage 共享存储上不存在, 上海/mxstorage有
@@ -78,17 +78,18 @@
   extra_env: null
 
 - name: Qwen3-VL-Embedding-8B
-  # 注意: embedding 模型, launch.py 暂无 /v1/embeddings 用例支持, text-only 模板可能跑不通
+  # embedding 模型: 以 --task embed 启动, 通过 /v1/embeddings 校验向量相似度排序
   model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-VL-Embedding-8B
   serve_config:
     tp: 1
     dp: 1
     pp: 1
+    task: embed
     extra_args:
       --dtype: bfloat16
       --gpu-memory-utilization: 0.9
   infer_type:
-  - text-only
+  - embedding
   benchmark:
     bench_param: configs/bench_params/bench_common.json
     sweep_num_runs: 1
