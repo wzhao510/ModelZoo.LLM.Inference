@@ -23,6 +23,7 @@ echo "[bench] prompts=$NUM_PROMPTS concurrency=$MAX_CONCURRENCY in=$INPUT_LEN ou
 
 vllm bench serve \
   --base-url "$BASE_URL" \
+  --trust-remote-code \
   --dataset-name random \
   --num-prompts "$NUM_PROMPTS" \
   --max-concurrency "$MAX_CONCURRENCY" \

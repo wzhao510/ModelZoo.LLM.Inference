@@ -9,16 +9,15 @@ BASE="/sw_home/lli/ModelZoo.LLM.Inference/vllm/code/src/batched_test/multinode_t
 cd "$BASE" || exit 1
 source ./config.sh
 
-# 与 master 一致的 run 目录(用平台注入的 JOB_ID)
-RUN_ID="${JOB_ID:-run_$(date +%Y%m%d_%H%M%S)}"
+# 日志目录: 按日期+时分秒命名(与 master 一致, 读 master 发布的名字)
 export BASE_LOG_DIR="${LUWU_LOG_DIR:-/sw_home/lli/model_test/tp16_luwu}"
-RUN_DIR="$BASE_LOG_DIR/$RUN_ID"
-mkdir -p "$RUN_DIR"
-LOG="$RUN_DIR/luwu_worker.log"
-exec > >(tee -a "$LOG") 2>&1
+mkdir -p "$BASE_LOG_DIR"
+JOB_TAG="${JOB_ID:-default}"
+META_DIR="$BASE_LOG_DIR/.luwu_meta"
+mkdir -p "$META_DIR"
 
-# 单实例锁: 平台重复拉起时, 后启动的 worker 等待前一个完成
-LOCK="$RUN_DIR/luwu_worker.lock"
+# 单实例锁(按 JOB_ID 区分): 平台重复拉起时, 后启动的 worker 等待前一个完成
+LOCK="$META_DIR/lock_worker_${JOB_TAG}"
 exec 9>"$LOCK"
 if ! flock -n 9; then
   echo "[luwu-worker] 检测到已有 worker 实例在运行, 等待其完成..."
@@ -27,8 +26,26 @@ if ! flock -n 9; then
   exit 0
 fi
 
+# 等待 master 发布的日期目录名(worker 可能先于 master 启动, 最多等 120s)
+RUN_ID=""
+for i in {1..120}; do
+  RUN_ID="$(cat "$META_DIR/current_run_${JOB_TAG}" 2>/dev/null || true)"
+  [ -n "$RUN_ID" ] && break
+  sleep 1
+done
+if [ -z "$RUN_ID" ]; then
+  RUN_ID="run_$(date +%Y%m%d_%H%M%S)"
+  echo "[luwu-worker] WARN 未等到 master 发布的 RUN_ID, 用本地时间兜底: $RUN_ID"
+fi
+RUN_DIR="$BASE_LOG_DIR/$RUN_ID"
+mkdir -p "$RUN_DIR"
+LOG="$RUN_DIR/luwu_worker.log"
+exec > >(tee -a "$LOG") 2>&1
+
 # 模型列表(与 master 保持一致); 可通过环境变量覆盖
 if [ -n "${MODELS:-}" ]; then
+  # 兼容逗号分隔(陆吾 env_vars 注入)与空格分隔两种写法
+  MODELS="${MODELS//,/ }"
   read -r -a MODELS <<<"$MODELS"
 else
   MODELS=(DeepSeek-R1-0528-W8A8 GLM-5.2-W8A8 Kimi-K2.6-Int4)
@@ -46,6 +63,15 @@ echo "[luwu-worker] $(date '+%F %T') run=$RUN_ID MASTER_ADDR=$MASTER_ADDR MASTER
 # 环境初始化(幂等)
 bash /sw_home/lli/compile_env.sh >/dev/null 2>&1 || echo "[luwu-worker] WARN compile_env.sh 失败, 继续"
 pip install -r /sw_home/lli/ModelZoo.LLM.Inference/vllm/code/src/batched_test/requirements.txt >/dev/null 2>&1 || true
+
+# 可选: LUWU_COMPILE=1 时, 安装 master 的编译产物(等共享 wheel); 等不到则本机编译
+if [ "${LUWU_COMPILE:-0}" = "1" ]; then
+  echo "[luwu-worker] LUWU_COMPILE=1, 等待/安装编译产物..."
+  if ! bash "$BASE/luwu_compile.sh" --install; then
+    echo "[luwu-worker] ERROR 编译产物安装失败, 终止"
+    exit 1
+  fi
+fi
 
 store_down=0
 last=""

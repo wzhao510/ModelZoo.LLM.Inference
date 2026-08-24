@@ -10,16 +10,15 @@ BASE="/sw_home/lli/ModelZoo.LLM.Inference/vllm/code/src/batched_test/multinode_t
 cd "$BASE" || exit 1
 source ./config.sh
 
-# 每次申请独立 run 目录(用平台注入的 JOB_ID 保证 master/worker 一致)
-RUN_ID="${JOB_ID:-run_$(date +%Y%m%d_%H%M%S)}"
+# 日志目录: 按日期+时分秒命名(不再用 JOB_ID 目录), 锁/标记文件放隐藏 meta 目录
 export BASE_LOG_DIR="${LUWU_LOG_DIR:-/sw_home/lli/model_test/tp16_luwu}"
-RUN_DIR="$BASE_LOG_DIR/$RUN_ID"
-mkdir -p "$RUN_DIR"
-LOG="$RUN_DIR/luwu_master.log"
-exec > >(tee -a "$LOG") 2>&1
+mkdir -p "$BASE_LOG_DIR"
+JOB_TAG="${JOB_ID:-default}"
+META_DIR="$BASE_LOG_DIR/.luwu_meta"
+mkdir -p "$META_DIR"
 
-# 单实例锁: 平台重复拉起同一脚本时, 后启动的实例等待前一个完成, 避免误触发释放
-LOCK="$RUN_DIR/luwu_master.lock"
+# 单实例锁(按 JOB_ID 区分, 保证平台重复拉起时锁稳定): 后启动的实例等待前一个完成
+LOCK="$META_DIR/lock_master_${JOB_TAG}"
 exec 9>"$LOCK"
 if ! flock -n 9; then
   echo "[luwu-master] 检测到已有 master 实例在运行, 等待其完成..."
@@ -28,8 +27,18 @@ if ! flock -n 9; then
   exit 0
 fi
 
+# 每次申请独立 run 目录: 按日期+时分秒命名, 并发布给 worker 保持一致
+RUN_ID="run_$(date +%Y%m%d_%H%M%S)"
+RUN_DIR="$BASE_LOG_DIR/$RUN_ID"
+mkdir -p "$RUN_DIR"
+echo "$RUN_ID" > "$META_DIR/current_run_${JOB_TAG}"
+LOG="$RUN_DIR/luwu_master.log"
+exec > >(tee -a "$LOG") 2>&1
+
 # 模型列表(顺序执行); 可通过环境变量覆盖, 默认全部
 if [ -n "${MODELS:-}" ]; then
+  # 兼容逗号分隔(陆吾 env_vars 注入)与空格分隔两种写法
+  MODELS="${MODELS//,/ }"
   read -r -a MODELS <<<"$MODELS"
 else
   MODELS=(DeepSeek-R1-0528-W8A8 GLM-5.2-W8A8 Kimi-K2.6-Int4)
@@ -54,6 +63,15 @@ echo "[luwu-master] MASTER_ADDR=$MASTER_ADDR MASTER_PORT=$MASTER_PORT SERVE_PORT
 bash /sw_home/lli/compile_env.sh >/dev/null 2>&1 || echo "[luwu-master] WARN compile_env.sh 失败, 继续"
 pip install -r /sw_home/lli/ModelZoo.LLM.Inference/vllm/code/src/batched_test/requirements.txt >/dev/null 2>&1 || true
 pip install -q openai 2>/dev/null || true
+
+# 可选: LUWU_COMPILE=1 时, 编译安装 luwu_apply 源码(mcoplib+vllm_metax)后再跑模型
+if [ "${LUWU_COMPILE:-0}" = "1" ]; then
+  echo "[luwu-master] LUWU_COMPILE=1, 执行源码编译安装..."
+  if ! bash "$BASE/luwu_compile.sh"; then
+    echo "[luwu-master] ERROR 编译安装失败, 终止"
+    exit 1
+  fi
+fi
 
 ALL_RC=0
 for MODEL_NAME in "${MODELS[@]}"; do
