@@ -31,6 +31,7 @@ class SchedularArgs:
     text_case: str
     image_case: str
     long_text_case: str | None = None
+    embedding_case: str | None = None
     resume_csv: str | None = None
 
     cluster_config: str | None = None
@@ -64,6 +65,7 @@ class SchedularArgs:
             text_case=args.text_case,
             image_case=args.image_case,
             long_text_case=args.long_text_case,
+            embedding_case=args.embedding_case,
             resume_csv=args.resume_csv,
             infer=args.infer,
             perf=args.perf,
@@ -133,6 +135,19 @@ class SchedularArgs:
             help="Optional long-context text cases (YAML). When specified, these cases are "
             "run in addition to the short text cases. Each case may specify 'max_tokens' "
             "(default 512). Example: configs/inference/long_text_case.yaml",
+        )
+
+        parser.add_argument(
+            "--embedding-case",
+            metavar="EMBEDDING_CASE_FILE",
+            type=str,
+            default=os.path.join(
+                os.path.dirname(__file__), "configs", "inference", "embedding_case.yaml"
+            ),
+            help="Cases used for embedding models (infer_type: embedding). Each case has "
+            "'query', 'positive' and 'negative' texts; correct iff mean cosine(query, "
+            "positive) > mean cosine(query, negative). Default: "
+            "<configs/inference/embedding_case.yaml>",
         )
 
         parser.add_argument(
@@ -414,6 +429,10 @@ class Scheduler:
         assert os.path.exists(self.args.image_case), (
             f"Case file not found: {self.args.image_case}"
         )
+        if self.args.embedding_case:
+            assert os.path.exists(self.args.embedding_case), (
+                f"Embedding case file not found: {self.args.embedding_case}"
+            )
 
         infer_work_dir = os.path.join(self.work_dir, "inference")
         csv_file_path = net_utils.prepare_dir(
@@ -429,6 +448,7 @@ class Scheduler:
                 text_case=self.args.text_case,
                 image_case=self.args.image_case,
                 long_text_case=self.args.long_text_case,
+                embedding_case=self.args.embedding_case,
                 last_resume=self.args.resume_csv,
                 gpu_manager=self.gpu_manager,
             )

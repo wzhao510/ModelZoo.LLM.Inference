@@ -1,0 +1,47 @@
+# Embedding inference test cases (used by infer_type: embedding models).
+#
+# Each case:
+#   query:     the query text to embed
+#   positive:  texts semantically relevant to the query
+#   negative:  texts semantically unrelated to the query
+#
+# A case is scored as correct iff
+#   mean cosine(query, positive) > mean cosine(query, negative).
+# Cases are intentionally easy (clear semantics) so the embedding model must
+# rank the relevant text above the unrelated one.
+
+- query: "Where's the capital of China?"
+  positive:
+    - "The capital of China is Beijing."
+  negative:
+    - "The capital of France is Paris."
+
+- query: "Who's the founder of Apple?"
+  positive:
+    - "Steve Jobs co-founded Apple Inc."
+  negative:
+    - "Elon Musk founded SpaceX."
+
+- query: "What's the value of gravity in the earth?"
+  positive:
+    - "The acceleration due to gravity on Earth is about 9.8 m/s squared."
+  negative:
+    - "The speed of light in vacuum is about 300,000 km per second."
+
+- query: "中国的首都在哪里？"
+  positive:
+    - "中国的首都是北京。"
+  negative:
+    - "日本的首都是东京。"
+
+- query: "1+1等于几？"
+  positive:
+    - "1加1等于2。"
+  negative:
+    - "1加1等于3。"
+
+- query: "Machine learning is a subset of which field?"
+  positive:
+    - "Machine learning is a branch of artificial intelligence."
+  negative:
+    - "Machine learning is mainly used for cooking recipes."

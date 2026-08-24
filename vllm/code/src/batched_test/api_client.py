@@ -123,6 +123,42 @@ class ChatCompletionClient:
                 yield f"type={type(e).__name__} msg={e}"
 
 
+class EmbeddingClient:
+    """Client for OpenAI-compatible /v1/embeddings (vLLM served with --task embed)."""
+
+    def __init__(self, host: str = "localhost", port: int = 8000):
+        self.client = OpenAI(
+            api_key="EMPTY",
+            base_url=OPENAI_API_BASE_FORMAT % (host, port),
+        )
+
+    def get_model(self):
+        models = self.client.models.list()
+        return models.data[0].id
+
+    def embed(self, texts: list[str], model: str | None = None) -> list[list[float]]:
+        """Return one embedding vector per input text, in input order."""
+        if model is None:
+            model = self.get_model()
+        resp = self.client.embeddings.create(model=model, input=texts)
+        ordered = sorted(resp.data, key=lambda d: d.index)
+        return [d.embedding for d in ordered]
+
+
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Cosine similarity between two vectors; 0.0 if either is zero-length."""
+    import math
+
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(y * y for y in b))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(

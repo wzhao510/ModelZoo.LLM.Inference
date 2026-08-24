@@ -12,7 +12,7 @@ import threading
 import traceback
 
 import net_utils
-from api_client import ChatCompletionClient
+from api_client import ChatCompletionClient, EmbeddingClient, cosine_similarity
 import pandas as pd
 
 
@@ -137,6 +137,12 @@ class ModelConfigManager:
             "--distributed-executor-backend",
             distributed_executor_backend,
         ]
+
+        # Task type (e.g. embed / generate / classify / score / reward).
+        # Required for embedding models (Qwen3-VL-Embedding etc.).
+        task = serve_config.get("task")
+        if task:
+            cmd += ["--task", str(task)]
 
         # mp multi-node args (only when launching multi-node ranks)
         if mp_config is not None:
@@ -272,6 +278,7 @@ class InferWorker(Worker):
         model_cfg: dict,
         work_dir: str,
         long_text_case: str | None = None,
+        embedding_case: str | None = None,
         last_resume: str | None = None,
         gpu_manager: MPClusterManager | GPUManager = None,
     ):
@@ -282,6 +289,7 @@ class InferWorker(Worker):
         self.text_case = text_case
         self.image_case = image_case
         self.long_text_case = long_text_case
+        self.embedding_case = embedding_case
         self.api_serve_process = None
         self.serve_log_file = None
         self.status = self.InferenceStatus.INIT
@@ -423,6 +431,58 @@ class InferWorker(Worker):
                 f.write("-" * 40 + "\n")
 
         return corrected_responses / len(image_cases)
+
+    def _run_embedding_cases(self, cases: list[dict], log_file: str) -> int:
+        """Run embedding cases and return the number of correctly-ranked cases.
+
+        Each case: {"query": str, "positive": [str, ...], "negative": [str, ...]}.
+        A case is correct iff the mean cosine similarity between the query and
+        the positive texts is higher than that of the negative texts.
+        """
+        client = EmbeddingClient(host="localhost", port=self.port)
+        corrected = 0
+        with open(log_file, "a", encoding="utf-8") as f:
+            for case in cases:
+                query = case["query"]
+                positives = case.get("positive", [])
+                negatives = case.get("negative", [])
+                texts = [query] + positives + negatives
+                vectors = client.embed(texts)
+                query_vec = vectors[0]
+                pos_sims = [
+                    cosine_similarity(query_vec, v)
+                    for v in vectors[1 : 1 + len(positives)]
+                ]
+                neg_sims = [
+                    cosine_similarity(query_vec, v)
+                    for v in vectors[1 + len(positives) :]
+                ]
+                mean_pos = sum(pos_sims) / len(pos_sims) if pos_sims else 0.0
+                mean_neg = sum(neg_sims) / len(neg_sims) if neg_sims else 0.0
+                ok = bool(positives and negatives and mean_pos > mean_neg)
+                if ok:
+                    corrected += 1
+
+                f.write(f"[{self.model_cfg['name']}] Query: {query}\n")
+                f.write(
+                    f"[{self.model_cfg['name']}] Dim={len(query_vec)} "
+                    f"mean_pos_sim={mean_pos:.4f} mean_neg_sim={mean_neg:.4f} "
+                    f"=> {'OK' if ok else 'FAIL'}\n"
+                )
+                f.write("-" * 40 + "\n")
+        return corrected
+
+    def _do_embedding_inference(self, log_file: str) -> float:
+        if not self.embedding_case:
+            raise RuntimeError("embedding_case must be set for embedding infer_type.")
+        assert os.path.exists(self.embedding_case), (
+            f"Embedding case file not found: {self.embedding_case}"
+        )
+        cases = self._load_cases(self.embedding_case)
+        if len(cases) == 0:
+            return 0.0
+        corrected = self._run_embedding_cases(cases, log_file)
+        return corrected / len(cases)
 
     def run(self, stop_event: threading.Event) -> dict:
         self.stop_event = stop_event
@@ -743,6 +803,12 @@ class InferWorker(Worker):
         assert os.path.exists(self.image_case), (
             f"Case file {self.image_case} does not exist."
         )
+
+        if "embedding" in infer_type:
+            log_file = net_utils.prepare_dir(
+                os.path.join(self.work_dir, f"{self.model_tag}_embedding_inference.log")
+            )
+            return self._do_embedding_inference(log_file)
 
         if "single-image" in infer_type:
             log_file = net_utils.prepare_dir(
