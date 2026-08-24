@@ -138,11 +138,12 @@ class ModelConfigManager:
             distributed_executor_backend,
         ]
 
-        # Task type (e.g. embed / generate / classify / score / reward).
-        # Required for embedding models (Qwen3-VL-Embedding etc.).
+        # Task type for embedding models (Qwen3-VL-Embedding etc.).
+        # This vLLM-metax fork selects the model runner via --runner instead
+        # of upstream's --task flag (--task embed is rejected by the CLI).
         task = serve_config.get("task")
-        if task:
-            cmd += ["--task", str(task)]
+        if task == "embed":
+            cmd += ["--runner", "pooling"]
 
         # mp multi-node args (only when launching multi-node ranks)
         if mp_config is not None:
