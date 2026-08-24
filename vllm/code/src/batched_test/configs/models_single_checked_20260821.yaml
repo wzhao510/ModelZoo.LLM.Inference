@@ -10,8 +10,8 @@
 #   - Qwen3-VL-Embedding-8B: embedding 模型, launch.py 暂无 embedding 用例支持
 
 - name: Qwen2.5-72B-Instruct-AWQ
-  # 注意: 该路径当前在宁夏/mxstorage 共享存储上不存在, 上海/mxstorage有,提交前需确认实际路径
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen2___5-72B-Instruct--AWQ
+  # 注意: 该路径当前在宁夏/mxstorage 共享存储上不存在, 上海/mxstorage有
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen2___5-72B-Instruct-AWQ
   serve_config:
     tp: 1
     dp: 1
