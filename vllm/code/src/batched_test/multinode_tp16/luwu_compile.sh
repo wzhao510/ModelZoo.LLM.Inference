@@ -14,6 +14,24 @@ set --
 
 echo "[luwu-compile] $(date '+%F %T') mode=$MODE CODE_ROOT=$CODE_ROOT"
 
+# 编译锁: 单机/分布式 master 共用同一共享 build/dist 目录, 并发编译会互相
+# rm -rf 破坏对方构建(Stale file handle / segfault), 用 mkdir 锁串行化;
+# worker 的 --install 模式不编译, 无需加锁
+LOCK_DIR="$CODE_ROOT/.luwu_compile.lock"
+if [ "$MODE" = "build" ]; then
+  # 清理超过 2 小时未释放的陈旧锁(编译任务一般 <2h)
+  if [ -d "$LOCK_DIR" ] && find "$LOCK_DIR" -mmin +120 | grep -q .; then
+    echo "[luwu-compile] 清理陈旧编译锁"
+    rmdir "$LOCK_DIR" 2>/dev/null || true
+  fi
+  echo "[luwu-compile] 等待编译锁(并发任务串行化)..."
+  while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+    sleep 30
+  done
+  trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
+  echo "[luwu-compile] 已获取编译锁"
+fi
+
 # HEAD 中存在但工作区缺失的已跟踪文件(如 op/qk_rms_norm.cu)会导致 CMake
 # "Cannot find source file" 构建失败; 构建前恢复这类文件(不影响已修改文件)
 restore_deleted_files() {
