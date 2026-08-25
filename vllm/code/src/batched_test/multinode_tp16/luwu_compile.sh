@@ -49,6 +49,9 @@ if [ "$MODE" = "build" ]; then
   SRC_VLLM="$LOCAL_BUILD_ROOT/vLLM-metax"
   # 记录本次构建的两个仓库 commit, worker 只安装匹配这些 commit 的 wheel,
   # 避免装到上一次构建的过期产物
+  # 本地副本属主为 lli, 容器内以 root 运行, 先加 safe.directory 再取 commit
+  git config --global --add safe.directory "$SRC_MCOPLIB" 2>/dev/null || true
+  git config --global --add safe.directory "$SRC_VLLM" 2>/dev/null || true
   MCOPLIB_COMMIT=$(git -C "$SRC_MCOPLIB" rev-parse --short HEAD 2>/dev/null || echo "")
   VLLM_COMMIT=$(git -C "$SRC_VLLM" rev-parse --short HEAD 2>/dev/null || echo "")
   echo "mcoplib=$MCOPLIB_COMMIT vllm=$VLLM_COMMIT" > "$CODE_ROOT/.luwu_build_commit"
