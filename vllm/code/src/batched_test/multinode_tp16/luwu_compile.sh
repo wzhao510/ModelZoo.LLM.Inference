@@ -32,9 +32,6 @@ if [ "$MODE" = "build" ]; then
   done
   trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
   echo "[luwu-compile] 已获取编译锁"
-  # 清掉共享 dist 里的旧 wheel, 避免 worker 等到上一次编译的过期产物
-  mkdir -p "$CODE_ROOT/mcoplib/dist" "$CODE_ROOT/vLLM-metax/dist"
-  rm -f "$CODE_ROOT/mcoplib/dist"/*.whl "$CODE_ROOT/vLLM-metax/dist"/*.whl 2>/dev/null || true
 fi
 
 # 共享 NFS 上并行 mxcc 编译不稳定(HeaderSearch 段错误 / Stale file handle / 写 .o.d 失败),
