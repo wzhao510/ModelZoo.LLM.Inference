@@ -8,6 +8,8 @@ set -e
 
 CODE_ROOT="${CODE_ROOT:-/sw_home/lli/luwu_apply}"
 MODE="${1:-build}"
+# 归一化参数: luwu_worker.sh 以 --install 调用, 脚本内统一按 install 判断
+MODE="${MODE#--}"
 # 清掉位置参数: 后续 source mcoplib/env.sh 等脚本会用 ${1:-...} 取 MACA_PATH,
 # 不清理会把 "--install" 之类的参数当成 MACA_PATH
 set --
@@ -30,6 +32,9 @@ if [ "$MODE" = "build" ]; then
   done
   trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
   echo "[luwu-compile] 已获取编译锁"
+  # 清掉共享 dist 里的旧 wheel, 避免 worker 等到上一次编译的过期产物
+  mkdir -p "$CODE_ROOT/mcoplib/dist" "$CODE_ROOT/vLLM-metax/dist"
+  rm -f "$CODE_ROOT/mcoplib/dist"/*.whl "$CODE_ROOT/vLLM-metax/dist"/*.whl 2>/dev/null || true
 fi
 
 # 共享 NFS 上并行 mxcc 编译不稳定(HeaderSearch 段错误 / Stale file handle / 写 .o.d 失败),
@@ -66,8 +71,8 @@ if [ "$MODE" = "install" ]; then
     sleep 30
   done
   if [ -z "$MCOPLIB_WHEEL" ] || [ -z "$VLLM_WHEEL" ]; then
-    echo "[luwu-compile] WARN 未等到 master 编译产物, 改为本机完整编译"
-    MODE="build"
+    echo "[luwu-compile] ERROR 等待 master 编译产物超时(90min), worker 不自行编译, 请确认 master 编译是否成功"
+    exit 1
   fi
 fi
 
