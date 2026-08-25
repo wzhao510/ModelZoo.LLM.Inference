@@ -47,6 +47,12 @@ if [ "$MODE" = "build" ]; then
   cp -a "$SRC_VLLM" "$LOCAL_BUILD_ROOT/vLLM-metax"
   SRC_MCOPLIB="$LOCAL_BUILD_ROOT/mcoplib"
   SRC_VLLM="$LOCAL_BUILD_ROOT/vLLM-metax"
+  # 记录本次构建的两个仓库 commit, worker 只安装匹配这些 commit 的 wheel,
+  # 避免装到上一次构建的过期产物
+  MCOPLIB_COMMIT=$(git -C "$SRC_MCOPLIB" rev-parse --short HEAD 2>/dev/null || echo "")
+  VLLM_COMMIT=$(git -C "$SRC_VLLM" rev-parse --short HEAD 2>/dev/null || echo "")
+  echo "mcoplib=$MCOPLIB_COMMIT vllm=$VLLM_COMMIT" > "$CODE_ROOT/.luwu_build_commit"
+  echo "[luwu-compile] 记录本次构建 commit: mcoplib=$MCOPLIB_COMMIT vllm=$VLLM_COMMIT"
 fi
 
 # HEAD 中存在但工作区缺失的已跟踪文件(如 op/qk_rms_norm.cu)会导致 CMake
@@ -59,9 +65,27 @@ if [ "$MODE" = "install" ]; then
   # 等 master 的编译产物(共享 NFS), 最多等 90 分钟
   MCOPLIB_WHEEL=""
   VLLM_WHEEL=""
+  BUILD_COMMIT=""
+  if [ -f "$CODE_ROOT/.luwu_build_commit" ]; then
+    BUILD_COMMIT=$(cat "$CODE_ROOT/.luwu_build_commit")
+  fi
+  MCOPLIB_COMMIT=""
+  VLLM_COMMIT=""
+  for kv in $BUILD_COMMIT; do
+    case "$kv" in
+      mcoplib=*) MCOPLIB_COMMIT="${kv#mcoplib=}" ;;
+      vllm=*)    VLLM_COMMIT="${kv#vllm=}" ;;
+    esac
+  done
   for _ in $(seq 1 180); do
-    MCOPLIB_WHEEL=$(ls "$CODE_ROOT/mcoplib/dist"/mcoplib-*.whl 2>/dev/null | head -1)
-    VLLM_WHEEL=$(ls "$CODE_ROOT/vLLM-metax/dist"/vllm_metax-*.whl 2>/dev/null | head -1)
+    if [ -n "$MCOPLIB_COMMIT" ] && [ -n "$VLLM_COMMIT" ]; then
+      MCOPLIB_WHEEL=$(ls "$CODE_ROOT/mcoplib/dist"/mcoplib-*"$MCOPLIB_COMMIT"*.whl 2>/dev/null | head -1)
+      VLLM_WHEEL=$(ls "$CODE_ROOT/vLLM-metax/dist"/vllm_metax-*"$VLLM_COMMIT"*.whl 2>/dev/null | head -1)
+    else
+      # 无标记(旧 master): 退化为匹配任意 wheel
+      MCOPLIB_WHEEL=$(ls "$CODE_ROOT/mcoplib/dist"/mcoplib-*.whl 2>/dev/null | head -1)
+      VLLM_WHEEL=$(ls "$CODE_ROOT/vLLM-metax/dist"/vllm_metax-*.whl 2>/dev/null | head -1)
+    fi
     if [ -n "$MCOPLIB_WHEEL" ] && [ -n "$VLLM_WHEEL" ]; then
       break
     fi
