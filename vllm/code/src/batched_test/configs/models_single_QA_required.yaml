@@ -77,6 +77,23 @@
     sweep_num_runs: 1
   extra_env: null
 
+- name: Qwen3-30B-A3B-EP
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B
+  serve_config:
+    tp: 2
+    dp: 2
+    pp: 1
+    extra_args: 
+      --enable-expert-parallel
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
+
 - name: Qwen3-VL-Embedding-8B
   # embedding 模型: 以 --task embed 启动, 通过 /v1/embeddings 校验向量相似度排序
   model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-VL-Embedding-8B
@@ -288,6 +305,22 @@
   model_path: /mxstorage/pde_ai/models/llm/stepfun-ai/step3_5_W8A8_1/vllm_quant_model
   serve_config:
     tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: bfloat16
+      --gpu-memory-utilization: 0.9
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env: null
+
+- name: Qwen3.8-27B
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3.8-27B
+  serve_config:
+    tp: 4
     dp: 1
     pp: 1
     extra_args:
