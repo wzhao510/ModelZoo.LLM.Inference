@@ -18,4 +18,4 @@ python launch.py --perf --model-config $SCRIPT_DIR/configs/dailytest_models_C600
 # python launch.py --perf --model-config $SCRIPT_DIR/configs/dailytest_models_C588.yaml --work-dir $out_dir
 
 # run C600-U dailytest（新平台，集群就绪后取消注释）
-# python launch.py --perf --model-config $SCRIPT_DIR/configs/dailytest_models_C600U.yaml --work-dir $out_dir
+# python launch.py --perf --model-config $SCRIPT_DIR/configs/dailytest_models_C600U.yaml --gpus 1,32 --work-dir $out_dir
