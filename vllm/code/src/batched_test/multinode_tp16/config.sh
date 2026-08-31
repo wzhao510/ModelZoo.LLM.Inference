@@ -1,7 +1,8 @@
 #!/bin/bash
 # =============================================================
-# 多机(双机) TP16 测试通用配置
-# 适用于 10.13.81.57(rank0) + 10.13.81.58(rank1), 每节点 8x MXC500X
+# 多机(双机) TP16/TP32 测试通用配置
+# 适用于宁夏 10.13.81.57(rank0)+10.13.81.58(rank1), 每节点 8x MXC500X (TP16);
+# 上海 C600U 分布式: 每节点 16x MXC600U (spec 118), 两机 TP32 (TP=32 NNODES=2)
 # 所有项均可通过环境变量覆盖
 # =============================================================
 
@@ -29,6 +30,14 @@ export MACA_SMALL_PAGESIZE_ENABLE=1
 export RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1
 export MACA_DIRECT_DISPATCH=1
 export MACA_MEMCPY_MODE=1
+# ---------- FP8 / MCTLASS(C600U Kimi-K2.5-FP8 等) ----------
+export VLLM_METAX_SUPPORTS_FP8=1
+export MACA_VLLM_ENABLE_MCTLASS_PYTHON_API=1
+export MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE=1
+export MCCL_USE_MXSML=0
+export VLLM_METAX_USE_FP8_WO_A=0
+export VLLM_METAX_ENABLE_FP8_WEIGHT=1
+export VLLM_METAX_USE_FP8_SPARSE_ATTN_INDEXER=1
 export GLOO_SOCKET_IFNAME="${GLOO_SOCKET_IFNAME:-ens5f0np0}"
 export MCCL_SOCKET_IFNAME="${MCCL_SOCKET_IFNAME:-$GLOO_SOCKET_IFNAME}"
 # 陆吾平台会注入 NETWORK_CONFIG(如 mlx5_0,mlx5_1), 优先使用; 否则用默认 4 卡
@@ -42,12 +51,15 @@ declare -A MODEL_PATHS=(
   # 暂时用 bf16 版本; 待 W8A8 加载问题修复后可改回:
   #   "/mxstorage/pde_ai/models/llm/Kimi/Kimi-K2.6-W8A8/"
   ["Kimi-K2.6-Int4"]="/mxstorage/pde_ai/models/llm/Kimi/Kimi-K2.6/"
+  # 上海 C600U: 600U 节点本地盘 /mnt/hdd1 下的 FP8 权重(陆吾 C600U pod 需能访问该目录)
+  ["Kimi-K2.5-FP8"]="/mnt/hdd1/vllm/Kimi-K2.5-FP8/"
 )
 
 declare -A MODEL_DTYPES=(
   ["DeepSeek-R1-0528-W8A8"]="bfloat16"
   ["GLM-5.2-W8A8"]="bfloat16"
   ["Kimi-K2.6-Int4"]="bfloat16"
+  ["Kimi-K2.5-FP8"]="bfloat16"
 )
 
 # 需要时在此追加, 例如:
@@ -57,6 +69,7 @@ declare -A MODEL_EXTRA_ARGS=(
   ["DeepSeek-R1-0528-W8A8"]=""
   ["GLM-5.2-W8A8"]=""
   ["Kimi-K2.6-Int4"]=""
+  ["Kimi-K2.5-FP8"]="--max-num-batched-tokens 8192"
 )
 
 # ---------- 日志目录 (共享挂载, 双机可见) ----------
