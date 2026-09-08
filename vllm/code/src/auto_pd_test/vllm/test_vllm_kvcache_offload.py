@@ -78,7 +78,10 @@ def vllm_native_offload_service(offload_type, tmp_path_factory):
                 "cpu_bytes_to_use": 5368709120,
                 "eviction_policy": "lru",
                 "secondary_tiers": [
-                    {"type": "fs_python", "root_dir": str(disk_cache_path)}
+                    # vLLM 0.25.0 的 OffloadingConnector 只认 ['example', 'fs', 'p2p', 'obj']
+                    # 这几个 secondary tier 类型;'fs_python' 不是其中之一,起服务时直接
+                    # ValueError: Unknown secondary tier type: 'fs_python' 崩溃退出。
+                    {"type": "fs", "root_dir": str(disk_cache_path)}
                 ]
             }
         }
