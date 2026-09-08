@@ -1,6 +1,5 @@
 import contextlib
 import os
-import socket
 import subprocess
 import textwrap
 import time
@@ -15,6 +14,16 @@ except ImportError:
     print("Please install 'openai' and 'transformers' first.")
     raise SystemExit(1)
 
+from common import (
+    assert_cache_speedup,
+    dump_file as _dump_file,
+    popen_own_group,
+    query_and_measure_ttft,
+    terminate_process_group,
+    wait_for_free_gpu_memory,
+    wait_for_port as _wait_for_port,
+)
+
 
 VLLM_MODEL_PATH = "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B"
 VLLM_HOST = "localhost"
@@ -22,49 +31,6 @@ VLLM_PORT = 8300
 MAX_MODEL_LEN = 16384
 TEST_PROMPT_TOKENS = 15000
 CUDA_DEVICE_ID = "0"
-
-
-def _dump_file(log_file, tail_lines=200):
-    print("\n" + "=" * 80)
-    print(f"DEBUG LOG DUMP: {log_file}")
-    print("=" * 80)
-    try:
-        with open(log_file, "r", errors="ignore") as f:
-            lines = f.readlines()
-    except FileNotFoundError:
-        print("(log file not found)")
-        print("=" * 80)
-        return
-
-    if not lines:
-        print("(log file is empty)")
-    else:
-        print("".join(lines[-tail_lines:]).rstrip())
-    print("=" * 80)
-
-
-def _wait_for_port(host, port, timeout=180, process=None, log_file=None, stage="startup"):
-    start_time = time.monotonic()
-    print(f"Waiting for port {host}:{port} ...")
-    while True:
-        if process is not None:
-            retcode = process.poll()
-            if retcode is not None:
-                print(f"[FATAL] Process exited unexpectedly during {stage} with code {retcode}.")
-                if log_file:
-                    _dump_file(log_file)
-                raise RuntimeError(f"Process exited unexpectedly during {stage} with code {retcode}.")
-        try:
-            with socket.create_connection((host, port), timeout=10):
-                print(f"Port {port} is ready.")
-                return
-        except (ConnectionRefusedError, OSError):
-            if time.monotonic() - start_time >= timeout:
-                print(f"[FATAL] Timeout waiting for {host}:{port} during {stage}.")
-                if log_file:
-                    _dump_file(log_file)
-                raise TimeoutError(f"Timed out waiting for port {port} ({timeout}s).")
-            time.sleep(1)
 
 
 @contextlib.contextmanager
@@ -117,10 +83,10 @@ def vllm_offload_service(offload_type, tmp_path_factory):
             "--kv-transfer-config", '{"kv_connector":"LMCacheConnectorV1", "kv_role":"kv_both"}',
         ]
         print(f"vLLM command: {' '.join(vllm_cmd)}")
-        process = subprocess.Popen(vllm_cmd, env=os.environ.copy(), stdout=log_file_handle, stderr=subprocess.STDOUT)
+        process = popen_own_group(vllm_cmd, env=os.environ.copy(), stdout=log_file_handle, stderr=subprocess.STDOUT)
 
         print("Waiting for vLLM service to load the model...")
-        _wait_for_port(VLLM_HOST, VLLM_PORT, timeout=180, process=process, log_file=log_file, stage=f"{offload_type} offload service startup")
+        _wait_for_port(VLLM_HOST, VLLM_PORT, timeout=180, process=process, log_paths=log_file, stage=f"{offload_type} offload service startup")
         print("vLLM service is ready.")
 
         yield {
@@ -132,19 +98,16 @@ def vllm_offload_service(offload_type, tmp_path_factory):
 
     finally:
         print(f"\n--- Stopping vLLM ({offload_type} offload) service ---")
-        if process:
-            process.terminate()
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                print(f"Process {process.pid} was force-killed.")
+        terminate_process_group(process, f"vLLM ({offload_type} offload)")
 
         if log_file_handle:
             log_file_handle.close()
 
         os.environ.clear()
         os.environ.update(original_env)
+
+        if process is not None:
+            wait_for_free_gpu_memory(CUDA_DEVICE_ID)
 
 
 def _get_long_prompt():
@@ -170,33 +133,6 @@ def _get_long_prompt():
     return prompt, tokenizer
 
 
-def query_and_measure_ttft(client, model_id, prompt):
-    start_time = time.perf_counter()
-    first_token_time = None
-    try:
-        stream = client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model=model_id,
-            temperature=0.0,
-            max_tokens=50,
-            stream=True,
-        )
-        for chunk in stream:
-            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                if first_token_time is None:
-                    first_token_time = time.perf_counter()
-                    print(f"First token: '{chunk.choices[0].delta.content}'", end="", flush=True)
-                else:
-                    print(chunk.choices[0].delta.content, end="", flush=True)
-        print("\nStreaming response finished.")
-        if first_token_time is None:
-            raise RuntimeError("No token content received from the stream.")
-        return first_token_time - start_time
-    except Exception as e:
-        print(f"\nQuery failed: {e}")
-        return 9999.0
-
-
 def _run_ttft_test(service_info):
     base_url = f"http://{service_info['host']}:{service_info['port']}/v1"
     test_type = service_info["type"]
@@ -216,25 +152,13 @@ def _run_ttft_test(service_info):
     prompt, _ = _get_long_prompt()
 
     print("\n--- Cold cache query ---")
-    cold_ttft = query_and_measure_ttft(client, model_id, prompt)
-    print(f"\nCold cache TTFT: {cold_ttft:.3f}s")
-    assert cold_ttft > 0, "Cold cache query was unexpectedly too fast."
+    cold_ttft, cold_text = query_and_measure_ttft(client, model_id, prompt, max_tokens=50)
 
     time.sleep(1)
     print("\n--- Warm cache query ---")
-    warm_ttft = query_and_measure_ttft(client, model_id, prompt)
-    print(f"\nWarm cache TTFT: {warm_ttft:.3f}s")
+    warm_ttft, warm_text = query_and_measure_ttft(client, model_id, prompt, max_tokens=50)
 
-    improvement = cold_ttft - warm_ttft
-    speedup_factor = cold_ttft / warm_ttft
-    print("\n" + "=" * 30)
-    print(f"KVCache {test_type} offload result:")
-    print(f"  Cold cache TTFT: {cold_ttft:.3f}s")
-    print(f"  Warm cache TTFT: {warm_ttft:.3f}s")
-    print(f"  TTFT improvement: {improvement:.3f}s ({speedup_factor:.1f}x faster)")
-    print("=" * 30)
-
-    assert warm_ttft < (cold_ttft / 2), f"Warm cache ({warm_ttft:.3f}s) did not improve enough over cold cache ({cold_ttft:.3f}s)."
+    assert_cache_speedup(f"KVCache {test_type} offload", cold_ttft, warm_ttft, cold_text, warm_text)
 
 
 def test_01_kvcache_cpu_offload(tmp_path_factory):

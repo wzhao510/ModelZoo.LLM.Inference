@@ -1,12 +1,18 @@
 import json
 import os
-import socket
 import subprocess
 import time
 from pathlib import Path
 
 import pytest
 import requests
+
+from common import (
+    popen_own_group,
+    terminate_all,
+    wait_for_free_gpu_memory,
+    wait_for_port as _wait_for_port,
+)
 
 
 VLLM_MODEL_PATH = "/mxstorage/pde_ai/models/llm/Qwen/Qwen3-8B/"
@@ -25,61 +31,6 @@ NIXL_PORT_DECODER2 = 5620
 
 GPU_MEMORY_UTILIZATION = 0.85
 SERVED_MODEL_NAME = "qwen"
-
-
-def _dump_process_logs(log_paths, log_handles=None, tail_lines=200):
-    print("\n" + "=" * 80)
-    print("STARTUP DEBUG LOG DUMP")
-    print("=" * 80)
-    if log_handles:
-        for handle in log_handles.values():
-            try:
-                handle.flush()
-            except Exception:
-                pass
-
-    for name, log_path in log_paths.items():
-        print(f"\n--- {name}: {log_path} ---")
-        try:
-            with open(log_path, "r", errors="ignore") as f:
-                lines = f.readlines()
-        except FileNotFoundError:
-            print("(log file not found)")
-            continue
-
-        if not lines:
-            print("(log file is empty)")
-            continue
-
-        print("".join(lines[-tail_lines:]).rstrip())
-
-    print("\n" + "=" * 80)
-
-
-def _wait_for_port(host, port, timeout=300, processes=None, log_paths=None, log_handles=None, stage="startup"):
-    start = time.time()
-    while time.time() - start < timeout:
-        if processes:
-            for name, proc in processes.items():
-                retcode = proc.poll()
-                if retcode is not None:
-                    print(f"[FATAL] Process {name} exited unexpectedly during {stage} with code {retcode}.")
-                    if log_paths:
-                        _dump_process_logs(log_paths, log_handles)
-                    raise RuntimeError(f"Process {name} exited unexpectedly during {stage} with code {retcode}.")
-
-        try:
-            with socket.create_connection((host, port), timeout=1):
-                return
-        except OSError:
-            time.sleep(1)
-            if int(time.time()) % 10 == 0:
-                print(f"Waiting for {host}:{port}...")
-
-    if log_paths:
-        print(f"[FATAL] Timeout waiting for {host}:{port} during {stage}.")
-        _dump_process_logs(log_paths, log_handles)
-    raise TimeoutError(f"Port {port} not ready in {timeout}s")
 
 
 @pytest.fixture(scope="module")
@@ -121,7 +72,7 @@ def cluster_1p2d_nixl(tmp_path_factory):
             "--served-model-name", SERVED_MODEL_NAME,
             "--kv-transfer-config", kv_config,
         ]
-        processes["prefiller"] = subprocess.Popen(p_cmd, env=p_env, stdout=logs["pre"], stderr=subprocess.STDOUT)
+        processes["prefiller"] = popen_own_group(p_cmd, env=p_env, stdout=logs["pre"], stderr=subprocess.STDOUT)
 
         print(f"-> Launching Decoder 1 (Port {DECODER1_PORT}, NIXL Side Channel {NIXL_PORT_DECODER1})...")
         logs["d1"] = open(log_paths["decoder1"], "w")
@@ -136,7 +87,7 @@ def cluster_1p2d_nixl(tmp_path_factory):
             "--served-model-name", SERVED_MODEL_NAME,
             "--kv-transfer-config", kv_config,
         ]
-        processes["decoder1"] = subprocess.Popen(d1_cmd, env=d1_env, stdout=logs["d1"], stderr=subprocess.STDOUT)
+        processes["decoder1"] = popen_own_group(d1_cmd, env=d1_env, stdout=logs["d1"], stderr=subprocess.STDOUT)
 
         print(f"-> Launching Decoder 2 (Port {DECODER2_PORT}, NIXL Side Channel {NIXL_PORT_DECODER2})...")
         logs["d2"] = open(log_paths["decoder2"], "w")
@@ -151,12 +102,12 @@ def cluster_1p2d_nixl(tmp_path_factory):
             "--served-model-name", SERVED_MODEL_NAME,
             "--kv-transfer-config", kv_config,
         ]
-        processes["decoder2"] = subprocess.Popen(d2_cmd, env=d2_env, stdout=logs["d2"], stderr=subprocess.STDOUT)
+        processes["decoder2"] = popen_own_group(d2_cmd, env=d2_env, stdout=logs["d2"], stderr=subprocess.STDOUT)
 
         print("Waiting for vLLM instances to initialize...")
-        _wait_for_port(HOST, PREFILLER_PORT, processes=processes, log_paths=log_paths, log_handles=logs, stage="prefiller startup")
-        _wait_for_port(HOST, DECODER1_PORT, processes=processes, log_paths=log_paths, log_handles=logs, stage="decoder1 startup")
-        _wait_for_port(HOST, DECODER2_PORT, processes=processes, log_paths=log_paths, log_handles=logs, stage="decoder2 startup")
+        _wait_for_port(HOST, PREFILLER_PORT, timeout=300, processes=processes, log_paths=log_paths, log_handles=logs, stage="prefiller startup")
+        _wait_for_port(HOST, DECODER1_PORT, timeout=300, processes=processes, log_paths=log_paths, log_handles=logs, stage="decoder1 startup")
+        _wait_for_port(HOST, DECODER2_PORT, timeout=300, processes=processes, log_paths=log_paths, log_handles=logs, stage="decoder2 startup")
 
         print(f"-> Launching Proxy on Port {PROXY_PORT}...")
         logs["proxy"] = open(log_paths["proxy"], "w")
@@ -168,33 +119,26 @@ def cluster_1p2d_nixl(tmp_path_factory):
             "--decoder-hosts", HOST, HOST,
             "--decoder-ports", str(DECODER1_PORT), str(DECODER2_PORT),
         ]
-        processes["proxy"] = subprocess.Popen(proxy_cmd, stdout=logs["proxy"], stderr=subprocess.STDOUT)
-        _wait_for_port(HOST, PROXY_PORT, 60, processes=processes, log_paths=log_paths, log_handles=logs, stage="proxy startup")
+        processes["proxy"] = popen_own_group(proxy_cmd, stdout=logs["proxy"], stderr=subprocess.STDOUT)
+        _wait_for_port(HOST, PROXY_PORT, timeout=60, processes=processes, log_paths=log_paths, log_handles=logs, stage="proxy startup")
 
         print("[Setup] Cluster is READY!")
         yield
 
     finally:
         print("\n[Teardown] Cleaning up processes...")
-        for p in processes.values():
-            try:
-                if p.poll() is None:
-                    p.terminate()
-            except Exception:
-                pass
-
-        time.sleep(3)
-
-        for p in processes.values():
-            try:
-                if p.poll() is None:
-                    print(f"Force killing process {p.pid}")
-                    p.kill()
-            except Exception:
-                pass
+        # Signal every process's whole group together (proxy + the 3 vLLM
+        # instances) -- see common.terminate_all/terminate_process_group.
+        terminate_all(processes)
 
         for f in logs.values():
             f.close()
+
+        # prefiller uses GPUs 0,1; decoder1 uses 2,3; decoder2 uses 4,5.
+        # terminate_all only confirms the processes are gone, not that the
+        # driver has finished reclaiming their memory.
+        for cuda_device in range(6):
+            wait_for_free_gpu_memory(cuda_device)
         print("[Teardown] Done.")
 
 
