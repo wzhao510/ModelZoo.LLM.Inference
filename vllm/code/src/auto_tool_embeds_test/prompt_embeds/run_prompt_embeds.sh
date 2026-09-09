@@ -13,7 +13,22 @@ setsid vllm serve /mxstorage/pde_ai/models/llm/Llama/Llama-3.2-1B-Instruct \
 VLLM_PID=$!
 echo "vllm serve started with PID: $VLLM_PID"
 echo "Waiting for service to start..."
-sleep 240
+PORT=8081
+MAX_WAIT=600
+WAITED=0
+while [ $WAITED -lt $MAX_WAIT ]; do
+    if curl -s "http://127.0.0.1:${PORT}/v1/models" | grep -q "id"; then
+        echo "Service ready after ${WAITED}s"
+        break
+    fi
+    sleep 5
+    WAITED=$((WAITED + 5))
+done
+if [ $WAITED -ge $MAX_WAIT ]; then
+    echo "Service NOT ready after ${MAX_WAIT}s, check $LOGFILE"
+    kill -TERM -- -$VLLM_PID 2>/dev/null
+    exit 1
+fi
 
 echo "Running python test.py..."
 python "$SCRIPT_DIR/prompt_embed_inference_with_openai_client.py"
