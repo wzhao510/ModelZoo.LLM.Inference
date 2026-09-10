@@ -53,6 +53,18 @@ fi
 SHARED="$RUN_DIR/current_model"
 WORKER_READY="$RUN_DIR/worker_ready"
 
+# rank1 存活判定: 优先用 start.sh 落盘的 pid 文件, 退化到 pgrep(匹配方式与 start.sh 一致)
+rank1_alive() {
+  if [ -n "${RANK1_PID:-}" ] && kill -0 "$RANK1_PID" 2>/dev/null \
+     && grep -qa "vllm serve" "/proc/$RANK1_PID/cmdline" 2>/dev/null; then
+    return 0
+  fi
+  if [ -n "${MODEL_PATH:-}" ] && pgrep -f "vllm serve ${MODEL_PATH}" >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
+}
+
 if [ -n "${MASTER_IP:-}" ]; then
   export MASTER_ADDR="$MASTER_IP"
 elif [ -n "${VC_MASTER_HOSTS:-}" ]; then
@@ -79,8 +91,8 @@ while true; do
   cur="$(cat "$SHARED" 2>/dev/null || true)"
   if [ "$cur" = "DONE_ALL" ]; then
     echo "[luwu-worker] $(date '+%F %T') master 已结束全部任务, worker 退出"
+    bash stop.sh --all || true
     pkill -9 -f "VLLM::" 2>/dev/null || true
-    pkill -9 -f "vllm serve" 2>/dev/null || true
     exit 0
   fi
   if [ -z "$cur" ] || [ "$cur" = "$last" ]; then
@@ -108,19 +120,19 @@ while true; do
       sleep 1
     done
     MODEL_PATH="${MODEL_PATHS[$MODEL_NAME]}"
-    DTYPE="${DTYPE:-${MODEL_DTYPES[$MODEL_NAME]:-bfloat16}}"
-    nohup vllm serve "$MODEL_PATH" --trust-remote-code --distributed-executor-backend mp \
-      --max-model-len "$MAX_MODEL_LEN" --gpu-memory-utilization "$GPU_MEM_UTIL" \
-      -tp "$TP" -dp "$DP" -pp "$PP" --no-enable-prefix-caching --max-num-seqs "$MAX_NUM_SEQS" \
-      --nnodes "$NNODES" --dtype "$DTYPE" \
-      --node-rank 1 --master-addr "$MASTER_ADDR" --headless --master-port "$MASTER_PORT" \
-      > "$MODEL_RUN_DIR/rank1_serve.log" 2>&1 &
-    RANK1_PID=$!
-    echo "[luwu-worker] rank1 pid=$RANK1_PID log=$MODEL_RUN_DIR/rank1_serve.log"
+    # 与 master 一致: 统一走 start.sh(RANK=1 headless), 保证两机的 serve 参数完全一致
+    # (TP/DP/PP/NNODES/max-model-len/gpu-mem/max-num-seqs/dtype 以及 MODEL_EXTRA_ARGS 都取自 config.sh)
+    RANK=1 MODEL_NAME="$MODEL_NAME" MODEL_RUN_DIR="$MODEL_RUN_DIR" bash start.sh \
+      || echo "[luwu-worker] WARN start.sh 返回 $?(可能已有 rank1 在运行), 继续等待/监控"
+    RANK1_PID="$(cat "$MODEL_RUN_DIR/rank1.pid" 2>/dev/null || true)"
+    if [ -z "$RANK1_PID" ]; then
+      RANK1_PID="$(pgrep -f "vllm serve ${MODEL_PATH}" 2>/dev/null | head -n1 || true)"
+    fi
+    echo "[luwu-worker] rank1 pid=${RANK1_PID:-unknown} log=$MODEL_RUN_DIR/rank1_serve.log"
 
     # 监控: rank1 退出 / master 切换标记 / master store 掉线(视为 master 已停)时停止当前 rank1
     store_down=0
-    while kill -0 "$RANK1_PID" 2>/dev/null; do
+    while rank1_alive; do
       cur2="$(cat "$SHARED" 2>/dev/null || true)"
       if [ "$cur2" = "DONE_ALL" ]; then
         echo "[luwu-worker] master 已结束全部任务"
@@ -143,10 +155,16 @@ while true; do
       sleep 10
     done
 
-    # 停止 rank1 并清理残留, 等待 GPU 内存释放
-    pkill -9 -f "vllm serve" 2>/dev/null || true
-    pkill -9 -f "VLLM::" 2>/dev/null || true
-    kill -9 "$RANK1_PID" 2>/dev/null || true
+    # 停止 rank1 并清理残留(与 master 一致走 stop.sh), 等待 GPU 内存释放
+    MODEL_NAME="$MODEL_NAME" bash stop.sh || true
+    if [ -n "${RANK1_PID:-}" ]; then
+      kill -9 "$RANK1_PID" 2>/dev/null || true
+    fi
+    for i in {1..30}; do
+      pgrep -f "VLLM::" >/dev/null 2>&1 || break
+      pkill -9 -f "VLLM::" 2>/dev/null || true
+      sleep 2
+    done
     sleep 10
     # 通知 master: 本机已停干净
     echo "$MODEL_NAME" > "$WORKER_READY"

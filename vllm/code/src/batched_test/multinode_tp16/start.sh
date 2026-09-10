@@ -33,6 +33,7 @@ esac
 
 if pgrep -f "vllm serve ${MODEL_PATH}" >/dev/null 2>&1; then
   echo "[start] 已检测到 ${MODEL_NAME} 的 vllm serve 在运行, 请先执行 stop.sh" >&2
+  pgrep -f "vllm serve ${MODEL_PATH}" | head -n1 > "$RUN_DIR/rank${RANK}.pid" 2>/dev/null || true
   exit 3
 fi
 
@@ -46,4 +47,7 @@ CMD=("${CMD[@]}" $EXTRA)
 echo "[start] $(date '+%F %T') rank=$RANK model=$MODEL_NAME"
 echo "[start] cmd: ${CMD[*]}"
 nohup "${CMD[@]}" >"$LOG" 2>&1 &
-echo "[start] pid=$! log=$LOG"
+SERVE_PID=$!
+# 记录 pid 供调用方(如 luwu_worker.sh)监控/清理, 与 master 走同一套启动逻辑
+echo "$SERVE_PID" > "$RUN_DIR/rank${RANK}.pid"
+echo "[start] pid=$SERVE_PID log=$LOG"

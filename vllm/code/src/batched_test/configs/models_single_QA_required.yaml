@@ -223,6 +223,7 @@
     extra_args:
       --dtype: bfloat16
       --gpu-memory-utilization: 0.9
+      --speculative-config: '{"method": "mtp", "num_speculative_tokens": 2, "model": "/mxstorage/pde_ai/models/model_quant_opt/DeepSeek/DeepSeek-V4-Flash_FlexSMQ-AWQ_W8A8/vllm_quant_model"}'
   infer_type:
   - text-only
   benchmark:
@@ -319,22 +320,6 @@
 
 - name: Qwen3.8-27B
   model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3.8-27B
-  serve_config:
-    tp: 4
-    dp: 1
-    pp: 1
-    extra_args:
-      --dtype: bfloat16
-      --gpu-memory-utilization: 0.9
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env: null
-
-- name: JoyAI-LLM-Flash
-  model_path: /mxstorage/pde_ai/models/llm/jd-opensource/JoyAI-LLM-Flash/
   serve_config:
     tp: 4
     dp: 1
