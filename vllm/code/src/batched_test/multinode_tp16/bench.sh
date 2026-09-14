@@ -5,7 +5,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/config.sh"
+source "$SCRIPT_DIR/config.sh" || exit 1
 
 MODEL_PATH="${MODEL_PATHS[$MODEL_NAME]}"
 NUM_PROMPTS="${NUM_PROMPTS:-32}"

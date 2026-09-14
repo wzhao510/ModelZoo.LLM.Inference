@@ -12,7 +12,8 @@
 | --- | --- |
 | `docker_run.sh` | 创建容器（vllm 0.25.0-maca .103 镜像） |
 | `setup.sh` | 容器内初始化：compile_env + batched_test 依赖 |
-| `config.sh` | 通用配置：端口/TP/模型路径/环境变量 |
+| `config.sh` | 通用配置：端口/全局默认参数/环境变量；模型清单从 YAML 加载 |
+| `load_models.py` | 解析模型清单 YAML，生成 bash 数组供 `config.sh` 加载 |
 | `start.sh` | 启动本节点 vllm serve（`RANK=0`/`RANK=1`） |
 | `check.sh` | 轮询 rank0 `/health` 直到就绪 |
 | `bench.sh` | 对已启动的 rank0 服务跑 `vllm bench serve` 压测 |
@@ -34,7 +35,7 @@ docker exec -it vllm_025_lli_0820 bash -c 'bash /sw_home/lli/ModelZoo.LLM.Infere
 
 ```bash
 cd /sw_home/lli/ModelZoo.LLM.Inference/vllm/code/src/batched_test/multinode_tp16
-export MODEL_NAME=DeepSeek-R1-0528-W8A8   # 可选: GLM-5.2-W8A8 / Kimi-K2.6-Int4
+export MODEL_NAME=DeepSeek-R1-0528-W8A8   # 取模型清单里的 name, 见下方“模型清单”
 
 # 10.13.81.58 容器内: 启动 rank1 (headless)
 RANK=1 bash start.sh
@@ -70,20 +71,46 @@ RANK=0 bash start.sh
 
 压测参数：`NUM_PROMPTS/MAX_CONCURRENCY/INPUT_LEN/OUTPUT_LEN/RESULT_DIR`。
 
-## 模型与路径
+## 模型清单（YAML 驱动）
 
-| 模型名 | 路径 | dtype |
-| --- | --- | --- |
-| DeepSeek-R1-0528-W8A8 | `/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model/` | bfloat16 |
-| GLM-5.2-W8A8 | `/mxstorage/pde_ai/models/llm/ChatGLM/GLM-5_2-W8A8/` | bfloat16 |
-| Kimi-K2.6-Int4 | `/mxstorage/pde_ai/models/llm/Kimi/Kimi-K2.6-W8A8/` | float16 |
+模型列表放在 `../configs/models_distributed_tp16.yaml`，格式与
+`../configs/models_single_QA_required.yaml` 一致，每个模型的 `serve_config`
+自带 `tp/dp/pp/dtype/extra_args`：
 
-如需加载报错，可用 `DTYPE=bfloat16` 覆盖（Kimi 的 config.json 为 bfloat16）。
+```yaml
+- name: GLM-4.5
+  model_path: /mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.5
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 2
+    extra_args:
+      --dtype: bfloat16
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_high.json
+    sweep_num_runs: 1
+  extra_env:
+```
+
+要点：
+
+- 卡数 = `tp*dp*pp`，节点数 `NNODES = 卡数 / GPUS_PER_NODE`（默认 8，可覆盖），
+  所以新增模型只改 YAML 即可，不用动脚本。
+- 现在清单里有 16 个模型：原 `config.sh` 的 3 个（`default: true`，多机 queue 任务默认跑）
+  + `Kimi-K2.5-FP8`（C600U）+ 由 `configs/model.yaml` 迁入的 12 个大模型
+  （`tp*dp*pp > 8`，单机 8 卡跑不动）。
+- 选其它模型：`MODEL_NAME=GLM-4.5 bash start.sh`；queue 任务用
+  `MODELS=GLM-5-W8A8,DeepSeek-V3.2-Exp` 覆盖默认列表。
+- 换其它清单：`MODEL_CONFIG=/path/to/other.yaml bash start.sh`。
+- 想看清单里全部模型名：
+  `python3 load_models.py ../configs/models_distributed_tp16.yaml | head -1`。
 
 ## 注意
 
 - 脚本需在容器内执行（vllm 在容器内 `/opt/conda/bin/vllm`）。
 - `--network=host` 容器共享宿主机网络，端口冲突时务必换端口。
 - `stop.sh` 只影响本容器内的进程（PID namespace 隔离），不会误杀其他用户的容器。
-- 若需 speculative（如 deepseek_mtp / mtp），在 `config.sh` 的 `MODEL_EXTRA_ARGS` 中追加
+- 若需 speculative（如 deepseek_mtp / mtp），在该模型 YAML 的 `extra_args` 里追加
   `--speculative-config` 参数。

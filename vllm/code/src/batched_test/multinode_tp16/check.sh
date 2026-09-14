@@ -4,7 +4,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/config.sh"
+source "$SCRIPT_DIR/config.sh" || exit 1
 
 TIMEOUT="${1:-3600}"
 URL="http://${MASTER_ADDR}:${SERVE_PORT}/health"

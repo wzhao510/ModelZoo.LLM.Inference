@@ -1,14 +1,16 @@
 #!/bin/bash
 # 陆吾 queue 模式 - master 容器启动脚本(主节点)
 # 说明: queue 模式 start_script 前台串行执行, 跑完退出后平台自动释放机器, 不能 nohup 后台化
-# 一次申请内顺序跑完所有多机模型: DeepSeek-R1-0528-W8A8 / GLM-5.2-W8A8 / Kimi-K2.6-Int4
+# 一次申请内顺序跑完模型清单里 default: true 的模型(默认
+# DeepSeek-R1-0528-W8A8 / GLM-5.2-W8A8 / Kimi-K2.6-Int4, 见
+# configs/models_distributed_tp16.yaml); 可用 MODELS 指定其它模型
 # 每个模型: 启动 rank0 -> 等健康 -> client 推理(含 long-text) -> vllm bench -> 停止
 # 模型切换: 本机 + worker 都确认停止干净后才进入下一个(worker_ready 握手)
 set -uo pipefail
 
 BASE="/sw_home/lli/ModelZoo.LLM.Inference/vllm/code/src/batched_test/multinode_tp16"
 cd "$BASE" || exit 1
-source ./config.sh
+source ./config.sh || exit 1
 
 # 日志目录: 按日期+时分秒命名(不再用 JOB_ID 目录), 锁/标记文件放隐藏 meta 目录
 export BASE_LOG_DIR="${LUWU_LOG_DIR:-/sw_home/lli/model_test/tp16_luwu}"
@@ -35,13 +37,13 @@ echo "$RUN_ID" > "$META_DIR/current_run_${JOB_TAG}"
 LOG="$RUN_DIR/luwu_master.log"
 exec > >(tee -a "$LOG") 2>&1
 
-# 模型列表(顺序执行); 可通过环境变量覆盖, 默认全部
+# 模型列表(顺序执行); 可通过环境变量 MODELS 覆盖, 默认取清单里 default: true 的模型
 if [ -n "${MODELS:-}" ]; then
   # 兼容逗号分隔(陆吾 env_vars 注入)与空格分隔两种写法
   MODELS="${MODELS//,/ }"
   read -r -a MODELS <<<"$MODELS"
 else
-  MODELS=(DeepSeek-R1-0528-W8A8 GLM-5.2-W8A8 Kimi-K2.6-Int4)
+  MODELS=("${DIST_DEFAULT_MODELS[@]}")
 fi
 SHARED="$RUN_DIR/current_model"
 WORKER_READY="$RUN_DIR/worker_ready"

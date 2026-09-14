@@ -7,7 +7,7 @@ set -uo pipefail
 
 BASE="/sw_home/lli/ModelZoo.LLM.Inference/vllm/code/src/batched_test/multinode_tp16"
 cd "$BASE" || exit 1
-source ./config.sh
+source ./config.sh || exit 1
 
 # 日志目录: 按日期+时分秒命名(与 master 一致, 读 master 发布的名字)
 export BASE_LOG_DIR="${LUWU_LOG_DIR:-/sw_home/lli/model_test/tp16_luwu}"
@@ -42,13 +42,13 @@ mkdir -p "$RUN_DIR"
 LOG="$RUN_DIR/luwu_worker.log"
 exec > >(tee -a "$LOG") 2>&1
 
-# 模型列表(与 master 保持一致); 可通过环境变量覆盖
+# 模型列表(与 master 保持一致); 可通过环境变量 MODELS 覆盖, 默认同 master 的默认清单
 if [ -n "${MODELS:-}" ]; then
   # 兼容逗号分隔(陆吾 env_vars 注入)与空格分隔两种写法
   MODELS="${MODELS//,/ }"
   read -r -a MODELS <<<"$MODELS"
 else
-  MODELS=(DeepSeek-R1-0528-W8A8 GLM-5.2-W8A8 Kimi-K2.6-Int4)
+  MODELS=("${DIST_DEFAULT_MODELS[@]}")
 fi
 SHARED="$RUN_DIR/current_model"
 WORKER_READY="$RUN_DIR/worker_ready"
@@ -121,7 +121,8 @@ while true; do
     done
     MODEL_PATH="${MODEL_PATHS[$MODEL_NAME]}"
     # 与 master 一致: 统一走 start.sh(RANK=1 headless), 保证两机的 serve 参数完全一致
-    # (TP/DP/PP/NNODES/max-model-len/gpu-mem/max-num-seqs/dtype 以及 MODEL_EXTRA_ARGS 都取自 config.sh)
+    # (TP/DP/PP/NNODES/max-model-len/gpu-mem/max-num-seqs/dtype/extra_args 都按模型清单
+    #  configs/models_distributed_tp16.yaml 里该模型的 serve_config 取值)
     RANK=1 MODEL_NAME="$MODEL_NAME" MODEL_RUN_DIR="$MODEL_RUN_DIR" bash start.sh \
       || echo "[luwu-worker] WARN start.sh 返回 $?(可能已有 rank1 在运行), 继续等待/监控"
     RANK1_PID="$(cat "$MODEL_RUN_DIR/rank1.pid" 2>/dev/null || true)"

@@ -3,7 +3,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/config.sh"
+source "$SCRIPT_DIR/config.sh" || exit 1
 
 echo "=== 本容器 vllm serve 进程 ==="
 ps -ef | grep "[v]llm serve" || echo "无"

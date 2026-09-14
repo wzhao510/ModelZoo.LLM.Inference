@@ -5,7 +5,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/config.sh"
+source "$SCRIPT_DIR/config.sh" || exit 1
 
 if [ "${1:-}" = "--all" ]; then
   echo "[stop] 停止本容器内所有 vllm serve"
