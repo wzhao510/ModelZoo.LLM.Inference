@@ -3,7 +3,8 @@
 # 用法: docker exec vllm_025_lli_0820 bash /sw_home/lli/ModelZoo.LLM.Inference/vllm/code/src/batched_test/multinode_tp16/setup.sh
 set -uo pipefail
 
-MODELZOO_ROOT="/sw_home/lli/ModelZoo.LLM.Inference"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MODELZOO_ROOT="$(cd "$SCRIPT_DIR/../../../../.." && pwd)"   # .../ModelZoo.LLM.Inference
 
 echo "[setup] 执行 compile_env.sh ..."
 bash /sw_home/lli/compile_env.sh || {

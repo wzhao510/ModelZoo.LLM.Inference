@@ -6,8 +6,9 @@
 # 可选: LUWU_COMPILE=1 时, 编译安装 luwu_apply 源码(mcoplib+vllm_metax)后再跑
 set -uo pipefail
 
-BASE="/sw_home/lli/ModelZoo.LLM.Inference/vllm/code/src/batched_test"
-TP16_DIR="/sw_home/lli/ModelZoo.LLM.Inference/vllm/code/src/batched_test/multinode_tp16"
+# 脚本自身所在目录(/sw_home/lli/ModelZoo.LLM.Inference/..., 避免新旧代码目录混用)
+TP16_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASE="$(cd "$TP16_DIR/.." && pwd)"
 MODEL_CONFIG="${MODEL_CONFIG:-configs/models_single_checked_20260821.yaml}"
 LOG_DIR="${LUWU_LOG_DIR:-/sw_home/lli/model_test/tp16_luwu}"
 mkdir -p "$LOG_DIR"

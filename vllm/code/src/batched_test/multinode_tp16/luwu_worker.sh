@@ -5,50 +5,116 @@
 #       写 worker_ready 通知 master 本机已停干净, 两机都停掉才进入下一个模型
 set -uo pipefail
 
-BASE="/sw_home/lli/ModelZoo.LLM.Inference/vllm/code/src/batched_test/multinode_tp16"
-cd "$BASE" || exit 1
-source ./config.sh || exit 1
-
-# 日志目录: 按日期+时分秒命名(与 master 一致, 读 master 发布的名字)
-export BASE_LOG_DIR="${LUWU_LOG_DIR:-/sw_home/lli/model_test/tp16_luwu}"
-mkdir -p "$BASE_LOG_DIR"
+# 脚本自身所在目录(理由同 luwu_master.sh: 不写死绝对路径, 避免新旧代码目录混用)
+BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REQUIREMENTS="$BASE/../requirements.txt"
 JOB_TAG="${JOB_ID:-default}"
+
+# 日志目录: 共享盘优先; 不可写时退到 /tmp(与 master 同规则)
+BASE_LOG_DIR="${LUWU_LOG_DIR:-/sw_home/lli/model_test/tp16_luwu}"
+LOG_FALLBACK=""
+if ! { mkdir -p "$BASE_LOG_DIR" 2>/dev/null && [ -w "$BASE_LOG_DIR" ]; }; then
+  LOG_FALLBACK="yes"
+  BASE_LOG_DIR="/tmp/luwu_logs"
+  mkdir -p "$BASE_LOG_DIR" 2>/dev/null || true
+fi
+export BASE_LOG_DIR
 META_DIR="$BASE_LOG_DIR/.luwu_meta"
-mkdir -p "$META_DIR"
+mkdir -p "$META_DIR" 2>/dev/null || true
+BOOT_LOG="$BASE_LOG_DIR/luwu_boot_worker_${JOB_TAG}.log"
+MASTER_BOOT_LOG="$BASE_LOG_DIR/luwu_boot_master_${JOB_TAG}.log"
+FAILED_MARKER="$META_DIR/failed_${JOB_TAG}"
+
+# 输出同时落盘 + 发到平台日志; stdbuf 强制行缓冲, 否则平台日志会长时间只显示开头几行
+TEE=(tee -a "$BOOT_LOG")
+command -v stdbuf >/dev/null 2>&1 && TEE=(stdbuf -oL -eL tee -a "$BOOT_LOG")
+exec > >("${TEE[@]}") 2>&1
+say() { echo "[luwu-worker] $(date '+%F %T') $*"; }
+
+say "启动 host=$(hostname) ip=$(hostname -I 2>/dev/null | tr -s ' ' ',')"
+say "JOB_ID=${JOB_ID:-<未注入>} cwd=$PWD MODEL_CONFIG=${MODEL_CONFIG:-<默认>} MODELS=${MODELS:-<默认>} LUWU_COMPILE=${LUWU_COMPILE:-0}"
+say "日志文件: $BOOT_LOG ${LOG_FALLBACK:+(共享盘 $LUWU_LOG_DIR 不可写, 已退到 /tmp)}"
+
+say "step1/5 进入代码目录 $BASE"
+cd "$BASE" || { say "ERROR 进入代码目录失败(检查 /sw_home/lli 是否挂载): $BASE"; exit 1; }
+
+say "step2/5 加载模型清单 $BASE/config.sh"
+if ! source ./config.sh; then
+  say "ERROR 模型清单加载失败, 本节点不会起 rank1(原因见上面 [config] ERROR)"
+  exit 1
+fi
+if [ -z "${DIST_MODELS+x}" ]; then
+  say "ERROR $BASE/config.sh 不是 YAML 版(没有 DIST_MODELS): 脚本和 config.sh 不属于同一份代码"
+  say "      当前 BASE=$BASE, 请确认 start_script/start_script_worker 里的目录与代码目录一致"
+  exit 1
+fi
+say "step2/5 OK: 清单 $(basename "$MODEL_CONFIG"), 共 ${#DIST_MODELS[@]} 个模型"
 
 # 单实例锁(按 JOB_ID 区分): 平台重复拉起时, 后启动的 worker 等待前一个完成
+say "step3/5 取单实例锁 $META_DIR/lock_worker_${JOB_TAG}"
 LOCK="$META_DIR/lock_worker_${JOB_TAG}"
 exec 9>"$LOCK"
 if ! flock -n 9; then
-  echo "[luwu-worker] 检测到已有 worker 实例在运行, 等待其完成..."
+  say "检测到已有 worker 实例在运行, 等待其完成..."
   flock 9
-  echo "[luwu-worker] 前序实例已结束, 本实例直接退出"
+  say "前序实例已结束, 本实例直接退出"
   exit 0
 fi
 
-# 等待 master 发布的日期目录名(worker 可能先于 master 启动, 最多等 120s)
+# 等待 master 发布的日期目录名(worker 可能先于 master 启动);
+# 同时监控 master 的失败标记, 避免 master 已经失败而 worker 一直挂着
+say "step4/5 等 master 发布 RUN_ID(同时监控 master 失败标记)"
+RUN_ID_WAIT="${RUN_ID_WAIT:-300}"
 RUN_ID=""
-for i in {1..120}; do
+for ((i = 1; i <= RUN_ID_WAIT; i++)); do
   RUN_ID="$(cat "$META_DIR/current_run_${JOB_TAG}" 2>/dev/null || true)"
   [ -n "$RUN_ID" ] && break
+  if [ -f "$FAILED_MARKER" ]; then
+    say "ERROR master 启动失败($(cat "$FAILED_MARKER" 2>/dev/null)): 本次任务不会加载模型"
+    say "排查: tail -n50 $MASTER_BOOT_LOG"
+    exit 3
+  fi
+  if (( i % 30 == 0 )); then
+    say "... 已等待 master 发布 RUN_ID ${i}s(见 $MASTER_BOOT_LOG)"
+  fi
   sleep 1
 done
 if [ -z "$RUN_ID" ]; then
-  RUN_ID="run_$(date +%Y%m%d_%H%M%S)"
-  echo "[luwu-worker] WARN 未等到 master 发布的 RUN_ID, 用本地时间兜底: $RUN_ID"
+  say "ERROR 等待 master 发布 RUN_ID 超时(${RUN_ID_WAIT}s), 本节点退出"
+  say "排查: 确认另一个节点跑的是 luwu_master.sh, 且日志有输出: tail -n50 $MASTER_BOOT_LOG"
+  exit 3
 fi
 RUN_DIR="$BASE_LOG_DIR/$RUN_ID"
 mkdir -p "$RUN_DIR"
 LOG="$RUN_DIR/luwu_worker.log"
-exec > >(tee -a "$LOG") 2>&1
+TEE2=(tee -a "$LOG")
+command -v stdbuf >/dev/null 2>&1 && TEE2=(stdbuf -oL -eL tee -a "$LOG")
+exec > >("${TEE2[@]}") 2>&1
+say "step4/5 OK: run=$RUN_ID"
+say "step5/5 跟随 master 的模型标记, 需要时启动 rank1"
 
 # 模型列表(与 master 保持一致); 可通过环境变量 MODELS 覆盖, 默认同 master 的默认清单
-if [ -n "${MODELS:-}" ]; then
+MODELS_RAW="${MODELS:-}"
+if [ -n "$MODELS_RAW" ]; then
   # 兼容逗号分隔(陆吾 env_vars 注入)与空格分隔两种写法
-  MODELS="${MODELS//,/ }"
+  MODELS="${MODELS_RAW//,/ }"
   read -r -a MODELS <<<"$MODELS"
 else
   MODELS=("${DIST_DEFAULT_MODELS[@]}")
+fi
+# 与 master 同样的校验: 空列表/未知模型名直接报错退出
+if [ "${#MODELS[@]}" -eq 0 ]; then
+  echo "[luwu-worker] ERROR MODELS='$MODELS_RAW' 解析后为空; 清单 $MODEL_CONFIG 里默认执行: ${DIST_DEFAULT_MODELS[*]}"
+  exit 2
+fi
+UNKNOWN_MODELS=()
+for _m in "${MODELS[@]}"; do
+  [ -n "${MODEL_PATHS[$_m]:-}" ] || UNKNOWN_MODELS+=("$_m")
+done
+if [ "${#UNKNOWN_MODELS[@]}" -gt 0 ]; then
+  echo "[luwu-worker] ERROR 清单 $MODEL_CONFIG 里没有这些模型: ${UNKNOWN_MODELS[*]}"
+  echo "[luwu-worker] 清单里的模型: ${DIST_MODELS[*]}"
+  exit 2
 fi
 SHARED="$RUN_DIR/current_model"
 WORKER_READY="$RUN_DIR/worker_ready"
@@ -74,7 +140,7 @@ echo "[luwu-worker] $(date '+%F %T') run=$RUN_ID MASTER_ADDR=$MASTER_ADDR MASTER
 
 # 环境初始化(幂等)
 bash /sw_home/lli/compile_env.sh >/dev/null 2>&1 || echo "[luwu-worker] WARN compile_env.sh 失败, 继续"
-pip install -r /sw_home/lli/ModelZoo.LLM.Inference/vllm/code/src/batched_test/requirements.txt >/dev/null 2>&1 || true
+pip install -r "$REQUIREMENTS" >/dev/null 2>&1 || true
 
 # 可选: LUWU_COMPILE=1 时, 安装 master 的编译产物(等共享 wheel); 等不到则本机编译
 if [ "${LUWU_COMPILE:-0}" = "1" ]; then
@@ -88,6 +154,14 @@ fi
 store_down=0
 last=""
 while true; do
+  # master 早期失败(清单加载/模型名校验)时不干等: 直接停干净退出
+  if [ -f "$FAILED_MARKER" ]; then
+    echo "[luwu-worker] ERROR master 失败($(cat "$FAILED_MARKER" 2>/dev/null)), 停止本节点"
+    echo "[luwu-worker] 排查: tail -n50 $MASTER_BOOT_LOG"
+    bash stop.sh --all || true
+    pkill -9 -f "VLLM::" 2>/dev/null || true
+    exit 3
+  fi
   cur="$(cat "$SHARED" 2>/dev/null || true)"
   if [ "$cur" = "DONE_ALL" ]; then
     echo "[luwu-worker] $(date '+%F %T') master 已结束全部任务, worker 退出"

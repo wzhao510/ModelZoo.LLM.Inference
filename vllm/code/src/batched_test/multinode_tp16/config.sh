@@ -54,19 +54,74 @@ export MCCL_IB_HCA="${MCCL_IB_HCA:-${NETWORK_CONFIG:-mlx5_0,mlx5_1,mlx5_2,mlx5_3
 # 模型列表(名称/路径/tp/dp/pp/dtype/额外参数/环境变量)统一维护在 YAML 里,
 # 格式与 configs/models_single_QA_required.yaml 一致:
 #   configs/models_distributed_tp16.yaml
-# 本文件不再硬编码模型表; 用 MODEL_CONFIG 可指定其它清单。
+# 本文件不再硬编码模型表; 用 MODEL_CONFIG 可指定其它清单(绝对路径或相对路径均可)。
+# 注意: 解析清单需要能 import yaml 的 python, 见下面 _pick_models_python。
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MODEL_CONFIG="${MODEL_CONFIG:-$SCRIPT_DIR/../configs/models_distributed_tp16.yaml}"
-if [ ! -f "$MODEL_CONFIG" ]; then
-  echo "[config] 模型清单不存在: $MODEL_CONFIG" >&2
+BATCHED_TEST_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+MODEL_CONFIG_REQUESTED="${MODEL_CONFIG:-configs/models_distributed_tp16.yaml}"
+
+# 相对路径按 batched_test 目录解析: MODEL_CONFIG=configs/model.yaml 与
+# MODEL_CONFIG=$BATCHED_TEST_DIR/configs/model.yaml 等价; 也兼容脚本目录下的路径
+_resolve_model_config() {
+  local wanted="$1" candidate
+  for candidate in \
+    "$wanted" \
+    "$BATCHED_TEST_DIR/$wanted" \
+    "$BATCHED_TEST_DIR/configs/$(basename "$wanted")" \
+    "$SCRIPT_DIR/$wanted"; do
+    if [ -f "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# 选一个能 import yaml 的 python: 镜像里 /usr/bin/python3 常没有 PyYAML,
+# PATH 里缺 conda 时会解析失败(旧版直接静默退出, 表现为"没加载模型就结束")
+_pick_models_python() {
+  local candidate
+  for candidate in "${MODELS_PYTHON:-}" \
+                   "$(command -v python3 2>/dev/null || true)" \
+                   "${CONDA_PREFIX:-/opt/conda}/bin/python3" \
+                   "/opt/conda/bin/python3" \
+                   "$(command -v python 2>/dev/null || true)"; do
+    [ -n "$candidate" ] && [ -x "$candidate" ] || continue
+    "$candidate" -c 'import yaml' >/dev/null 2>&1 && { printf '%s\n' "$candidate"; return 0; }
+  done
+  return 1
+}
+
+if ! MODEL_CONFIG="$(_resolve_model_config "$MODEL_CONFIG_REQUESTED")"; then
+  echo "[config] ERROR 找不到模型清单: MODEL_CONFIG=$MODEL_CONFIG_REQUESTED" >&2
+  echo "[config] 已尝试: $MODEL_CONFIG_REQUESTED, $BATCHED_TEST_DIR/$MODEL_CONFIG_REQUESTED," \
+       "$BATCHED_TEST_DIR/configs/$(basename "$MODEL_CONFIG_REQUESTED"), $SCRIPT_DIR/$MODEL_CONFIG_REQUESTED" >&2
+  echo "[config] $BATCHED_TEST_DIR/configs/ 下的可用清单:" >&2
+  ls -1 "$BATCHED_TEST_DIR"/configs/*.yaml >&2 2>/dev/null || true
   return 1 2>/dev/null || exit 1
 fi
-if ! MODELS_SNIPPET="$(python3 "$SCRIPT_DIR/load_models.py" "$MODEL_CONFIG")"; then
-  echo "[config] 解析模型清单失败: $MODEL_CONFIG" >&2
+
+if ! MODELS_PY="$(_pick_models_python)"; then
+  echo "[config] ERROR 找不到能 import yaml 的 python, 无法解析模型清单: $MODEL_CONFIG" >&2
+  echo "[config] PATH=$PATH" >&2
+  echo "[config] 解决: 用 MODELS_PYTHON=/opt/conda/bin/python3 指定解释器(或先 pip install pyyaml)" >&2
+  return 1 2>/dev/null || exit 1
+fi
+
+LOAD_CMD=("$MODELS_PY" "$SCRIPT_DIR/load_models.py" "$MODEL_CONFIG")
+# 加超时: 清单在 NFS 上读不动时不要静默卡住(默认 60s, MODELS_LOAD_TIMEOUT 可调)
+command -v timeout >/dev/null 2>&1 && LOAD_CMD=(timeout "${MODELS_LOAD_TIMEOUT:-60}" "$MODELS_PY" "$SCRIPT_DIR/load_models.py" "$MODEL_CONFIG")
+if ! MODELS_SNIPPET="$("${LOAD_CMD[@]}")"; then
+  echo "[config] ERROR 解析模型清单失败或超时: $MODEL_CONFIG (python=$MODELS_PY)" >&2
   return 1 2>/dev/null || exit 1
 fi
 # 生成 DIST_MODELS/MODEL_PATHS/MODEL_DTYPES/MODEL_TP/... 等数组
 eval "$MODELS_SNIPPET"
+# 只在最外层脚本首次加载时打印, 避免 start.sh/check.sh/stop.sh 等子脚本重复刷屏
+if [ -z "${MODELS_CONFIG_LOADED:-}" ]; then
+  echo "[config] 模型清单: $MODEL_CONFIG (共 ${#DIST_MODELS[@]} 个, 默认执行 ${#DIST_DEFAULT_MODELS[@]} 个)"
+  export MODELS_CONFIG_LOADED=1
+fi
 
 # ---------- 日志目录 (共享挂载, 双机可见) ----------
 BASE_LOG_DIR="${BASE_LOG_DIR:-/sw_home/lli/model_test/tp16}"

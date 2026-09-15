@@ -10,7 +10,8 @@ source "$SCRIPT_DIR/config.sh" || exit 1
 MODEL_RUN_DIR="${MODEL_RUN_DIR:-$BASE_LOG_DIR/$MODEL_NAME}"
 mkdir -p "$MODEL_RUN_DIR"
 
-BT="/sw_home/lli/ModelZoo.LLM.Inference/vllm/code/src/batched_test"
+# 不写死绝对路径: 取脚本所在目录的上一级(batched_test), 新旧代码目录混用时会用错测试用例
+BT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TEXT_CASE="${TEXT_CASE:-$BT/configs/inference/text_case.yaml}"
 LONG_TEXT_CASE="${LONG_TEXT_CASE:-$BT/configs/inference/long_text_case.yaml}"
 

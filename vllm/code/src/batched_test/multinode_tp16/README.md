@@ -103,9 +103,33 @@ RANK=0 bash start.sh
   （`tp*dp*pp > 8`，单机 8 卡跑不动）。
 - 选其它模型：`MODEL_NAME=GLM-4.5 bash start.sh`；queue 任务用
   `MODELS=GLM-5-W8A8,DeepSeek-V3.2-Exp` 覆盖默认列表。
-- 换其它清单：`MODEL_CONFIG=/path/to/other.yaml bash start.sh`。
+- 换其它清单：`MODEL_CONFIG=/path/to/other.yaml bash start.sh`；相对路径按
+  `batched_test/` 解析（`MODEL_CONFIG=configs/model.yaml` 与绝对路径等价）。
+  路径不存在时脚本会打印尝试过的路径和 `configs/` 下可用清单后退出。
+- 解析清单需要能 `import yaml` 的 python：脚本依次尝试 `MODELS_PYTHON` →
+  `PATH` 里的 `python3` → `$CONDA_PREFIX/bin/python3` → `/opt/conda/bin/python3`。
+  容器里 `/usr/bin/python3` 没有 PyYAML，`PATH` 缺 conda 时用
+  `MODELS_PYTHON=/opt/conda/bin/python3` 指定即可。
+- `MODELS` 里的模型名必须在清单里，且不能解析成空列表（拼错名字/`MODELS=,`/
+  `MODELS` 为空串会直接报错退出并打印清单里的可用模型名），
+  避免"一个模型都没加载就显示执行完毕"。
 - 想看清单里全部模型名：
   `python3 load_models.py ../configs/models_distributed_tp16.yaml | head -1`。
+
+## 排障（任务启动即结束）
+
+多机 queue 任务"没加载模型就直接结束"时，按下面顺序看共享盘上的日志：
+
+| 现象 | 日志/位置 | 原因 |
+| --- | --- | --- |
+| master/worker 秒退，容器 stdout 只有一行 `[config] ...` | `$BASE_LOG_DIR/luwu_boot_master_<JOB_ID>.log`、`luwu_boot_worker_<JOB_ID>.log` | 模型清单加载失败：`MODEL_CONFIG` 路径不对 / python 缺 PyYAML / YAML 语法错 |
+| 日志只有 `开始多模型顺序测试:`（列表为空）后立刻 `全部模型执行完毕` | master 日志 | `MODELS` 解析成空列表 |
+| 日志报 `清单里没有这些模型` | master/worker 日志 | `MODELS` 里写了清单中不存在的模型名（改名/迁到别的清单了） |
+| worker 报 `master 启动失败` / `等待 master 发布 RUN_ID 超时` | worker 日志 | 另一节点没跑 `luwu_master.sh`，或 master 早期失败（看 `FAILED_MARKER`） |
+| 一个节点打印 `前序实例已结束, 本实例直接退出` | 该节点日志 | 两个节点跑了同一份 `luwu_master.sh`（同 JOB_ID 抢锁），从节点应改跑 `luwu_worker.sh` |
+
+失败标记写在 `$BASE_LOG_DIR/.luwu_meta/failed_<JOB_ID>`（内容为失败原因），
+`$BASE_LOG_DIR` 默认 `/sw_home/lli/model_test/tp16_luwu`。
 
 ## 注意
 

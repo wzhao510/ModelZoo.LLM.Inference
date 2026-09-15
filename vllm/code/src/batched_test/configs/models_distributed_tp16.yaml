@@ -14,6 +14,24 @@
 # 常用: 宁夏 C500x8 x2 (TP16, GPUS_PER_NODE=8)
 #       上海 C600U x16 x2 (TP32, GPUS_PER_NODE=16)
 
+# ---------- 上海 C600U(每节点 16 卡, 两机 TP32) ----------
+
+# - name: Kimi-K2.5-FP8
+#   # 上海 C600U 分布式: 每节点 16x MXC600U, 两机 TP32, 需 GPUS_PER_NODE=16
+#   model_path: /mnt/hdd1/vllm/Kimi-K2.5-FP8/
+#   serve_config:
+#     tp: 32
+#     dp: 1
+#     pp: 1
+#     extra_args:
+#       --max-num-batched-tokens: 8192
+#   infer_type:
+#   - text-only
+#   benchmark:
+#     bench_param: configs/bench_params/bench_default.json
+#     sweep_num_runs: 1
+#   extra_env:
+
 # ---------- 默认执行列表(原 config.sh 里的 3 个) ----------
 
 - name: DeepSeek-R1-0528-W8A8
