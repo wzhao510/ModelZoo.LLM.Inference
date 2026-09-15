@@ -116,10 +116,12 @@ def vllm_mooncake_service(test_mode, tmp_path_factory):
     log_file = test_run_path / "vllm_server.log"
 
     # 生成实际的 JSON 配置
+    # 注意: 0.3.12 要求 local_hostname / metadata_server / master_server_address 都非空
     mooncake_config = {
-        "metadata_server": "P2PHANDSHAKE",
+        "local_hostname": "127.0.0.1",
+        "metadata_server": f"127.0.0.1:{MOONCAKE_MASTER_PORT}",
         "master_server_address": f"127.0.0.1:{MOONCAKE_MASTER_PORT}",
-        "protocol": "rdma", 
+        "protocol": "rdma",
         "device_name": "mlx5_0"
     }
 
@@ -137,15 +139,23 @@ def vllm_mooncake_service(test_mode, tmp_path_factory):
             "local_buffer_size": "2GB",
             "enable_offload": True
         })
-    
+
     config_file.write_text(json.dumps(mooncake_config, indent=2))
     print(f"\n[Config] Mooncake JSON ({config_file}):\n{config_file.read_text()}")
 
     # 配置基于文档要求的环境变量
+    # 注意: Mooncake 0.3.12 的 load_from_env 会优先用环境变量，必须显式设置
+    # 避免回退到默认 P2PHANDSHAKE 模式（随机端口发现，单实例会失败）
+    master_addr = f"127.0.0.1:{MOONCAKE_MASTER_PORT}"
     env = os.environ.copy()
     env.update({
         "CUDA_VISIBLE_DEVICES": CUDA_DEVICE_ID,
         "MOONCAKE_CONFIG_PATH": str(config_file),
+        "MOONCAKE_MASTER": master_addr,
+        "MOONCAKE_TE_META_DATA_SERVER": master_addr,
+        "MOONCAKE_LOCAL_HOSTNAME": "127.0.0.1",
+        "MOONCAKE_PROTOCOL": "rdma",
+        "MOONCAKE_DEVICE": "mlx5_0",
         "MC_FORCE_RDMA": "1",
         "MC_ENABLE_DEST_DEVICE_AFFINITY": "1",
         "VLLM_DISABLE_REQUEST_ID_RANDOMIZATION": "1",
