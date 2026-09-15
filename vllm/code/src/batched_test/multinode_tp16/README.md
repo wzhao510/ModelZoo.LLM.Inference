@@ -20,6 +20,39 @@
 | `status.sh` | 查看本节点 serve 进程与 rank0 健康状态 |
 | `stop.sh` | 停止本节点 serve |
 | `run_all.sh` | rank0 侧一键流程：等待就绪 -> 压测 -> 停止 |
+| `pyspy_watch.sh` | 启动期抓栈看门狗（py-spy dump + /proc 快照），由 `start.sh` 后台自动拉起 |
+
+## 启动慢 / 卡住时怎么定位（pyspy_watch.sh）
+
+`start.sh` 启动 serve 后会默认后台拉起 `pyspy_watch.sh`（`PYSPY_DUMP=0` 可关闭），
+在启动到就绪期间每 30s 抓一轮，输出落在本模型的 run 目录下（双机各自一份）：
+
+```
+$MODEL_RUN_DIR/pyspy_rank0/          # rank1 同名 pyspy_rank1/
+├── index.txt                        # 每轮: 耗时/进程数/py-spy 状态/日志末尾一行
+├── watch.log                        # 看门狗自身日志(是否装上 py-spy 等)
+├── round_01_t000010s/
+│   ├── ps.txt                       # 各进程 CPU/RSS/状态/父子关系
+│   ├── wchan_<pid>.txt              # 在算还是在等锁/IO
+│   └── pyspy_<pid>_VLLM::Worker_TP0.txt   # Python 栈(卡在哪一行)
+└── round_02_t000040s/ ...
+```
+
+排查方式：在 `index.txt` 里找到"日志末尾一行长时间不变"的那几轮，看对应轮次目录里的
+`pyspy_*.txt`（Python 栈）和 `wchan_*.txt`（是否在 futex/socket 上等），就能定位卡点。
+
+其他用法：
+
+```bash
+bash pyspy_watch.sh --once --out /tmp/dump          # 服务已经在跑, 立刻抓一次
+PYSPY_INTERVAL=10 PYSPY_MAX_MIN=40 RANK=0 bash start.sh   # 加密采样
+PYSPY_NATIVE=1 RANK=0 bash start.sh                 # 额外抓 native(C)栈, 更慢
+```
+
+注意：容器里 attach 需要 `--privileged` 或 `--cap-add=SYS_PTRACE`（本目录
+`docker_run.sh` 用的是 `--privileged=true`，没问题）。没装 py-spy 时看门狗会尝试
+`pip install py-spy`（离线环境设 `PYSPY_AUTO_INSTALL=0`），装不上则退化为只采
+`ps`/`wchan` 快照。
 
 ## 快速开始（新容器）
 

@@ -82,3 +82,22 @@ SERVE_PID=$!
 # 记录 pid 供调用方(如 luwu_worker.sh)监控/清理, 与 master 走同一套启动逻辑
 echo "$SERVE_PID" > "$RUN_DIR/rank${RANK}.pid"
 echo "[start] pid=$SERVE_PID log=$LOG"
+
+# ---------- 启动期抓栈看门狗 ----------
+# 从 serve 启动到就绪这段时间"卡住几分钟不打印日志"时, 需要知道进程当时在干什么。
+# 默认开启: 周期性抓 ps//proc/wchan 快照 + py-spy dump(Python 栈)到
+# $RUN_DIR/pyspy_rank$RANK/, 引擎就绪后自动停止。
+#   关闭:      PYSPY_DUMP=0
+#   采样频率:  PYSPY_INTERVAL=30 (秒)  最长: PYSPY_MAX_MIN=20 (分钟)
+#   加 C 栈:   PYSPY_NATIVE=1          指定程序: PYSPY_BIN=/path/to/py-spy
+if [ "${PYSPY_DUMP:-1}" != "0" ]; then
+  PYSPY_OUT="$RUN_DIR/pyspy_rank${RANK}"
+  mkdir -p "$PYSPY_OUT" 2>/dev/null || true
+  PYSPY_LAUNCH=(nohup bash "$SCRIPT_DIR/pyspy_watch.sh"
+                --serve-pid "$SERVE_PID" --serve-log "$LOG" --label "rank${RANK}"
+                --out "$PYSPY_OUT")
+  command -v setsid >/dev/null 2>&1 && PYSPY_LAUNCH=(setsid "${PYSPY_LAUNCH[@]}")
+  "${PYSPY_LAUNCH[@]}" >>"$PYSPY_OUT/watch.log" 2>&1 &
+  echo "[start] pyspy 抓栈: $PYSPY_OUT (每 ${PYSPY_INTERVAL:-30}s 一轮, 最长 ${PYSPY_MAX_MIN:-20} 分钟, 就绪即停; PYSPY_DUMP=0 关闭)"
+  echo "[start] 手动补抓: bash $SCRIPT_DIR/pyspy_watch.sh --once --out $PYSPY_OUT --serve-pid $SERVE_PID"
+fi
