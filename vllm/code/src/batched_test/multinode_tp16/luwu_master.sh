@@ -26,7 +26,15 @@ fi
 export BASE_LOG_DIR
 META_DIR="$BASE_LOG_DIR/.luwu_meta"
 mkdir -p "$META_DIR" 2>/dev/null || true
-BOOT_LOG="$BASE_LOG_DIR/luwu_boot_master_${JOB_TAG}.log"
+
+# 每次申请独立 run 目录(时间戳命名): boot log 与后续所有日志都放这个目录里
+RUN_ID="run_$(date +%Y%m%d_%H%M%S)"
+RUN_DIR="$BASE_LOG_DIR/$RUN_ID"
+if ! { mkdir -p "$RUN_DIR" 2>/dev/null && [ -w "$RUN_DIR" ]; }; then
+  RUN_DIR="/tmp/luwu_logs/$RUN_ID"
+  mkdir -p "$RUN_DIR" 2>/dev/null || true
+fi
+BOOT_LOG="$RUN_DIR/luwu_boot_master_${JOB_TAG}.log"
 FAILED_MARKER="$META_DIR/failed_${JOB_TAG}"
 rm -f "$FAILED_MARKER" 2>/dev/null || true
 
@@ -71,10 +79,8 @@ if ! flock -n 9; then
   exit 0
 fi
 
-# 每次申请独立 run 目录: 按日期+时分秒命名, 并发布给 worker 保持一致
-RUN_ID="run_$(date +%Y%m%d_%H%M%S)"
-RUN_DIR="$BASE_LOG_DIR/$RUN_ID"
-say "step4/5 创建 run 目录并发布给 worker: $RUN_ID"
+# run 目录已在启动时创建(boot log 就在里面), 这里只发布给 worker 保持一致
+say "step4/5 发布 run 目录给 worker: $RUN_ID ($RUN_DIR)"
 mkdir -p "$RUN_DIR"
 echo "$RUN_ID" > "$META_DIR/current_run_${JOB_TAG}"
 LOG="$RUN_DIR/luwu_master.log"

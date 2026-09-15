@@ -21,8 +21,9 @@ fi
 export BASE_LOG_DIR
 META_DIR="$BASE_LOG_DIR/.luwu_meta"
 mkdir -p "$META_DIR" 2>/dev/null || true
-BOOT_LOG="$BASE_LOG_DIR/luwu_boot_worker_${JOB_TAG}.log"
-MASTER_BOOT_LOG="$BASE_LOG_DIR/luwu_boot_master_${JOB_TAG}.log"
+# master 还没发布 run 目录时, 先把 boot log 落在 meta 目录; 拿到 RUN_ID 后挪进 run 目录
+BOOT_LOG="$META_DIR/boot_worker_${JOB_TAG}.log"
+MASTER_BOOT_HINT="tail -n50 \$(ls -t $BASE_LOG_DIR/run_*/luwu_boot_master_${JOB_TAG}.log 2>/dev/null | head -1)"
 FAILED_MARKER="$META_DIR/failed_${JOB_TAG}"
 
 # 输出同时落盘 + 发到平台日志; stdbuf 强制行缓冲, 否则平台日志会长时间只显示开头几行
@@ -33,7 +34,7 @@ say() { echo "[luwu-worker] $(date '+%F %T') $*"; }
 
 say "启动 host=$(hostname) ip=$(hostname -I 2>/dev/null | tr -s ' ' ',')"
 say "JOB_ID=${JOB_ID:-<未注入>} cwd=$PWD MODEL_CONFIG=${MODEL_CONFIG:-<默认>} MODELS=${MODELS:-<默认>} LUWU_COMPILE=${LUWU_COMPILE:-0}"
-say "日志文件: $BOOT_LOG ${LOG_FALLBACK:+(共享盘 $LUWU_LOG_DIR 不可写, 已退到 /tmp)}"
+say "日志文件: $BOOT_LOG ${LOG_FALLBACK:+(共享盘 $LUWU_LOG_DIR 不可写, 已退到 /tmp)}(拿到 master 的 run 目录后并入 run_*/)"
 
 say "step1/5 进入代码目录 $BASE"
 cd "$BASE" || { say "ERROR 进入代码目录失败(检查 /sw_home/lli 是否挂载): $BASE"; exit 1; }
@@ -71,26 +72,33 @@ for ((i = 1; i <= RUN_ID_WAIT; i++)); do
   [ -n "$RUN_ID" ] && break
   if [ -f "$FAILED_MARKER" ]; then
     say "ERROR master 启动失败($(cat "$FAILED_MARKER" 2>/dev/null)): 本次任务不会加载模型"
-    say "排查: tail -n50 $MASTER_BOOT_LOG"
+    say "排查: $MASTER_BOOT_HINT"
     exit 3
   fi
   if (( i % 30 == 0 )); then
-    say "... 已等待 master 发布 RUN_ID ${i}s(见 $MASTER_BOOT_LOG)"
+    say "... 已等待 master 发布 RUN_ID ${i}s"
   fi
   sleep 1
 done
 if [ -z "$RUN_ID" ]; then
   say "ERROR 等待 master 发布 RUN_ID 超时(${RUN_ID_WAIT}s), 本节点退出"
-  say "排查: 确认另一个节点跑的是 luwu_master.sh, 且日志有输出: tail -n50 $MASTER_BOOT_LOG"
+  say "排查: 确认另一个节点跑的是 luwu_master.sh; master 日志: $MASTER_BOOT_HINT"
+  say "      本节点 boot log: $BOOT_LOG"
   exit 3
 fi
 RUN_DIR="$BASE_LOG_DIR/$RUN_ID"
-mkdir -p "$RUN_DIR"
+mkdir -p "$RUN_DIR" 2>/dev/null || true
+# 把启动阶段(含 step 打点)的 boot log 并入 master 的 run 目录; tee 持有该文件 inode,
+# 挪动后后续输出仍会继续追加到新路径
+NEW_BOOT_LOG="$RUN_DIR/luwu_boot_worker_${JOB_TAG}.log"
+if mv -f "$BOOT_LOG" "$NEW_BOOT_LOG" 2>/dev/null; then
+  BOOT_LOG="$NEW_BOOT_LOG"
+fi
 LOG="$RUN_DIR/luwu_worker.log"
 TEE2=(tee -a "$LOG")
 command -v stdbuf >/dev/null 2>&1 && TEE2=(stdbuf -oL -eL tee -a "$LOG")
 exec > >("${TEE2[@]}") 2>&1
-say "step4/5 OK: run=$RUN_ID"
+say "step4/5 OK: run=$RUN_ID boot log=$BOOT_LOG"
 say "step5/5 跟随 master 的模型标记, 需要时启动 rank1"
 
 # 模型列表(与 master 保持一致); 可通过环境变量 MODELS 覆盖, 默认同 master 的默认清单

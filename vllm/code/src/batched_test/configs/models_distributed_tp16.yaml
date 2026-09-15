@@ -36,7 +36,7 @@
 
 - name: DeepSeek-R1-0528-W8A8
   default: true
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-0528-BF16-W8A8/vllm_quant_model/
+  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-W8A8/vllm_quant_model
   serve_config:
     tp: 16
     dp: 1

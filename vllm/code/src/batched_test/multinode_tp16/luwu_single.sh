@@ -10,12 +10,17 @@ set -uo pipefail
 TP16_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE="$(cd "$TP16_DIR/.." && pwd)"
 MODEL_CONFIG="${MODEL_CONFIG:-configs/models_single_checked_20260821.yaml}"
-LOG_DIR="${LUWU_LOG_DIR:-/sw_home/lli/model_test/tp16_luwu}"
-mkdir -p "$LOG_DIR"
-LOG="$LOG_DIR/luwu_single_$(date +%Y%m%d_%H%M%S).log"
-exec > >(tee -a "$LOG") 2>&1
+# 单机任务日志单独放 tp8_luwu(与多机的 tp16_luwu 同级), 每次启动一个 run_<时间戳> 目录
+LOG_DIR="${LUWU_LOG_DIR:-/sw_home/lli/model_test/tp8_luwu}"
+RUN_ID="run_$(date +%Y%m%d_%H%M%S)"
+RUN_DIR="$LOG_DIR/$RUN_ID"
+mkdir -p "$RUN_DIR" 2>/dev/null || { RUN_DIR="/tmp/luwu_logs/$RUN_ID"; mkdir -p "$RUN_DIR"; }
+LOG="$RUN_DIR/luwu_single.log"
+TEE=(tee -a "$LOG")
+command -v stdbuf >/dev/null 2>&1 && TEE=(stdbuf -oL -eL tee -a "$LOG")
+exec > >("${TEE[@]}") 2>&1
 
-echo "[luwu-single] $(date '+%F %T') 开始单机任务(模型清单 $MODEL_CONFIG)"
+echo "[luwu-single] $(date '+%F %T') 开始单机任务(模型清单 $MODEL_CONFIG) 日志: $LOG"
 
 # 可选: LUWU_COMPILE=1 时, 编译安装 luwu_apply 源码(mcoplib+vllm_metax)后再跑
 if [ "${LUWU_COMPILE:-0}" = "1" ]; then

@@ -122,14 +122,23 @@ RANK=0 bash start.sh
 
 | 现象 | 日志/位置 | 原因 |
 | --- | --- | --- |
-| master/worker 秒退，容器 stdout 只有一行 `[config] ...` | `$BASE_LOG_DIR/luwu_boot_master_<JOB_ID>.log`、`luwu_boot_worker_<JOB_ID>.log` | 模型清单加载失败：`MODEL_CONFIG` 路径不对 / python 缺 PyYAML / YAML 语法错 |
+| master/worker 秒退，容器 stdout 只有一行 `[config] ...` | `$BASE_LOG_DIR/run_<时间戳>/luwu_boot_master_<JOB_ID>.log`（worker 同名 boot log 在 master 的同一个 run 目录里） | 模型清单加载失败：`MODEL_CONFIG` 路径不对 / python 缺 PyYAML / YAML 语法错 |
 | 日志只有 `开始多模型顺序测试:`（列表为空）后立刻 `全部模型执行完毕` | master 日志 | `MODELS` 解析成空列表 |
 | 日志报 `清单里没有这些模型` | master/worker 日志 | `MODELS` 里写了清单中不存在的模型名（改名/迁到别的清单了） |
-| worker 报 `master 启动失败` / `等待 master 发布 RUN_ID 超时` | worker 日志 | 另一节点没跑 `luwu_master.sh`，或 master 早期失败（看 `FAILED_MARKER`） |
+| worker 报 `master 启动失败` / `等待 master 发布 RUN_ID 超时` | worker 日志，以及 `$BASE_LOG_DIR/.luwu_meta/boot_worker_<JOB_ID>.log` | 另一节点没跑 `luwu_master.sh`，或 master 早期失败（看 `FAILED_MARKER`） |
 | 一个节点打印 `前序实例已结束, 本实例直接退出` | 该节点日志 | 两个节点跑了同一份 `luwu_master.sh`（同 JOB_ID 抢锁），从节点应改跑 `luwu_worker.sh` |
 
 失败标记写在 `$BASE_LOG_DIR/.luwu_meta/failed_<JOB_ID>`（内容为失败原因），
 `$BASE_LOG_DIR` 默认 `/sw_home/lli/model_test/tp16_luwu`。
+
+日志目录约定：
+
+| 任务 | 日志目录 | 说明 |
+| --- | --- | --- |
+| 多机（tp16/tp32）| `/sw_home/lli/model_test/tp16_luwu/run_<时间戳>/` | 每次启动一个 run 目录：`luwu_boot_master_<JOB_ID>.log`、`luwu_master.log`、`luwu_boot_worker_<JOB_ID>.log`、`luwu_worker.log`、每个模型的 `rank*_serve.log` 都在里面 |
+| 单机 | `/sw_home/lli/model_test/tp8_luwu/run_<时间戳>/` | `luwu_single.log`；`launch.py --infer` 自己的产物仍在 `/sw_home/lli/model_test/<时间戳>/` |
+
+（可用 `LUWU_LOG_DIR` 覆盖上面两个默认根目录。）
 
 ## 注意
 
