@@ -20,11 +20,13 @@
 # 可调环境变量:
 #   PYSPY_DUMP=0          在 start.sh 里关掉看门狗
 #   PYSPY_INTERVAL=30     采样间隔(秒)
-#   PYSPY_MAX_MIN=20      最长采样时长(分钟), 到点自动退出
+#   PYSPY_MAX_MIN=45      最长采样时长(分钟), 到点自动退出
 #   PYSPY_START_DELAY=10  首次采样前等待(秒)
 #   PYSPY_NATIVE=1        额外抓 native 栈(--native), 更慢但能看到 C 层
 #   PYSPY_BIN=py-spy      指定 py-spy 可执行文件
 #   PYSPY_AUTO_INSTALL=1  没装 py-spy 时尝试 pip install(离线环境设 0)
+#   PYSPY_SILENT_TRIGGER=90  日志静默超过该秒数时加密采样(默认 90)
+#   PYSPY_FAST_INTERVAL=10   静默期采样间隔(秒)
 # =============================================================
 set -uo pipefail
 
@@ -32,8 +34,10 @@ SERVE_PID=""
 SERVE_LOG=""
 OUT_DIR=""
 INTERVAL="${PYSPY_INTERVAL:-30}"
-MAX_MIN="${PYSPY_MAX_MIN:-20}"
+MAX_MIN="${PYSPY_MAX_MIN:-45}"
 START_DELAY="${PYSPY_START_DELAY:-10}"
+SILENT_TRIGGER="${PYSPY_SILENT_TRIGGER:-90}"
+FAST_INTERVAL="${PYSPY_FAST_INTERVAL:-10}"
 LABEL=""
 ONCE=0
 NATIVE="${PYSPY_NATIVE:-0}"
@@ -53,6 +57,8 @@ while [ $# -gt 0 ]; do
     --interval) INTERVAL="${2:-30}"; shift 2 ;;
     --max-min) MAX_MIN="${2:-20}"; shift 2 ;;
     --start-delay) START_DELAY="${2:-10}"; shift 2 ;;
+    --silent-trigger) SILENT_TRIGGER="${2:-90}"; shift 2 ;;
+    --fast-interval) FAST_INTERVAL="${2:-10}"; shift 2 ;;
     --label) LABEL="${2:-}"; shift 2 ;;
     --native) NATIVE=1; shift ;;
     --once) ONCE=1; shift ;;
@@ -145,14 +151,16 @@ log_tail_line() {
   tr '\r' '\n' <"$SERVE_LOG" 2>/dev/null | grep -v '^[[:space:]]*$' | tail -n1 | cut -c1-140
 }
 
+# 各 rank 的就绪标记: EngineCore 只在 rank0 打 "init engine ...", headless rank1 靠
+# worker 侧这几条(compile_or_warm_up_model 结束时每条 worker 都会打)
 engine_ready() {
   [ -n "$SERVE_LOG" ] && [ -f "$SERVE_LOG" ] || return 1
-  grep -qaE 'Application startup complete|init engine \(profile, create kv cache, warmup model\)' \
+  grep -qaE 'Application startup complete|init engine \(profile, create kv cache, warmup model\)|Graph capturing finished|Kernel JIT monitor activated|Reducing Torch threads from' \
     "$SERVE_LOG" 2>/dev/null
 }
 
 sample_once() {
-  local round="$1" elapsed="$2"
+  local round="$1" elapsed="$2" silent="${3:-0}"
   local -a pids=()
   local p name rc
   mapfile -t pids < <(collect_pids)
@@ -174,9 +182,8 @@ sample_once() {
     } >"$dir/wchan_$p.txt" 2>&1 || true
   done
 
-  local pyspy_state="skipped" pyspy_fail_msg=""
+  local pyspy_state="skipped" pyspy_fail_msg="" pyspy_ok=0 pyspy_bad=0
   if [ -n "$PYSPY" ]; then
-    pyspy_state="ok"
     for p in "${pids[@]}"; do
       is_python_proc "$p" || continue
       name="$(proc_name "$p")"
@@ -185,17 +192,22 @@ sample_once() {
       "$PYSPY" dump --full-filenames --pid "$p" $NONBLOCKING $([ "$NATIVE" = "1" ] && echo --native) \
         >"$dir/pyspy_${p}_${name}.txt" 2>&1 || rc=$?
       if [ "$rc" -ne 0 ]; then
-        # 抓取失败时把 py-spy 的第一句报错带进 index, 不用逐个文件翻(常见: Permission Denied)
         [ -n "$pyspy_fail_msg" ] || pyspy_fail_msg="$(head -n1 "$dir/pyspy_${p}_${name}.txt" | cut -c1-90)"
-        pyspy_state="fail"
+        pyspy_bad=$((pyspy_bad + 1))
+      else
+        pyspy_ok=$((pyspy_ok + 1))
       fi
     done
-    if [ "$pyspy_state" = "fail" ]; then
-      log "round=$round t=${elapsed}s py-spy 部分进程抓取失败: ${pyspy_fail_msg:-见 $dir/pyspy_*.txt}"
+    if [ "$pyspy_ok" -eq 0 ] && [ "$pyspy_bad" -gt 0 ]; then
+      # 全失败才报警(个别 launcher/子进程抓不到是正常的)
+      pyspy_state="fail"
+      log "round=$round t=${elapsed}s py-spy 全部失败: ${pyspy_fail_msg:-见 $dir/pyspy_*.txt}"
+    elif [ "$pyspy_bad" -gt 0 ]; then
+      pyspy_state="ok(${pyspy_ok}/${pyspy_ok}+${pyspy_bad})"
     fi
   fi
 
-  log "round=$round t=${elapsed}s procs=${#pids[@]} pyspy=$pyspy_state dir=$(basename "$dir") log_last=$(log_tail_line)"
+  log "round=$round t=${elapsed}s silent=${silent}s procs=${#pids[@]} pyspy=$pyspy_state dir=$(basename "$dir") log_last=$(log_tail_line)"
   return 0
 }
 
@@ -207,12 +219,29 @@ log "开始采样: out=$OUT_DIR interval=${INTERVAL}s max=${MAX_MIN}min label=${
 # ---------- 主循环 ----------
 start_ts=$(date +%s)
 round=0
+last_tail="__init__"
+last_change_ts=$start_ts
+silent_warned=0
 sleep "$START_DELAY"
 while true; do
   round=$((round + 1))
-  elapsed=$(( $(date +%s) - start_ts ))
+  now=$(date +%s)
+  elapsed=$(( now - start_ts ))
 
-  if sample_once "$round" "$elapsed"; then
+  # 日志静默检测: 启动期真正难查的段是"日志几分钟不动", 这时把采样间隔调密
+  cur_tail="$(log_tail_line)"
+  if [ "$cur_tail" != "$last_tail" ]; then
+    last_tail="$cur_tail"
+    last_change_ts=$now
+    silent_warned=0
+  fi
+  silent=$(( now - last_change_ts ))
+  if [ "$silent" -ge "$SILENT_TRIGGER" ] && [ "$silent_warned" = "0" ]; then
+    silent_warned=1
+    log "WARN serve 日志已静默 ${silent}s, 采样间隔切到 ${FAST_INTERVAL}s (最后一行: $cur_tail)"
+  fi
+
+  if sample_once "$round" "$elapsed" "$silent"; then
     :
   else
     # 进程还没起来或已经全退了
@@ -230,15 +259,19 @@ while true; do
   if engine_ready; then
     log "检测到引擎已就绪(serve 日志), 再抓一轮后停止"
     round=$((round + 1))
-    sleep "$INTERVAL"
-    sample_once "$round" "$(( $(date +%s) - start_ts ))" || true
+    sleep "$FAST_INTERVAL"
+    sample_once "$round" "$(( $(date +%s) - start_ts ))" "$silent" || true
     break
   fi
   if [ "$elapsed" -ge $((MAX_MIN * 60)) ]; then
     log "达到最长采样时长 ${MAX_MIN} 分钟, 停止"
     break
   fi
-  sleep "$INTERVAL"
+  if [ "$silent" -ge "$SILENT_TRIGGER" ]; then
+    sleep "$FAST_INTERVAL"
+  else
+    sleep "$INTERVAL"
+  fi
 done
 log "采样结束: 共 $round 轮, 结果在 $OUT_DIR"
 exit 0

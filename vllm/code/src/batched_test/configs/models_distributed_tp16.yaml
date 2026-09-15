@@ -43,6 +43,9 @@
     pp: 1
     extra_args:
       --dtype: bfloat16
+      # DTFS 没被识别成网络 FS, 自动预取被关; 641 GiB checkpoint 手工开预取,
+      # 加载期与 I/O 重叠(rank1 会比 rank0 更慢, 启动时间是等最慢的那台)
+      --safetensors-load-strategy: prefetch
   infer_type:
   - text-only
   benchmark:
@@ -60,6 +63,7 @@
     pp: 1
     extra_args:
       --dtype: bfloat16
+      --safetensors-load-strategy: prefetch
   infer_type:
   - text-only
   benchmark:
@@ -80,6 +84,7 @@
     pp: 1
     extra_args:
       --dtype: bfloat16
+      --safetensors-load-strategy: prefetch
   infer_type:
   - text-only
   benchmark:

@@ -20,16 +20,18 @@
 | `status.sh` | 查看本节点 serve 进程与 rank0 健康状态 |
 | `stop.sh` | 停止本节点 serve |
 | `run_all.sh` | rank0 侧一键流程：等待就绪 -> 压测 -> 停止 |
-| `pyspy_watch.sh` | 启动期抓栈看门狗（py-spy dump + /proc 快照），由 `start.sh` 后台自动拉起 |
+| `pyspy_watch.sh` | 启动期抓栈看门狗（py-spy dump + /proc 快照），`start.sh` 里 `PYSPY_DUMP=1` 打开 |
 
 ## 启动慢 / 卡住时怎么定位（pyspy_watch.sh）
 
-`start.sh` 启动 serve 后会默认后台拉起 `pyspy_watch.sh`（`PYSPY_DUMP=0` 可关闭），
-在启动到就绪期间每 30s 抓一轮，输出落在本模型的 run 目录下（双机各自一份）：
+`PYSPY_DUMP=1` 时，`start.sh` 启动 serve 后会后台拉起 `pyspy_watch.sh`，在启动到就绪
+期间每 30s 抓一轮；**serve 日志静默超过 90s 会自动加密到每 10s 一轮**（启动期卡住的
+那几分钟正是日志不动的时候），引擎就绪后自动停止。输出落在本模型的 run 目录下
+（双机各自一份）：
 
 ```
 $MODEL_RUN_DIR/pyspy_rank0/          # rank1 同名 pyspy_rank1/
-├── index.txt                        # 每轮: 耗时/进程数/py-spy 状态/日志末尾一行
+├── index.txt                        # 每轮: 耗时/静默秒数/进程数/py-spy 状态/日志末尾一行
 ├── watch.log                        # 看门狗自身日志(是否装上 py-spy 等)
 ├── round_01_t000010s/
 │   ├── ps.txt                       # 各进程 CPU/RSS/状态/父子关系
@@ -41,12 +43,22 @@ $MODEL_RUN_DIR/pyspy_rank0/          # rank1 同名 pyspy_rank1/
 排查方式：在 `index.txt` 里找到"日志末尾一行长时间不变"的那几轮，看对应轮次目录里的
 `pyspy_*.txt`（Python 栈）和 `wchan_*.txt`（是否在 futex/socket 上等），就能定位卡点。
 
+先看结论再抓栈（省一半时间）：vLLM 的 `init engine (profile, create kv cache, warmup model)
+took X s` 只统计**所有 rank ready 之后**的 phase，多机时 worker ready = 最慢那台的
+`Model loading took` 结束。所以"静默 6~9 分钟"经常不是卡住，而是
+`静默期 ≈ max(各 rank 加载完成) − 本机加载完成`，主要在等慢的那台（本地实测 rank1 每分片比
+rank0 慢约 30%）。三段耗时（权重加载 / 等对端 / engine init）可以直接从两个 rank 的
+`rank*_serve.log` 时间戳算出来，只有算不清是哪一段时再开看门狗。
+
+权重加载慢时另见 `configs/models_distributed_tp16.yaml` 里的
+`--safetensors-load-strategy: prefetch`（DTFS 不在 vLLM 自动预取的识别列表里，默认是关的）。
+
 其他用法：
 
 ```bash
 bash pyspy_watch.sh --once --out /tmp/dump          # 服务已经在跑, 立刻抓一次
-PYSPY_INTERVAL=10 PYSPY_MAX_MIN=40 RANK=0 bash start.sh   # 加密采样
-PYSPY_NATIVE=1 RANK=0 bash start.sh                 # 额外抓 native(C)栈, 更慢
+PYSPY_DUMP=1 PYSPY_INTERVAL=10 RANK=0 bash start.sh       # 打开 + 加密采样
+PYSPY_DUMP=1 PYSPY_NATIVE=1 RANK=0 bash start.sh          # 额外抓 native(C)栈, 更慢
 ```
 
 注意：容器里 attach 需要 `--privileged` 或 `--cap-add=SYS_PTRACE`（本目录
