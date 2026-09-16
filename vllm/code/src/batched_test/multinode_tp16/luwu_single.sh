@@ -9,7 +9,7 @@ set -uo pipefail
 # 脚本自身所在目录(/sw_home/lli/ModelZoo.LLM.Inference/..., 避免新旧代码目录混用)
 TP16_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE="$(cd "$TP16_DIR/.." && pwd)"
-MODEL_CONFIG="${MODEL_CONFIG:-configs/models_single_checked_20260821.yaml}"
+MODEL_CONFIG="${MODEL_CONFIG:-configs/model.yaml}"
 # 单机任务日志单独放 tp8_luwu(与多机的 tp16_luwu 同级), 每次启动一个 run_<时间戳> 目录
 LOG_DIR="${LUWU_LOG_DIR:-/sw_home/lli/model_test/tp8_luwu}"
 RUN_ID="run_$(date +%Y%m%d_%H%M%S)"
@@ -34,7 +34,7 @@ fi
 cd "$BASE" || exit 1
 bash /sw_home/lli/compile_env.sh
 pip install -r "$BASE/requirements.txt"
-python launch.py --infer --work-dir /sw_home/lli/model_test/ \
+python launch.py --infer --work-dir "$RUN_DIR" \
   --long-text-case configs/inference/long_text_case.yaml \
   --model-config "$MODEL_CONFIG"
 RC=$?
