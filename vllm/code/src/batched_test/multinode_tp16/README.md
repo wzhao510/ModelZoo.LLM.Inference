@@ -143,11 +143,9 @@ RANK=0 bash start.sh
 
 - 卡数 = `tp*dp*pp`，节点数 `NNODES = 卡数 / GPUS_PER_NODE`（默认 8，可覆盖），
   所以新增模型只改 YAML 即可，不用动脚本。
-- 清单里 3 个模型标了 `default: true`（多机 queue 任务默认跑这 3 个），其余是
-  由 `configs/model.yaml` 迁入、单机 8 卡跑不动的大模型（`tp*dp*pp > 8`），
-  保留在清单里按需选跑。
-- 要跑哪些模型由 YAML 决定：`default: true` 的模型进默认执行列表（多机 queue 任务
-  一次申请内顺序跑完它们），改清单即可，不用动脚本、也不用在 job 里传模型名。
+- 要跑哪些模型完全由 YAML 决定：**清单里列出来的模型就是执行列表**（多机 queue
+  任务一次申请内按文件顺序跑完）。不想跑的注释掉，或加 `skip: true` 保留在文件里
+  但不执行；不用动脚本、也不用在 job 里传模型名。
 - 临时换模型：`MODEL_NAME=GLM-4.5 bash start.sh`；queue 任务用
   `MODELS_SOURCE=env MODELS=GLM-5-W8A8,DeepSeek-V3.2-Exp`（只设 `MODELS` 不生效，
   脚本会提示已忽略，避免 job 模板里的旧 `MODELS` 覆盖 YAML 清单）。
@@ -171,7 +169,7 @@ RANK=0 bash start.sh
 | 现象 | 日志/位置 | 原因 |
 | --- | --- | --- |
 | master/worker 秒退，容器 stdout 只有一行 `[config] ...` | `$BASE_LOG_DIR/run_<时间戳>/luwu_master.log`（worker 是同一个 run 目录里的 `luwu_worker.log`） | 模型清单加载失败：`MODEL_CONFIG` 路径不对 / python 缺 PyYAML / YAML 语法错 |
-| 日志只有 `开始多模型顺序测试:`（列表为空）后立刻 `全部模型执行完毕` | master 日志 | YAML 里没有 `default: true` 的模型，且 `MODELS_SOURCE=env` 时 `MODELS` 为空 |
+| 日志只有 `开始多模型顺序测试:`（列表为空）后立刻 `全部模型执行完毕` | master 日志 | 清单里所有模型都被注释/`skip: true`，或 `MODELS_SOURCE=env` 时 `MODELS` 为空 |
 | 日志报 `清单里没有这些模型` | master/worker 日志 | `MODELS_SOURCE=env` 且 `MODELS` 里写了清单中不存在的模型名（改名/迁到别的清单了） |
 | worker 报 `master 启动失败` / `等待 master 发布 RUN_ID 超时` | worker 日志，以及 `$BASE_LOG_DIR/.luwu_meta/boot_worker_<JOB_ID>.log` | 另一节点没跑 `luwu_master.sh`，或 master 早期失败（看 `FAILED_MARKER`） |
 | 一个节点打印 `前序实例已结束, 本实例直接退出` | 该节点日志 | 两个节点跑了同一份 `luwu_master.sh`（同 JOB_ID 抢锁），从节点应改跑 `luwu_worker.sh` |
@@ -183,7 +181,7 @@ RANK=0 bash start.sh
 
 | 任务 | 日志目录 | 说明 |
 | --- | --- | --- |
-| 多机（tp16/tp32）| `/sw_home/lli/model_test/tp16_luwu/run_<时间戳>/` | 每次启动一个 run 目录：master 全程写 `luwu_master.log`（启动打点 + 各模型日志，一个文件），worker 全程写 `luwu_worker.log`，每个模型的 `rank*_serve.log` 也在里面 |
+| 多机（tp16/tp32）| `/sw_home/lli/model_test/tp16_luwu/run_<时间戳>/` | 每次启动一个 run 目录：master 全程写 `luwu_master.log`（启动打点 + 各模型日志，一个文件），worker 全程写 `luwu_worker.log`，`compile_env.log`/`pip_requirements.log` 是两个节点环境初始化的输出，每个模型的 `rank*_serve.log` 也在里面 |
 | 单机 | `/sw_home/lli/model_test/tp8_luwu/run_<时间戳>/` | `luwu_single.log`；`launch.py --infer` 自己的产物仍在 `/sw_home/lli/model_test/<时间戳>/` |
 
 （可用 `LUWU_LOG_DIR` 覆盖上面两个默认根目录。）

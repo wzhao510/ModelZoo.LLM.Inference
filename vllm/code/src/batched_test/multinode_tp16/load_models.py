@@ -6,7 +6,8 @@
 
 - name: <模型名>                # 必填, 需唯一
   model_path: <权重路径>         # 必填
-  default: true                 # 可选, 是否进入默认执行列表
+  skip: true                    # 可选, 保留在清单里但不执行(等价于整条注释掉);
+                                #   default: false 同样表示不执行
   timeout: 3600                 # 可选, 仅记录
   serve_config:
     tp: 16 / dp: 1 / pp: 1      # 并行度, 缺省 1
@@ -21,7 +22,8 @@
 
 输出 bash 片段:
   DIST_MODELS             清单顺序的全部模型名
-  DIST_DEFAULT_MODELS     标注 default: true 的模型名(若都没标注则等于全部)
+  DIST_RUN_MODELS         本次要执行的模型 = 清单里全部模型除去 skip: true / default: false
+  DIST_DEFAULT_MODELS     DIST_RUN_MODELS 的旧名字(兼容保留, 内容相同)
   MODEL_GPUS              与 DIST_MODELS 同序的卡数(tp*dp*pp, 仅供查看)
   MODEL_PATHS             name -> model_path
   MODEL_DTYPES            name -> dtype(取 --dtype, 缺省 bfloat16)
@@ -128,7 +130,7 @@ def main() -> int:
     envs: dict[str, str] = {}
 
     names: list[str] = []
-    defaults: list[str] = []
+    run_models: list[str] = []
 
     for index, model in enumerate(models):
         if not isinstance(model, dict):
@@ -167,16 +169,18 @@ def main() -> int:
         max_seqs[name] = pick("max_num_seqs")
         extras[name] = _quote_join(rest)
         envs[name] = _quote_join(_env_tokens(model.get("extra_env")))
-        if model.get("default"):
-            defaults.append(name)
-
-    if not defaults:
-        defaults = list(names)
+        # 清单里列出的模型就是执行列表; skip: true / default: false 显式排除
+        if not (model.get("skip") or model.get("default") is False):
+            run_models.append(name)
 
     out = [
         _emit_scalar_array("DIST_MODELS", names, {name: name for name in names}),
         _emit_scalar_array(
-            "DIST_DEFAULT_MODELS", defaults, {name: name for name in defaults}
+            "DIST_RUN_MODELS", run_models, {name: name for name in run_models}
+        ),
+        # 兼容旧脚本: 同 DIST_RUN_MODELS
+        _emit_scalar_array(
+            "DIST_DEFAULT_MODELS", run_models, {name: name for name in run_models}
         ),
         _emit_scalar_array(
             "MODEL_GPUS",

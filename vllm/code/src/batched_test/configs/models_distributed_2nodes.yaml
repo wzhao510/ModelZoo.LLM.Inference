@@ -6,8 +6,9 @@
 #   - 每个模型用 serve_config.tp/dp/pp 描述并行度, 需要的卡数 = tp*dp*pp;
 #     脚本按 GPUS_PER_NODE(默认 8)推导节点数 NNODES = 卡数 / GPUS_PER_NODE。
 #   - 因此这里放的是单机 8 卡跑不动、需要多机的大模型, 单机模型请放 configs/model.yaml。
-#   - default: true 的模型进入默认执行列表(Luwu queue 任务的默认清单);
-#     未标注的模型保留在清单里, 需要时用 MODELS=<name>[,<name>...] 指定。
+#   - 清单里"列出来的模型"就是执行列表(按文件顺序依次跑);
+#     不想跑的注释掉, 或加一行 skip: true 保留在文件里但不执行。
+#     临时只跑某几个: MODELS_SOURCE=env MODELS=<name>[,<name>...]
 #   - 切换模型名: MODEL_NAME=<name>, 例如
 #       MODEL_NAME=GLM-5-W8A8 RANK=0 bash start.sh
 #
@@ -35,7 +36,6 @@
 # ---------- 默认执行列表(原 config.sh 里的 3 个) ----------
 
 - name: DeepSeek-R1-0528-W8A8
-  default: true
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-W8A8/vllm_quant_model
   serve_config:
     tp: 16
@@ -52,7 +52,6 @@
   extra_env:
 
 - name: GLM-5.2-W8A8
-  default: true
   model_path: /mxstorage/pde_ai/models/llm/ChatGLM/GLM-5_2-W8A8/
   serve_config:
     tp: 16
@@ -69,7 +68,6 @@
   extra_env:
 
 - name: Kimi-K2.6-Int4
-  default: true
   # 注意: Kimi-K2.6-W8A8(Int4) 在当前 vllm-metax 0.25 构建下 auto-detect
   #       compressed-tensors 会崩, 暂用 bf16 版本; 修复后可改回
   #       /mxstorage/pde_ai/models/llm/Kimi/Kimi-K2.6-W8A8/
@@ -120,3 +118,43 @@
     bench_param: configs/bench_params/bench_default.json
     sweep_num_runs: 1
   extra_env:
+
+# ---------- EP / PP 专项(两机 16 卡) ----------
+
+- name: Qwen3-235B-A22B-W8A8-EP
+  # 专家并行: MoE 的专家切到 16 个 rank 上(--enable-expert-parallel), tp16 两机
+  timeout: 3600
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-235B-A22B.w8a8
+  serve_config:
+    tp: 8
+    dp: 2
+    pp: 1
+    extra_args:
+      --enable-expert-parallel:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
+
+- name: GLM-5.2-W8A8-PP
+  # 流水并行: 层切到两个 stage 上(tp8*pp2), 与 tp16 的 GLM-5.2-W8A8 对照
+  timeout: 3600
+  model_path: /mxstorage/pde_ai/models/llm/ChatGLM/GLM-5_2-W8A8/
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 2
+    extra_args:
+      --dtype: bfloat16
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe

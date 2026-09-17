@@ -2,7 +2,7 @@
 # 陆吾 queue 模式 - master 容器启动脚本(主节点)
 # 说明: queue 模式 start_script 前台串行执行, 跑完退出后平台自动释放机器, 不能 nohup 后台化
 # 一次申请内顺序跑完 YAML 清单(configs/models_distributed_2nodes.yaml, 可用 MODEL_CONFIG 换)
-# 里 default: true 的模型; 临时换其它模型: MODELS_SOURCE=env MODELS=<name>[,<name>...]
+# 里列出的模型(不想跑的注释掉或写 skip: true); 临时换: MODELS_SOURCE=env MODELS=<name>[,<name>...]
 # 每个模型: 启动 rank0 -> 等健康 -> client 推理(含 long-text) -> vllm bench -> 停止
 # 模型切换: 本机 + worker 都确认停止干净后才进入下一个(worker_ready 握手)
 set -uo pipefail
@@ -49,10 +49,10 @@ say "日志文件: $LOG ${LOG_FALLBACK:+(共享盘 $LUWU_LOG_DIR 不可写, 已�
 say "环境: python3=$(command -v python3 2>/dev/null || echo 无) flock=$(command -v flock 2>/dev/null || echo 无)"
 
 # 每一步都先打印再执行: 卡在哪一步, 平台日志最后一行就是哪一步
-say "step1/5 进入代码目录 $BASE"
+say "step1/6 进入代码目录 $BASE"
 cd "$BASE" || { say "ERROR 进入代码目录失败(检查 /sw_home/lli 是否挂载): $BASE"; echo "cd-failed" > "$FAILED_MARKER" 2>/dev/null; exit 1; }
 
-say "step2/5 加载模型清单 $BASE/config.sh"
+say "step2/6 加载模型清单 $BASE/config.sh"
 if ! source ./config.sh; then
   say "ERROR 模型清单加载失败, 本次任务不会加载任何模型(原因见上面 [config] ERROR)"
   echo "config-load-failed: MODEL_CONFIG=${MODEL_CONFIG:-<默认>}" > "$FAILED_MARKER" 2>/dev/null
@@ -64,10 +64,10 @@ if [ -z "${DIST_MODELS+x}" ]; then
   echo "config-version-mismatch: $BASE/config.sh" > "$FAILED_MARKER" 2>/dev/null
   exit 1
 fi
-say "step2/5 OK: 清单 $(basename "$MODEL_CONFIG"), 共 ${#DIST_MODELS[@]} 个模型"
+say "step2/6 OK: 清单 $(basename "$MODEL_CONFIG"), 共 ${#DIST_MODELS[@]} 个模型, 本次执行 ${#DIST_RUN_MODELS[@]} 个"
 
 # 单实例锁(按 JOB_ID 区分, 保证平台重复拉起时锁稳定): 后启动的实例等待前一个完成
-say "step3/5 取单实例锁 $META_DIR/lock_master_${JOB_TAG}"
+say "step3/6 取单实例锁 $META_DIR/lock_master_${JOB_TAG}"
 LOCK="$META_DIR/lock_master_${JOB_TAG}"
 exec 9>"$LOCK"
 if ! flock -n 9; then
@@ -79,7 +79,7 @@ if ! flock -n 9; then
 fi
 
 # run 目录已在启动时创建(日志从一开始就在里面), 这里只发布给 worker 保持一致
-say "step4/5 发布 run 目录给 worker: $RUN_ID ($RUN_DIR)"
+say "step4/6 发布 run 目录给 worker: $RUN_ID ($RUN_DIR)"
 mkdir -p "$RUN_DIR"
 echo "$RUN_ID" > "$META_DIR/current_run_${JOB_TAG}"
 
@@ -87,21 +87,21 @@ echo "$RUN_ID" > "$META_DIR/current_run_${JOB_TAG}"
 # 需要临时用环境变量指定(逗号分隔)时显式设 MODELS_SOURCE=env。
 MODELS_SOURCE="${MODELS_SOURCE:-yaml}"
 MODELS_RAW="${MODELS:-}"
-MODELS_FROM="YAML $MODEL_CONFIG 里 default: true 的模型"
+MODELS_FROM="YAML $MODEL_CONFIG 里列出的模型"
 if [ "$MODELS_SOURCE" = "env" ]; then
   # 兼容逗号分隔(陆吾 env_vars 注入)与空格分隔两种写法
   MODELS="${MODELS_RAW//,/ }"
   read -r -a MODELS <<<"$MODELS"
   MODELS_FROM="环境变量 MODELS=$MODELS_RAW"
 else
-  MODELS=("${DIST_DEFAULT_MODELS[@]}")
+  MODELS=("${DIST_RUN_MODELS[@]}")
   if [ -n "$MODELS_RAW" ]; then
     say "提示: 已忽略环境变量 MODELS=$MODELS_RAW(模型列表走 YAML); 需要用它请加 MODELS_SOURCE=env"
   fi
 fi
 # 模型列表校验: 空列表 / 未知模型名都直接报错退出, 避免"没加载任何模型却显示执行完毕"
 if [ "${#MODELS[@]}" -eq 0 ]; then
-  say "ERROR 模型列表为空(来源: $MODELS_FROM); 清单 $MODEL_CONFIG 里 default: true 的模型: ${DIST_DEFAULT_MODELS[*]}"
+  say "ERROR 模型列表为空(来源: $MODELS_FROM); 清单 $MODEL_CONFIG 里列出的模型: ${DIST_RUN_MODELS[*]}"
   echo "empty-model-list: $MODELS_FROM" > "$FAILED_MARKER"
   exit 2
 fi
@@ -120,7 +120,7 @@ SHARED="$RUN_DIR/current_model"
 WORKER_READY="$RUN_DIR/worker_ready"
 rm -f "$SHARED" "$WORKER_READY"
 
-say "step5/5 run=$RUN_ID 开始多模型顺序测试: ${MODELS[*]}(列表来源: $MODELS_FROM)"
+say "step5/6 run=$RUN_ID 开始多模型顺序测试: ${MODELS[*]}(列表来源: $MODELS_FROM)"
 say "平台注入环境变量:"
 env | grep -E '^(MASTER_IP|WORKER_IP|VC_MASTER|VC_WORKER|SSH_PORT|NETWORK_CONFIG|GLOO|MCCL|JOB_ID)' || true
 
@@ -132,10 +132,20 @@ elif [ -n "${VC_MASTER_HOSTS:-}" ]; then
 fi
 echo "[luwu-master] MASTER_ADDR=$MASTER_ADDR MASTER_PORT=$MASTER_PORT SERVE_PORT=$SERVE_PORT"
 
-# 环境初始化(幂等)
-bash /sw_home/lli/compile_env.sh >/dev/null 2>&1 || echo "[luwu-master] WARN compile_env.sh 失败, 继续"
-pip install -r "$REQUIREMENTS" >/dev/null 2>&1 || true
-pip install -q openai 2>/dev/null || true
+# 环境初始化(幂等): 输出落盘, 成功/失败都明确打点, 避免"看不清有没有执行"
+say "step6/6 环境初始化: compile_env.sh + pip 依赖"
+if bash /sw_home/lli/compile_env.sh > "$RUN_DIR/compile_env.log" 2>&1; then
+  say "compile_env.sh OK (输出: $RUN_DIR/compile_env.log)"
+else
+  RC_ENV=$?
+  say "WARN compile_env.sh 失败 exit=$RC_ENV (输出: $RUN_DIR/compile_env.log), 继续"
+fi
+if pip install -r "$REQUIREMENTS" > "$RUN_DIR/pip_requirements.log" 2>&1; then
+  say "requirements 安装 OK"
+else
+  say "WARN requirements 安装失败 (输出: $RUN_DIR/pip_requirements.log), 继续"
+fi
+pip install -q openai >/dev/null 2>&1 || true
 
 # 可选: LUWU_COMPILE=1 时, 编译安装 luwu_apply 源码(mcoplib+vllm_metax)后再跑模型
 if [ "${LUWU_COMPILE:-0}" = "1" ]; then

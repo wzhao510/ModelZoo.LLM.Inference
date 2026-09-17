@@ -1,10 +1,28 @@
-# 单机推理测试模型清单(每个模型最多 8 卡)。
+# 单机推理测试模型清单(每个模型最多 8 卡), 按模型系列分组, 系列内从小到大。
 # 需要多机(tp*dp*pp > 8)的大模型已移到
+# 目前有覆盖到单卡,多卡,TP/DP/EP测试
+#   configs/models_distributed_2nodes.yaml / configs/model_distributed_4nodes.yaml
+
+# ---------- DeepSeek ----------
 
 - name: DeepSeek-R1-Distill-Llama-8B
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Llama-8B
   serve_config:
     tp: 1
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+
+- name: DeepSeek-R1-Distill-Qwen-32B
+  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-32B
+  serve_config:
+    tp: 4
     dp: 1
     pp: 1
     extra_args:
@@ -30,21 +48,6 @@
   extra_env:
     VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
-- name: DeepSeek-V2-Lite
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V2-Lite
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
-
 - name: DeepSeek-R1-BF16-L12
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-L12-BF16/
   serve_config:
@@ -60,16 +63,77 @@
   extra_env:
     VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
 
-- name: Baichuan-7B
-  model_path: /mxstorage/pde_ai/models/llm/Baichuan/Baichuan-7B
+- name: DeepSeek-R1-W48A8-PCPT_NAIVE
+  time: 1200
+  model_path: /mxstorage/pde_ai/models/model_quant_opt/DeepSeek_W48A8/DeepSeek-R1-W48A8-PCPT_NAIVE/vllm_quant_model
   serve_config:
-    tp: 1
+    tp: 8
+    dp: 1
+    pp: 1
+    gpu_memory_utilization: 0.85
+    extra_args:
+      --speculative-config : '{"method": "deepseek_mtp", "num_speculative_tokens": 1}'
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_high.json
+    sweep_num_runs: 1
+  extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
+    MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: 1
+    MACA_VLLM_ENABLE_MCTLASS_PYTHON_API: 1
+
+- name: DeepSeek-R1-L12-W4A16-AWQ
+  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-L12-W4A16-AWQ/
+  timeout: 2400
+  serve_config:
+    tp: 4
     dp: 1
     pp: 1
     extra_args:
-      --chat-template: chat_template/template_baichuan.jinja
   infer_type:
   - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
+
+- name: DeepSeek-V4-Flash-W8A8-MTP
+  timeout: 3600
+  model_path: /mxstorage/pde_ai/models/model_quant_opt/DeepSeek/DeepSeek-V4-Flash_FlexSMQ-AWQ_W8A8/vllm_quant_model
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+      --speculative-config : '{"method": "deepseek_mtp", "num_speculative_tokens": 2}'
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_high.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
+
+# ---------- Baichuan ----------
+
+- name: Baichuan-7B-lora
+  timeout: 3600
+  model_path: /mxstorage/pde_ai/models/llm/Baichuan/Baichuan-7B
+  serve_config:
+    tp: 2
+    dp: 1
+    pp: 1
+    distributed_executor_backend: mp
+    extra_args:
+      --chat-template: chat_template/template_baichuan.jinja 
+      --enable-lora: 
+      --lora-modules: "sql-lora=/mxstorage/pde_ai/models/llm/lora/baichuan7b-text2sql-spider"
+      --max-lora-rank: 64 
+  infer_type:
+  - text-only 
   benchmark:
     bench_param: configs/bench_params/bench_default.json
     sweep_num_runs: 1
@@ -90,44 +154,74 @@
     sweep_num_runs: 1
   extra_env:
 
-- name: ChatGLM3-6B
-  model_path: /mxstorage/pde_ai/models/llm/ChatGLM/chatglm3-6b
+# ---------- GLM ----------
+
+- name: GLM-4.5V_W8A8
+  model_path: /mxstorage/pde_ai/models/model_quant_opt/GLM/GLM-4.5V_W8A8/vllm_quant_model
   serve_config:
-    tp: 1
+    tp: 4
     dp: 1
     pp: 1
     extra_args:
+      --limit-mm-per-prompt.video: 0
   infer_type:
-  - text-only
+  - single-image
   benchmark:
     bench_param: configs/bench_params/bench_default.json
     sweep_num_runs: 1
   extra_env:
+  tags:
+  - moe 
 
-- name: GLM-4-9B-Chat
-  model_path: /mxstorage/pde_ai/models/llm/ChatGLM/glm-4-9b-chat
+- name: GLM-4_6-W8A8-MTP_BF16
+  model_path: /mxstorage/pde_ai/models/model_quant_opt/GLM/GLM-4_6-W8A8-MTP_BF16/vllm_quant_model
   serve_config:
-    tp: 1
+    tp: 4
     dp: 1
     pp: 1
+    gpu_memory_utilization: 0.9
     extra_args:
-      --chat-template: chat_template/template_chatglm.jinja
+      --speculative-config: '{"method":"glm4_moe_mtp", "num_speculative_tokens":2, "model":"/mxstorage/pde_ai/models/model_quant_opt/GLM/GLM-4_6-W8A8-MTP_BF16/vllm_quant_model"}' 
   infer_type:
-  - text-only
+  - single-image
   benchmark:
     bench_param: configs/bench_params/bench_default.json
     sweep_num_runs: 1
   extra_env:
+  tags:
+  - moe
 
-- name: GLM-4v-9B
-  model_path: /mxstorage/pde_ai/models/llm/ChatGLM/glm-4v-9b
+- name: GLM-4.7-W48A8_WITH_MTP
+  model_path: /mxstorage/pde_ai/models/model_quant_opt/GLM/GLM-4_7-W48A8_WITH_MTP/vllm_quant_model
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    gpu_memory_utilization: 0.9
+    extra_args:
+      --speculative-config: '{"method":"glm4_moe_mtp", "num_speculative_tokens":2, "model":"/mxstorage/pde_ai/models/model_quant_opt/GLM/GLM-4_7-W48A8_WITH_MTP/vllm_quant_model"}' 
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
+    VLLM_USE_FUSED_MOE_GROUPED_TOPK : 0 
+    MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: 1
+  tags:
+  - moe
+
+# ---------- InternLM ----------
+
+- name: InternVL3_5-8B
+  model_path: /mxstorage/pde_ai/models/llm/Internlm/InternVL3_5-8B
   serve_config:
     tp: 1
     dp: 1
     pp: 1
+    distributed_executor_backend: mp
     extra_args:
-      --hf-overrides: '{"architectures": ["GLM4VForCausalLM"]}'
-      --chat-template: chat_template/template_chatglm.jinja
   infer_type:
   - single-image
   benchmark:
@@ -135,13 +229,12 @@
     sweep_num_runs: 1
   extra_env:
 
-- name: InternVL2_5-8B
-  model_path: /mxstorage/pde_ai/models/llm/Internlm/InternVL2_5-8B
+- name: InternVL3-78B
+  model_path: /mxstorage/pde_ai/models/llm/Internlm/InternVL3-78B
   serve_config:
-    tp: 1
+    tp: 8
     dp: 1
     pp: 1
-    distributed_executor_backend: mp
     extra_args:
   infer_type:
   - single-image
@@ -153,7 +246,7 @@
 - name: internlm3-8b-instruct
   model_path: /mxstorage/pde_ai/models/llm/Internlm/internlm3-8b-instruct
   serve_config:
-    tp: 1
+    tp: 2
     dp: 1
     pp: 1
     extra_args:
@@ -164,23 +257,10 @@
     sweep_num_runs: 1
   extra_env:
 
-- name: InternVL2-8B
-  model_path: /mxstorage/pde_ai/models/llm/Internlm/InternVL2-8B
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    distributed_executor_backend: mp
-    extra_args:
-  infer_type:
-  - single-image
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
+# ---------- Llama ----------
 
-- name: Llama-2-7B-hf
-  model_path: /mxstorage/pde_ai/models/llm/Llama/Llama-2-7b-hf
+- name: Llama-7B-hf
+  model_path: /mxstorage/pde_ai/models/llm/Llama/llama-7b-hf
   serve_config:
     tp: 1
     dp: 1
@@ -193,41 +273,14 @@
     sweep_num_runs: 1
   extra_env:
 
-- name: Qwen2.5-VL-7B-Instruct
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen2.5-VL-7B-Instruct
+- name: Meta-Llama-3-70B
+  model_path: /mxstorage/pde_ai/models/llm/Llama/Meta-Llama-3-70B
   serve_config:
-    tp: 1
+    tp: 4
     dp: 1
     pp: 1
     extra_args:
-  infer_type:
-  - single-image
-  benchmark:
-    bench_param: configs/bench_params/bench_high.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Qwen2-VL-7B-Instruct
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen2-VL-7B-Instruct
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - single-image
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Qwen2.5-72B-Instruct-AWQ
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen2___5-72B-Instruct-AWQ
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
+      --chat-template: chat_template/tool_chat_template_llama3.1_json.jinja
   infer_type:
   - text-only
   benchmark:
@@ -235,94 +288,8 @@
     sweep_num_runs: 1
   extra_env:
 
-- name: Qwen2.5-72B-Instruct-GPTQ
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen2___5-72B-Instruct-GPTQ-Int4
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Qwen2.5-14B-W8A8
-  model_path: /mxstorage/pde_ai/models/llm/W8A8/Qwen2.5-14B-Instruct-W8A8-Dynamic-Per-Token
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Qwen3-14B-AWQ
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B-AWQ
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Qwen3-14B
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Qwen3-30B-A3B-W8A8
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B.w8a8
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_high.json
-    sweep_num_runs: 1
-  extra_env:
-  tags:
-  - moe
-
-- name: Qwen3-32B-AWQ
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-32B-AWQ
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-    - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Qwen3-30B-A3B-AWQ
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B-AWQ
+- name: Meta-Llama-3.1-8B-Instruct-quantized.w8a8
+  model_path: /mxstorage/pde_ai/models/llm/Llama/Meta-Llama-3.1-8B-Instruct-quantized.w8a8
   serve_config:
     tp: 2
     dp: 1
@@ -334,11 +301,11 @@
     bench_param: configs/bench_params/bench_default.json
     sweep_num_runs: 1
   extra_env:
-  tags:
-  - moe
 
-- name: Qwen3-4B
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B
+# ---------- Qwen ----------
+
+- name: Qwen3-0.6B
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-0.6B
   serve_config:
     tp: 1
     dp: 1
@@ -364,122 +331,6 @@
     bench_param: configs/bench_params/bench_default.json
     sweep_num_runs: 1
   extra_env:
-
-- name: Qwen3-1.7B
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-1___7B
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Qwen3-VL-30B-A3B-Instruct_W8A8
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-VL-30B-A3B-Instruct_W8A8
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - single-image
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-  tags:
-  - moe
-
-- name: Qwen3-VL-4B-Instruct
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-VL-4B-Instruct
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - single-image
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Qwen3-VL-8B-Instruct
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-VL-8B-Instruct
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - single-image
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Qwen3-0.6B
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-0.6B
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Qwen2.5-1.5B-Instruct
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen2___5-1___5B-Instruct
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Qwen2.5-7B-Instruct-W4A16-AWQ
-  model_path: /mxstorage/pde_ai/share/Qwen2.5-7B-Instruct-W4A16-AWQ
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Qwen3-30B-A3B-Quarot_W4A16_Pack_Sym_QuantGate
-  model_path: /mxstorage/pde_ai/models/Tangle/Qwen/Qwen3-30B-A3B-Quarot_W4A16_Pack_Sym_QuantGate/vllm_quant_model
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-  tag:
-  - moe
 
 - name: Qwen3-Reranker-8B
   model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-Reranker-8B
@@ -509,8 +360,8 @@
     sweep_num_runs: 1
   extra_env:
 
-- name: Hunyuan-0.5B-Instruct
-  model_path: /mxstorage/pde_ai/models/llm/Hunyuan/Hunyuan-0.5B-Instruct
+- name: Qwen3-14B-AWQ
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-14B-AWQ
   serve_config:
     tp: 1
     dp: 1
@@ -523,100 +374,42 @@
     sweep_num_runs: 1
   extra_env:
 
-- name: Hunyuan-7B-Instruct
-  model_path: /mxstorage/pde_ai/models/llm/Hunyuan/Hunyuan-7B-Instruct
+- name: Qwen3.8-27B
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3.8-27B
   serve_config:
-    tp: 1
+    tp: 4
     dp: 1
     pp: 1
     extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_high.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: PaddleOCR-VL
-  model_path: /mxstorage/pde_ai/models/llm/PaddleOCR-VL
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    is_multimodal: true
-    extra_args:
-  infer_type:
-  - single-image
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: glm-4.6V-Flash
-  model_path: /mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.6V-Flash
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    is_multimodal: true
-    extra_args:
-  infer_type:
-  - single-image
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: DeepSeek-V3.2-Exp-BF16-L6_WITH_MTP
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V3.2-Exp-BF16_L6_WITH_MTP
-  serve_config:
-    tp: 2
-    dp: 1
-    pp: 1
-    extra_args:
+      --dtype: bfloat16
+      --gpu-memory-utilization: 0.9
   infer_type:
   - text-only
   benchmark:
     bench_param: configs/bench_params/bench_default.json
     sweep_num_runs: 1
-  extra_env:
-  tags: 
-  - moe
-
-- name: GLM-4.6-BF16-L4
-  model_path: /mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.6-BF16_L4
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-  tags:
-  - moe
-
-- name: Qwen2-72B-Instruct-w8a8
-  model_path: /mxstorage/pde_ai/models/llm/W8A8/Qwen2-72B-Instruct-quantized___w8a8
-  serve_config:
-    tp: 2
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
+  extra_env: null
 
 - name: Qwen3-30B-A3B
   model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B
   serve_config:
     tp: 2
+    dp: 2
+    pp: 1
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
+
+- name: Qwen3-30B-A3B-AWQ
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B-AWQ
+  serve_config:
+    tp: 2
     dp: 1
     pp: 1
     extra_args:
@@ -629,10 +422,27 @@
   tags:
   - moe
 
-- name: Qwen3-32B
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-32B
+- name: Qwen3-30B-A3B-EP
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B
   serve_config:
     tp: 2
+    dp: 2
+    pp: 1
+    extra_args: 
+      --enable-expert-parallel
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
+
+- name: Qwen3-30B-A3B-W8A8
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B.w8a8
+  serve_config:
+    tp: 1
     dp: 1
     pp: 1
     extra_args:
@@ -642,6 +452,88 @@
     bench_param: configs/bench_params/bench_high.json
     sweep_num_runs: 1
   extra_env:
+  tags:
+  - moe
+
+- name: Qwen3-30B-A3B-lora
+  timeout: 3600
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B
+  serve_config:
+    tp: 2
+    dp: 1
+    pp: 1
+    distributed_executor_backend: mp
+    extra_args: 
+      --enable-lora: 
+      --lora-modules: "sql-lora=/mxstorage/pde_ai/models/llm/lora/chenrmqwen3-30b-a3b-abliterated-lora"
+      --max-lora-rank: 64 
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
+
+- name: QwQ-32B
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/QwQ-32B
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+
+- name: Qwen3-32B
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-32B
+  serve_config:
+    tp: 2
+    dp: 2
+    pp: 1
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+
+- name: Qwen3-32B-AWQ
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-32B-AWQ
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+
+- name: Qwen3-Next-80B-A3B-Instruct
+  time: 1200
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-Next-80B-A3B-Instruct
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
 
 - name: Qwen3-Next-80B-A3B-Instruct.w8a8
   model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-Next-80B-A3B-Instruct.w8a8
@@ -660,6 +552,58 @@
   tags:
   - moe
 
+- name: Qwen3.5-122B-A10B-W8A8
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3.5-122B-A10B-W8A8
+  timeout: 1200
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
+
+- name: Qwen3.5-397B-A17B-w8a8
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3.5-397B-A17B-W8A8
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags: 
+  - moe
+
+- name: Qwen3-235B-A22B-w8a8
+  timeout: 1800
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-235B-A22B.w8a8
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_high.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
+
+# ---------- Qwen vl/omni embedding----------
+
 - name: Qwen3-Omni-30B-A3B-Instruct
   model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-Omni-30B-A3B-Instruct
   serve_config:
@@ -675,6 +619,20 @@
   extra_env:
   tags:
   - moe
+
+- name: Qwen3-VL-8B-Instruct
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-VL-8B-Instruct
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+  - single-image
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
 
 - name: Qwen3-VL-30B-A3B-Instruct
   model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-VL-30B-A3B-Instruct
@@ -692,10 +650,72 @@
   tags:
   - moe
 
-- name: Meta-Llama-3-70B-Instruct-w8a8
-  model_path: /mxstorage/pde_ai/models/llm/W8A8/Meta-Llama-3-70B-Instruct-quantized___w8a8
+- name: Qwen3-VL-30B-A3B-Instruct_W8A8
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-VL-30B-A3B-Instruct_W8A8
   serve_config:
-    tp: 2
+    tp: 1
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+  - single-image
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
+
+- name: Qwen3-VL-235B-A22B-Instruct_W8A8
+  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-VL-235B-A22B-Instruct_W8A8
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+  - single-image
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
+
+# ---------- Hunyuan ----------
+
+- name: Hunyuan-7B-Instruct
+  model_path: /mxstorage/pde_ai/models/llm/Hunyuan/Hunyuan-7B-Instruct
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_high.json
+    sweep_num_runs: 1
+  extra_env:
+
+- name: Hunyuan-3
+  model_path: /mxstorage/pde_ai/models/llm/Hunyuan/Hy3
+  serve_config:
+    tp: 4
+    dp: 1
+    pp: 1
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_high.json
+    sweep_num_runs: 1
+  extra_env:
+
+- name: Hy3-preview-w8a8
+  model_path: /mxstorage/pde_ai/models/model_quant_opt/HunYuan/Hy3-preview_SMQ_W8A8/vllm_quant_model
+  serve_config:
+    tp: 8
     dp: 1
     pp: 1
     extra_args:
@@ -705,6 +725,27 @@
     bench_param: configs/bench_params/bench_default.json
     sweep_num_runs: 1
   extra_env:
+  tags: 
+  - moe
+
+# ---------- PaddleOCR ----------
+
+- name: PaddleOCR-VL
+  model_path: /mxstorage/pde_ai/models/llm/PaddleOCR-VL
+  serve_config:
+    tp: 1
+    dp: 1
+    pp: 1
+    is_multimodal: true
+    extra_args:
+  infer_type:
+  - single-image
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+
+# ---------- ERNIE ----------
 
 - name: ERNIE-4.5-21B-A3B-PT
   model_path: /mxstorage/pde_ai/models/llm/ERNIE/ERNIE-4.5-21B-A3B-PT
@@ -740,34 +781,7 @@
   tags:
   - moe
 
-- name: InternVL2_5-26B
-  model_path: /mxstorage/pde_ai/models/llm/Internlm/InternVL2_5-26B
-  serve_config:
-    tp: 2
-    dp: 1
-    pp: 1
-    distributed_executor_backend: mp
-    extra_args:
-  infer_type:
-  - single-image
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: internlm3-8b-instruct
-  model_path: /mxstorage/pde_ai/models/llm/Internlm/internlm3-8b-instruct
-  serve_config:
-    tp: 2
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
+# ---------- Kimi ----------
 
 - name: Kimi-Linear-48B-A3B-Instruct
   model_path: /mxstorage/pde_ai/models/llm/Kimi/Kimi-Linear-48B-A3B-Instruct
@@ -786,116 +800,23 @@
   tags:
   - moe
 
-- name: GLM-4.5V
-  model_path: /mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.5V
-  timeout: 900
+- name: Kimi-K3-BF16
+  model_path: /mxstorage/pde_ai/models/llm/Kimi/Kimi-K3-BF16
   serve_config:
-    tp: 4
+    tp: 8
     dp: 1
     pp: 1
-    gpu_memory_utilization: 0.9
     extra_args:
-      --limit-mm-per-prompt.video: 0
+      --dtype: bfloat16
+      --gpu-memory-utilization: 0.9
   infer_type:
-  - single-image
+  - text-only
   benchmark:
     bench_param: configs/bench_params/bench_default.json
     sweep_num_runs: 1
-  extra_env:
-  tags:
-  - moe
+  extra_env: null
 
-- name: GLM-4.5V_W8A8
-  model_path: /mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.5V_W8A8/vllm_quant_model
-  serve_config:
-    tp: 4
-    dp: 1
-    pp: 1
-    extra_args:
-      --limit-mm-per-prompt.video: 0
-  infer_type:
-  - single-image
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-  tags:
-  - moe 
-
-- name: GLM-4.5-Air_w8a8
-  model_path: /mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.5-Air.w8a8
-  serve_config:
-    tp: 4
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-    - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1   
-  tags:
-  - moe
-
-- name: GLM-4.6V
-  model_path: /mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.6V
-  serve_config:
-    tp: 4
-    dp: 1
-    pp: 1
-    gpu_memory_utilization: 0.9
-    extra_args:
-  infer_type:
-  - single-image
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-  tags:
-  - moe
-
-- name: GLM-4.7-W48A8_WITH_MTP-OFF
-  model_path: /mxstorage/pde_ai/models/model_quant_opt/GLM/GLM-4_7-W48A8_WITH_MTP/vllm_quant_model
-  serve_config:
-    tp: 4
-    dp: 1
-    pp: 1
-    gpu_memory_utilization: 0.9
-    extra_args:
-  infer_type:
-    - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
-    VLLM_USE_FUSED_MOE_GROUPED_TOPK : 0
-    MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: 1
-  tags:
-  - moe
-
-- name: GLM-4.7-W48A8_WITH_MTP
-  model_path: /mxstorage/pde_ai/models/model_quant_opt/GLM/GLM-4_7-W48A8_WITH_MTP/vllm_quant_model
-  serve_config:
-    tp: 4
-    dp: 1
-    pp: 1
-    gpu_memory_utilization: 0.9
-    extra_args:
-      --speculative-config: '{"method":"glm4_moe_mtp", "num_speculative_tokens":2, "model":"/mxstorage/pde_ai/models/model_quant_opt/GLM/GLM-4_7-W48A8_WITH_MTP/vllm_quant_model"}' 
-  infer_type:
-    - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
-    VLLM_USE_FUSED_MOE_GROUPED_TOPK : 0 
-    MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: 1
-  tags:
-  - moe
+# ---------- Mistral ----------
 
 - name: Mistral-8x7B-v0.1
   model_path: /mxstorage/pde_ai/models/llm/Mistral/Mixtral-8x7B-v0.1
@@ -916,451 +837,6 @@
   tags:
   - moe
 
-- name: QwQ-32B
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/QwQ-32B
-  serve_config:
-    tp: 4
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Qwen2.5-72B-Instruct
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen2.5-72B-Instruct
-  serve_config:
-    tp: 4
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Qwen3-32B
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-32B
-  serve_config:
-    tp: 4
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Qwen3-Next-80B-A3B-Instruct.w8a8
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-Next-80B-A3B-Instruct.w8a8
-  timeout: 1200
-  serve_config:
-    tp: 4
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
-  tags:
-  - moe
-
-- name: Qwen3-Next-80B-A3B-Instruct
-  time: 780
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-Next-80B-A3B-Instruct
-  serve_config:
-    tp: 4
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
-  tags:
-  - moe
-
-- name: DeepSeek-R1-Distill-Qwen-32B
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-32B
-  serve_config:
-    tp: 4
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Meta-Llama-3-70B
-  model_path: /mxstorage/pde_ai/models/llm/Llama/Meta-Llama-3-70B
-  serve_config:
-    tp: 4
-    dp: 1
-    pp: 1
-    extra_args:
-      --chat-template: chat_template/tool_chat_template_llama3.1_json.jinja
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Qwen3-30B-A3B
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B
-  serve_config:
-    tp: 2
-    dp: 2
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-  tags:
-  - moe
-
-- name: Qwen3-30B-A3B-EP
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B
-  serve_config:
-    tp: 2
-    dp: 2
-    pp: 1
-    extra_args: 
-      --enable-expert-parallel
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-  tags:
-  - moe
-
-- name: Qwen3-32B
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-32B
-  serve_config:
-    tp: 2
-    dp: 2
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Moonlight-16B-A3B-Instruct
-  model_path: /mxstorage/pde_ai/models/llm/Moonlight-16B-A3B-Instruct
-  serve_config:
-    tp: 4
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-  tag:
-  - moe
-
-- name: step3_5_W8A8
-  model_path: /mxstorage/pde_ai/models/model_quant_opt/Stepfun/step3_5_W8A8/vllm_quant_model_with_mtp
-  serve_config:
-    tp: 4
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-  tag:
-  - moe
-
-- name: Moonlight-16B-A3B-Instruct
-  model_path: /mxstorage/pde_ai/models/llm/Moonlight-16B-A3B-Instruct
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-  tag:
-  - moe
-
-- name: DeepSeek-R1-Distill-Qwen-32B
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-32B
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: DeepSeek-R1-L12-BF16
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-L12-BF16
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_high.json
-    sweep_num_runs: 1
-  extra_env:
-    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
-
-- name: DeepSeek-R1-awq
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-awq
-  timeout: 2400
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
-  
-- name: DeepSeek-R1-W4A8-SQ_MIX_V5
-  time: 1200
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek_W4A8_OPT/DeepSeek-R1-W4A8-SQ_MIX_V5/vllm_quant_model_R1/
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_high.json
-    sweep_num_runs: 1
-  extra_env:
-    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
-    MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: 1
-
-- name: DeepSeek-R1-W48A8-MTP_W4A8
-  time: 1200
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek_W4A8_OPT/DeepSeek-R1-W48A8-MTP_W4A8/vllm_quant_model/
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-      --speculative-config: '{"method": "deepseek_mtp" , "num_speculative_tokens" : 2}'
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_high.json
-    sweep_num_runs: 1
-  extra_env:
-    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
-    MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: 1
-
-- name: DeepSeek-R1-W48A8-MTP_W8A8
-  time: 1200
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek_W4A8_OPT/DeepSeek-R1-W48A8-MTP_W8A8/vllm_quant_model/
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    gpu_memory_utilization: 0.85
-    extra_args:
-      --speculative-config : '{"method": "deepseek_mtp", "num_speculative_tokens": 2}'
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_high.json
-    sweep_num_runs: 1
-  extra_env:
-    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
-    MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: 1
-
-- name: DeepSeek-R1-W48A8-MTP_BF16
-  time: 1200
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek_W4A8_OPT/DeepSeek-R1-W48A8-MTP_BF16/vllm_quant_model_R1/
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    gpu_memory_utilization: 0.85
-    extra_args:
-      --speculative-config : '{"method": "deepseek_mtp", "num_speculative_tokens": 2}'
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_high.json
-    sweep_num_runs: 1
-  extra_env:
-    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
-    MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: 1
-    MACA_VLLM_ENABLE_MCTLASS_PYTHON_API: 1
-
-- name: Qwen2.5-72B-Instruct
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen2.5-72B-Instruct
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Qwen3-235B-A22B-w8a8
-  timeout: 1800
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-235B-A22B.w8a8
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_high.json
-    sweep_num_runs: 1
-  extra_env:
-  tags:
-  - moe
-
-- name: QwQ-32B-Preview
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/QwQ-32B
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Qwen3-Next-80B-A3B-Instruct
-  time: 1200
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-Next-80B-A3B-Instruct
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-  tags:
-  - moe
-
-- name: Qwen2.5-VL-72B-Instruct
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen2.5-VL-72B-Instruct
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - single-image
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Qwen3-VL-235B-A22B-Instruct_W8A8
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-VL-235B-A22B-Instruct_W8A8
-  timeout: 1200
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - single-image
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-  tags:
-  - moe
-
-- name: Qwen3.5-122B-A10B-W8A8
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3.5-122B-A10B-W8A8
-  timeout: 1200
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-  tags:
-  - moe
-
-- name: InternVL3-78B
-  model_path: /mxstorage/pde_ai/models/llm/Internlm/InternVL3-78B
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - single-image
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
 - name: Mixtral-8x22B-Instruct-v0.1
   timeout: 1200
   model_path: /mxstorage/pde_ai/models/llm/Mistral/Mixtral-8x22B-Instruct-v0.1
@@ -1379,82 +855,28 @@
   tags:
   - moe
 
-- name: MiniMax-M2-W8A8
-  model_path: /mxstorage/pde_ai/models/model_quant_opt/MiniMax/MiniMax-M2-BF16-W8A8_SQ/vllm_quant_model
-  timeout: 1800
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-    - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
+# ---------- Moonlight ----------
 
-- name: DeepSeek-V4-Flash-W8A8
-  timeout: 3600
-  model_path: /mxstorage/pde_ai/models/model_quant_opt/DeepSeek/DeepSeek-V4-Flash_FlexSMQ-AWQ_W8A8/vllm_quant_model
+- name: Moonlight-16B-A3B-Instruct
+  model_path: /mxstorage/pde_ai/models/llm/Moonlight-16B-A3B-Instruct
   serve_config:
-    tp: 8
+    tp: 4
     dp: 1
     pp: 1
     extra_args:
   infer_type:
   - text-only
   benchmark:
-    bench_param: configs/bench_params/bench_high.json
-    sweep_num_runs: 1
-  extra_env:
-  tags:
-  - moe
-
-- name: Baichuan-7B-lora
-  timeout: 3600
-  model_path: /mxstorage/pde_ai/models/llm/Baichuan/Baichuan-7B
-  serve_config:
-    tp: 2
-    dp: 1
-    pp: 1
-    distributed_executor_backend: mp
-    extra_args:
-      --chat-template: chat_template/template_baichuan.jinja 
-      --enable-lora: 
-      --lora-modules: "sql-lora=/mxstorage/pde_ai/models/llm/lora/baichuan7b-text2sql-spider"
-      --max-lora-rank: 64 
-  infer_type:
-  - text-only 
-  benchmark:
     bench_param: configs/bench_params/bench_default.json
     sweep_num_runs: 1
   extra_env:
-
-- name: Qwen3-30B-A3B-lora
-  timeout: 3600
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-30B-A3B
-  serve_config:
-    tp: 2
-    dp: 1
-    pp: 1
-    distributed_executor_backend: mp
-    extra_args: 
-      --enable-lora: 
-      --lora-modules: "sql-lora=/mxstorage/pde_ai/models/llm/lora/chenrmqwen3-30b-a3b-abliterated-lora"
-      --max-lora-rank: 64 
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-  tags:
+  tag:
   - moe
 
-- name: Hy3-preview-w8a8
-  model_path: /mxstorage/pde_ai/models/model_quant_opt/HunYuan/Hy3-preview_SMQ_W8A8/vllm_quant_model
+# ---------- Step ----------
+
+- name: step-3.5-Flash
+  model_path: /mxstorage/pde_ai/models/llm/stepfun-ai/Step-3.5-Flash
   serve_config:
     tp: 8
     dp: 1
@@ -1469,23 +891,23 @@
   tags: 
   - moe
 
-- name: Gemma-4-26B-A4B-it
-  model_path: /mxstorage/pde_ai/models/llm/Gemma/gemma-4-26B-A4B-it
+- name: step3_5_W4A8
+  model_path: /mxstorage/pde_ai/models/llm/stepfun-ai/step3_5_W4A8/vllm_quant_model
   serve_config:
-    tp: 2
+    tp: 4
     dp: 1
     pp: 1
     extra_args:
-      --max-num-batched-tokens: 8192
-      --attention-backend: "FLASH_ATTN"
   infer_type:
-    - text-only
+  - text-only
   benchmark:
     bench_param: configs/bench_params/bench_default.json
     sweep_num_runs: 1
   extra_env:
-  tags:
+  tag:
   - moe
+
+# ---------- MiniMax ----------
 
 - name: MiniMax-M2.7-w8a8
   model_path: /mxstorage/pde_ai/models/llm/MiniMax/MiniMax-M2.7-W8A8
@@ -1520,6 +942,28 @@
   tags:
   - moe
 
+# ---------- Gemma ----------
+
+- name: Gemma-4-26B-A4B-it
+  model_path: /mxstorage/pde_ai/models/llm/Gemma/gemma-4-26B-A4B-it
+  serve_config:
+    tp: 2
+    dp: 1
+    pp: 1
+    extra_args:
+      --max-num-batched-tokens: 8192
+      --attention-backend: "FLASH_ATTN"
+  infer_type:
+    - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
+
+# ---------- MiMo ----------
+
 - name: MiMo-V2-Flash-w8a8
   model_path: /mxstorage/pde_ai/models/llm/MiMo/MiMo-V2-Flash-W8A8
   serve_config:
@@ -1536,69 +980,7 @@
   tags: 
   - moe
 
-- name: step-3.5-Flash
-  model_path: /mxstorage/pde_ai/models/llm/stepfun-ai/Step-3.5-Flash
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-  tags: 
-  - moe
-
-- name: Qwen3.5-397B-A17B-w8a8
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3.5-397B-A17B-W8A8
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-  tags: 
-  - moe
-
-- name: Qwen3.8-27B
-  model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3.8-27B
-  serve_config:
-    tp: 4
-    dp: 1
-    pp: 1
-    extra_args:
-      --dtype: bfloat16
-      --gpu-memory-utilization: 0.9
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env: null
-
-- name: Kimi-K3
-  model_path: /mxstorage/pde_ai/models/llm/Kimi/Kimi-K3
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-      --dtype: bfloat16
-      --gpu-memory-utilization: 0.9
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env: null
+# ---------- JoyAI ----------
 
 - name: JoyAI-LLM-Flash
   model_path: /mxstorage/pde_ai/models/llm/jd-opensource/JoyAI-LLM-Flash

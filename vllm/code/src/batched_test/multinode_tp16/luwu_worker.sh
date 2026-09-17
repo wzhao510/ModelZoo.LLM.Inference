@@ -37,10 +37,10 @@ say "启动 host=$(hostname) ip=$(hostname -I 2>/dev/null | tr -s ' ' ',')"
 say "JOB_ID=${JOB_ID:-<未注入>} cwd=$PWD MODEL_CONFIG=${MODEL_CONFIG:-<默认>} MODELS=${MODELS:-<默认>} LUWU_COMPILE=${LUWU_COMPILE:-0}"
 say "日志文件: $LOG ${LOG_FALLBACK:+(共享盘 $LUWU_LOG_DIR 不可写, 已退到 /tmp)}(拿到 master 的 run 目录后变成 run_*/luwu_worker.log)"
 
-say "step1/5 进入代码目录 $BASE"
+say "step1/6 进入代码目录 $BASE"
 cd "$BASE" || { say "ERROR 进入代码目录失败(检查 /sw_home/lli 是否挂载): $BASE"; exit 1; }
 
-say "step2/5 加载模型清单 $BASE/config.sh"
+say "step2/6 加载模型清单 $BASE/config.sh"
 if ! source ./config.sh; then
   say "ERROR 模型清单加载失败, 本节点不会起 rank1(原因见上面 [config] ERROR)"
   exit 1
@@ -50,10 +50,10 @@ if [ -z "${DIST_MODELS+x}" ]; then
   say "      当前 BASE=$BASE, 请确认 start_script/start_script_worker 里的目录与代码目录一致"
   exit 1
 fi
-say "step2/5 OK: 清单 $(basename "$MODEL_CONFIG"), 共 ${#DIST_MODELS[@]} 个模型"
+say "step2/6 OK: 清单 $(basename "$MODEL_CONFIG"), 共 ${#DIST_MODELS[@]} 个模型, 本次执行 ${#DIST_RUN_MODELS[@]} 个"
 
 # 单实例锁(按 JOB_ID 区分): 平台重复拉起时, 后启动的 worker 等待前一个完成
-say "step3/5 取单实例锁 $META_DIR/lock_worker_${JOB_TAG}"
+say "step3/6 取单实例锁 $META_DIR/lock_worker_${JOB_TAG}"
 LOCK="$META_DIR/lock_worker_${JOB_TAG}"
 exec 9>"$LOCK"
 if ! flock -n 9; then
@@ -65,7 +65,7 @@ fi
 
 # 等待 master 发布的日期目录名(worker 可能先于 master 启动);
 # 同时监控 master 的失败标记, 避免 master 已经失败而 worker 一直挂着
-say "step4/5 等 master 发布 RUN_ID(同时监控 master 失败标记)"
+say "step4/6 等 master 发布 RUN_ID(同时监控 master 失败标记)"
 RUN_ID_WAIT="${RUN_ID_WAIT:-300}"
 RUN_ID=""
 for ((i = 1; i <= RUN_ID_WAIT; i++)); do
@@ -94,21 +94,21 @@ NEW_LOG="$RUN_DIR/luwu_worker.log"
 if mv -f "$LOG" "$NEW_LOG" 2>/dev/null; then
   LOG="$NEW_LOG"
 fi
-say "step4/5 OK: run=$RUN_ID 日志=$LOG"
-say "step5/5 跟随 master 的模型标记, 需要时启动 rank1"
+say "step4/6 OK: run=$RUN_ID 日志=$LOG"
+say "step5/6 跟随 master 的模型标记, 需要时启动 rank1"
 
 # 模型列表(与 master 保持一致)默认由 YAML 清单决定: 取清单里 default: true 的模型。
 # 需要临时用环境变量指定(逗号分隔)时显式设 MODELS_SOURCE=env。
 MODELS_SOURCE="${MODELS_SOURCE:-yaml}"
 MODELS_RAW="${MODELS:-}"
-MODELS_FROM="YAML $MODEL_CONFIG 里 default: true 的模型"
+MODELS_FROM="YAML $MODEL_CONFIG 里列出的模型"
 if [ "$MODELS_SOURCE" = "env" ]; then
   # 兼容逗号分隔(陆吾 env_vars 注入)与空格分隔两种写法
   MODELS="${MODELS_RAW//,/ }"
   read -r -a MODELS <<<"$MODELS"
   MODELS_FROM="环境变量 MODELS=$MODELS_RAW"
 else
-  MODELS=("${DIST_DEFAULT_MODELS[@]}")
+  MODELS=("${DIST_RUN_MODELS[@]}")
   if [ -n "$MODELS_RAW" ]; then
     say "提示: 已忽略环境变量 MODELS=$MODELS_RAW(模型列表走 YAML); 需要用它请加 MODELS_SOURCE=env"
   fi
@@ -116,7 +116,7 @@ fi
 say "本次跟随的模型($MODELS_FROM): ${MODELS[*]}"
 # 与 master 同样的校验: 空列表/未知模型名直接报错退出
 if [ "${#MODELS[@]}" -eq 0 ]; then
-  say "ERROR 模型列表为空(来源: $MODELS_FROM); 清单 $MODEL_CONFIG 里 default: true 的模型: ${DIST_DEFAULT_MODELS[*]}"
+  say "ERROR 模型列表为空(来源: $MODELS_FROM); 清单 $MODEL_CONFIG 里列出的模型: ${DIST_RUN_MODELS[*]}"
   exit 2
 fi
 UNKNOWN_MODELS=()
@@ -150,9 +150,19 @@ elif [ -n "${VC_MASTER_HOSTS:-}" ]; then
 fi
 echo "[luwu-worker] $(date '+%F %T') run=$RUN_ID MASTER_ADDR=$MASTER_ADDR MASTER_PORT=$MASTER_PORT"
 
-# 环境初始化(幂等)
-bash /sw_home/lli/compile_env.sh >/dev/null 2>&1 || echo "[luwu-worker] WARN compile_env.sh 失败, 继续"
-pip install -r "$REQUIREMENTS" >/dev/null 2>&1 || true
+# 环境初始化(幂等): 输出落盘, 成功/失败都明确打点, 避免"看不清有没有执行"
+say "step6/6 环境初始化: compile_env.sh + pip 依赖"
+if bash /sw_home/lli/compile_env.sh > "$RUN_DIR/compile_env.log" 2>&1; then
+  say "compile_env.sh OK (输出: $RUN_DIR/compile_env.log)"
+else
+  RC_ENV=$?
+  say "WARN compile_env.sh 失败 exit=$RC_ENV (输出: $RUN_DIR/compile_env.log), 继续"
+fi
+if pip install -r "$REQUIREMENTS" > "$RUN_DIR/pip_requirements.log" 2>&1; then
+  say "requirements 安装 OK"
+else
+  say "WARN requirements 安装失败 (输出: $RUN_DIR/pip_requirements.log), 继续"
+fi
 
 # 可选: LUWU_COMPILE=1 时, 安装 master 的编译产物(等共享 wheel); 等不到则本机编译
 if [ "${LUWU_COMPILE:-0}" = "1" ]; then

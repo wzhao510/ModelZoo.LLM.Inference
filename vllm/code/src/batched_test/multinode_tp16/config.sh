@@ -119,7 +119,7 @@ fi
 eval "$MODELS_SNIPPET"
 # 只在最外层脚本首次加载时打印, 避免 start.sh/check.sh/stop.sh 等子脚本重复刷屏
 if [ -z "${MODELS_CONFIG_LOADED:-}" ]; then
-  echo "[config] 模型清单: $MODEL_CONFIG (共 ${#DIST_MODELS[@]} 个, 默认执行 ${#DIST_DEFAULT_MODELS[@]} 个)"
+  echo "[config] 模型清单: $MODEL_CONFIG (共 ${#DIST_MODELS[@]} 个, 本次执行 ${#DIST_RUN_MODELS[@]} 个)"
   export MODELS_CONFIG_LOADED=1
 fi
 
