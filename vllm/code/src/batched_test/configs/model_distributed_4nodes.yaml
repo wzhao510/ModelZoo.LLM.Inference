@@ -1,0 +1,32 @@
+# 以下两个是 tp8*pp4=32 卡(4 节点)的大模型: 多机脚本当前只支持 2 节点(rank0/1),
+- name: DeepSeek-R1-BF16
+  timeout: 3600
+  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-BF16
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 4
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+
+- name: DeepSeek-V3-BF16
+  timeout: 3600
+  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V3-BF16
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 4
+    extra_args:
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe

@@ -31,7 +31,7 @@
   MODEL_ENVS              name -> 模型专属环境变量(已按 shell 转义)
 
 用法:
-    eval "$(python3 load_models.py /path/to/models_distributed_tp16.yaml)"
+    eval "$(python3 load_models.py /path/to/models_distributed_2nodes.yaml)"
 """
 from __future__ import annotations
 

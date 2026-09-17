@@ -1,6 +1,5 @@
 # 单机推理测试模型清单(每个模型最多 8 卡)。
 # 需要多机(tp*dp*pp > 8)的大模型已移到
-# configs/models_distributed_tp16.yaml, 由 multinode_tp16/ 下的脚本加载。
 
 - name: DeepSeek-R1-Distill-Llama-8B
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Llama-8B
@@ -30,34 +29,6 @@
     sweep_num_runs: 1
   extra_env:
     VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
-
-- name: DeepSeek-R1-Distill-Qwen-7B
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-7B
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: DeepSeek-R1-Distill-Qwen-14B
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-14B
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
 
 - name: DeepSeek-V2-Lite
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V2-Lite
@@ -1023,20 +994,6 @@
   tags:
   - moe
 
-- name: DeepSeek-R1-Distill-Llama-70B
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Llama-70B
-  serve_config:
-    tp: 4
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
 - name: DeepSeek-R1-Distill-Qwen-32B
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-32B
   serve_config:
@@ -1161,20 +1118,6 @@
   tag:
   - moe
 
-- name: DeepSeek-R1-Distill-Llama-70B
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Llama-70B
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
 - name: DeepSeek-R1-Distill-Qwen-32B
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-Distill-Qwen-32B
   serve_config:
@@ -1216,22 +1159,6 @@
   - text-only
   benchmark:
     bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
-
-- name: DeepSeek-R1-BF16-L4-W8A8
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-BF16-L4-W8A8
-  serve_config:
-    tp: 4
-    dp: 2
-    pp: 1
-    extra_args:
-      -dcp: 2
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_high.json
     sweep_num_runs: 1
   extra_env:
     VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
@@ -1434,80 +1361,6 @@
     sweep_num_runs: 1
   extra_env:
 
-- name: GLM-4.5-W8A8
-  model_path: /mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.5-W8A8
-  timeout: 1800
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-    - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
-  tags:
-  - moe
-
-- name: GLM-4.6-W8A8
-  model_path: /mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.6-W8A8
-  timeout: 1800
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-      --speculative-config : '{"num_speculative_tokens": 1, "model":"/mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.6-W8A8", "method":"mtp"}'
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
-  tags:
-  - moe
-
-- name: GLM-4.7-W8A8
-  model_path: /mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.7-W8A8
-  timeout: 1800
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-      --speculative-config : '{"num_speculative_tokens": 1, "model":"/mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.7-W8A8", "method":"mtp"}'
-  infer_type:
-    - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
-  tags:
-  - moe
-
-- name: GLM-4.5-Air
-  model_path: /mxstorage/pde_ai/models/llm/ChatGLM/GLM-4.5-Air
-  timeout: 1800
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-    - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
-  tags:
-  - moe
-
 - name: Mixtral-8x22B-Instruct-v0.1
   timeout: 1200
   model_path: /mxstorage/pde_ai/models/llm/Mistral/Mixtral-8x22B-Instruct-v0.1
@@ -1554,40 +1407,6 @@
   - text-only
   benchmark:
     bench_param: configs/bench_params/bench_high.json
-    sweep_num_runs: 1
-  extra_env:
-  tags:
-  - moe
-
-# 以下两个是 tp8*pp4=32 卡(4 节点)的大模型: 多机脚本当前只支持 2 节点(rank0/1),
-# 暂留本清单; 支持 4 节点后可迁到 configs/models_distributed_tp16.yaml
-- name: DeepSeek-R1-BF16
-  timeout: 3600
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-BF16
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 4
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: DeepSeek-V3-BF16
-  timeout: 3600
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V3-BF16
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 4
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
     sweep_num_runs: 1
   extra_env:
   tags:

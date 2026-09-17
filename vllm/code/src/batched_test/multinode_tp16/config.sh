@@ -3,7 +3,7 @@
 # 多机(双机) TP16/TP32 测试通用配置
 # 适用于宁夏 10.13.81.57(rank0)+10.13.81.58(rank1), 每节点 8x MXC500X (TP16);
 # 上海 C600U 分布式: 每节点 16x MXC600U (spec 118), 两机 TP32 (TP=32 NNODES=2)
-# 模型清单(名称/路径/tp/dp/pp/dtype/额外参数)在 configs/models_distributed_tp16.yaml,
+# 模型清单(名称/路径/tp/dp/pp/dtype/额外参数)在 configs/models_distributed_2nodes.yaml,
 # 本文件只放全局默认值; 所有项均可通过环境变量覆盖
 # =============================================================
 
@@ -53,12 +53,12 @@ export MCCL_IB_HCA="${MCCL_IB_HCA:-${NETWORK_CONFIG:-mlx5_0,mlx5_1,mlx5_2,mlx5_3
 # ---------- 模型清单 (YAML 驱动) ----------
 # 模型列表(名称/路径/tp/dp/pp/dtype/额外参数/环境变量)统一维护在 YAML 里,
 # 格式与 configs/models_single_QA_required.yaml 一致:
-#   configs/models_distributed_tp16.yaml
+#   configs/models_distributed_2nodes.yaml
 # 本文件不再硬编码模型表; 用 MODEL_CONFIG 可指定其它清单(绝对路径或相对路径均可)。
 # 注意: 解析清单需要能 import yaml 的 python, 见下面 _pick_models_python。
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BATCHED_TEST_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-MODEL_CONFIG_REQUESTED="${MODEL_CONFIG:-configs/models_distributed_tp16.yaml}"
+MODEL_CONFIG_REQUESTED="${MODEL_CONFIG:-configs/models_distributed_2nodes.yaml}"
 
 # 相对路径按 batched_test 目录解析: MODEL_CONFIG=configs/model.yaml 与
 # MODEL_CONFIG=$BATCHED_TEST_DIR/configs/model.yaml 等价; 也兼容脚本目录下的路径

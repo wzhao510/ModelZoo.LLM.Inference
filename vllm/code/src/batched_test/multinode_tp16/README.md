@@ -50,7 +50,7 @@ took X s` 只统计**所有 rank ready 之后**的 phase，多机时 worker read
 rank0 慢约 30%）。三段耗时（权重加载 / 等对端 / engine init）可以直接从两个 rank 的
 `rank*_serve.log` 时间戳算出来，只有算不清是哪一段时再开看门狗。
 
-权重加载慢时另见 `configs/models_distributed_tp16.yaml` 里的
+权重加载慢时另见 `configs/models_distributed_2nodes.yaml` 里的
 `--safetensors-load-strategy: prefetch`（DTFS 不在 vLLM 自动预取的识别列表里，默认是关的）。
 
 其他用法：
@@ -118,7 +118,7 @@ RANK=0 bash start.sh
 
 ## 模型清单（YAML 驱动）
 
-模型列表放在 `../configs/models_distributed_tp16.yaml`，格式与
+模型列表放在 `../configs/models_distributed_2nodes.yaml`，格式与
 `../configs/models_single_QA_required.yaml` 一致，每个模型的 `serve_config`
 自带 `tp/dp/pp/dtype/extra_args`：
 
@@ -143,11 +143,14 @@ RANK=0 bash start.sh
 
 - 卡数 = `tp*dp*pp`，节点数 `NNODES = 卡数 / GPUS_PER_NODE`（默认 8，可覆盖），
   所以新增模型只改 YAML 即可，不用动脚本。
-- 现在清单里有 16 个模型：原 `config.sh` 的 3 个（`default: true`，多机 queue 任务默认跑）
-  + `Kimi-K2.5-FP8`（C600U）+ 由 `configs/model.yaml` 迁入的 12 个大模型
-  （`tp*dp*pp > 8`，单机 8 卡跑不动）。
-- 选其它模型：`MODEL_NAME=GLM-4.5 bash start.sh`；queue 任务用
-  `MODELS=GLM-5-W8A8,DeepSeek-V3.2-Exp` 覆盖默认列表。
+- 清单里 3 个模型标了 `default: true`（多机 queue 任务默认跑这 3 个），其余是
+  由 `configs/model.yaml` 迁入、单机 8 卡跑不动的大模型（`tp*dp*pp > 8`），
+  保留在清单里按需选跑。
+- 要跑哪些模型由 YAML 决定：`default: true` 的模型进默认执行列表（多机 queue 任务
+  一次申请内顺序跑完它们），改清单即可，不用动脚本、也不用在 job 里传模型名。
+- 临时换模型：`MODEL_NAME=GLM-4.5 bash start.sh`；queue 任务用
+  `MODELS_SOURCE=env MODELS=GLM-5-W8A8,DeepSeek-V3.2-Exp`（只设 `MODELS` 不生效，
+  脚本会提示已忽略，避免 job 模板里的旧 `MODELS` 覆盖 YAML 清单）。
 - 换其它清单：`MODEL_CONFIG=/path/to/other.yaml bash start.sh`；相对路径按
   `batched_test/` 解析（`MODEL_CONFIG=configs/model.yaml` 与绝对路径等价）。
   路径不存在时脚本会打印尝试过的路径和 `configs/` 下可用清单后退出。
@@ -159,7 +162,7 @@ RANK=0 bash start.sh
   `MODELS` 为空串会直接报错退出并打印清单里的可用模型名），
   避免"一个模型都没加载就显示执行完毕"。
 - 想看清单里全部模型名：
-  `python3 load_models.py ../configs/models_distributed_tp16.yaml | head -1`。
+  `python3 load_models.py ../configs/models_distributed_2nodes.yaml | head -1`。
 
 ## 排障（任务启动即结束）
 
@@ -167,9 +170,9 @@ RANK=0 bash start.sh
 
 | 现象 | 日志/位置 | 原因 |
 | --- | --- | --- |
-| master/worker 秒退，容器 stdout 只有一行 `[config] ...` | `$BASE_LOG_DIR/run_<时间戳>/luwu_boot_master_<JOB_ID>.log`（worker 同名 boot log 在 master 的同一个 run 目录里） | 模型清单加载失败：`MODEL_CONFIG` 路径不对 / python 缺 PyYAML / YAML 语法错 |
-| 日志只有 `开始多模型顺序测试:`（列表为空）后立刻 `全部模型执行完毕` | master 日志 | `MODELS` 解析成空列表 |
-| 日志报 `清单里没有这些模型` | master/worker 日志 | `MODELS` 里写了清单中不存在的模型名（改名/迁到别的清单了） |
+| master/worker 秒退，容器 stdout 只有一行 `[config] ...` | `$BASE_LOG_DIR/run_<时间戳>/luwu_master.log`（worker 是同一个 run 目录里的 `luwu_worker.log`） | 模型清单加载失败：`MODEL_CONFIG` 路径不对 / python 缺 PyYAML / YAML 语法错 |
+| 日志只有 `开始多模型顺序测试:`（列表为空）后立刻 `全部模型执行完毕` | master 日志 | YAML 里没有 `default: true` 的模型，且 `MODELS_SOURCE=env` 时 `MODELS` 为空 |
+| 日志报 `清单里没有这些模型` | master/worker 日志 | `MODELS_SOURCE=env` 且 `MODELS` 里写了清单中不存在的模型名（改名/迁到别的清单了） |
 | worker 报 `master 启动失败` / `等待 master 发布 RUN_ID 超时` | worker 日志，以及 `$BASE_LOG_DIR/.luwu_meta/boot_worker_<JOB_ID>.log` | 另一节点没跑 `luwu_master.sh`，或 master 早期失败（看 `FAILED_MARKER`） |
 | 一个节点打印 `前序实例已结束, 本实例直接退出` | 该节点日志 | 两个节点跑了同一份 `luwu_master.sh`（同 JOB_ID 抢锁），从节点应改跑 `luwu_worker.sh` |
 
@@ -180,7 +183,7 @@ RANK=0 bash start.sh
 
 | 任务 | 日志目录 | 说明 |
 | --- | --- | --- |
-| 多机（tp16/tp32）| `/sw_home/lli/model_test/tp16_luwu/run_<时间戳>/` | 每次启动一个 run 目录：`luwu_boot_master_<JOB_ID>.log`、`luwu_master.log`、`luwu_boot_worker_<JOB_ID>.log`、`luwu_worker.log`、每个模型的 `rank*_serve.log` 都在里面 |
+| 多机（tp16/tp32）| `/sw_home/lli/model_test/tp16_luwu/run_<时间戳>/` | 每次启动一个 run 目录：master 全程写 `luwu_master.log`（启动打点 + 各模型日志，一个文件），worker 全程写 `luwu_worker.log`，每个模型的 `rank*_serve.log` 也在里面 |
 | 单机 | `/sw_home/lli/model_test/tp8_luwu/run_<时间戳>/` | `luwu_single.log`；`launch.py --infer` 自己的产物仍在 `/sw_home/lli/model_test/<时间戳>/` |
 
 （可用 `LUWU_LOG_DIR` 覆盖上面两个默认根目录。）

@@ -1,6 +1,6 @@
 #!/bin/bash
 # 启动本节点 vllm serve (TP16 多机的一个 rank)
-# 模型清单来自 configs/models_distributed_tp16.yaml (见 config.sh)
+# 模型清单来自 configs/models_distributed_2nodes.yaml (见 config.sh)
 # 用法: RANK=0 bash start.sh   # rank0 (服务节点 10.13.81.57)
 #       RANK=1 bash start.sh   # rank1 (headless 节点 10.13.81.58)
 # 可选: MODEL_NAME=GLM-5.2-W8A8 SERVE_PORT=8010 MASTER_PORT=8802 bash start.sh
