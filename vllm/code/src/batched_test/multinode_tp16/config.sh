@@ -10,6 +10,9 @@
 # ---------- 网络 / 端口 (被占用时覆盖) ----------
 MASTER_ADDR="${MASTER_ADDR:-10.13.81.57}"   # rank0 节点 IP
 MASTER_PORT="${MASTER_PORT:-8801}"          # 多机通信端口(8800 常被占用)
+# 两机 DP(dp>1) 时 vLLM 先建 DP group 的 rendezvous store(独立端口), 主 TCPStore
+# (MASTER_PORT) 要等 DP 组建好才起; 所以 DP 场景下 worker 要等/看的是这个端口
+DP_RPC_PORT="${DP_RPC_PORT:-$((MASTER_PORT + 1))}"
 SERVE_HOST="${SERVE_HOST:-0.0.0.0}"
 SERVE_PORT="${SERVE_PORT:-8000}"            # OpenAI 服务端口
 

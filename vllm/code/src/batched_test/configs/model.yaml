@@ -971,12 +971,16 @@
     dp: 1
     pp: 1
     extra_args:
+  # transformers>=4.57 会误判 MiMo 为 Mistral 家族(config.json 没写 model_type),
+  # 报 "incorrect regex pattern" 警告; MiMo 的 tokenizer 本来就是这个老正则,
+  # 不要加 fix_mistral_regex, 这里只把这条警告压掉
+  extra_env:
+    TRANSFORMERS_VERBOSITY: error
   infer_type:
   - text-only
   benchmark:
     bench_param: configs/bench_params/bench_default.json
     sweep_num_runs: 1
-  extra_env:
   tags: 
   - moe
 

@@ -177,6 +177,16 @@ RANK=0 bash start.sh
 失败标记写在 `$BASE_LOG_DIR/.luwu_meta/failed_<JOB_ID>`（内容为失败原因），
 `$BASE_LOG_DIR` 默认 `/sw_home/lli/model_test/tp16_luwu`。
 
+两机 DP（模型 `serve_config.dp > 1`）注意：vLLM 起服务时**先建 DP group 的
+rendezvous store**（`DP_RPC_PORT`，默认 `MASTER_PORT+1`，由 `start.sh` 显式传给
+`--data-parallel-rpc-port`），主 TCPStore（`MASTER_PORT`）要等 DP 组建好才监听。
+
+- worker 脚本在 dp>1 时等的是 `DP_RPC_PORT`（而不是 `MASTER_PORT`），否则会白等
+  300s 才起 rank1，而 rank0 一直卡在 DP rendezvous（py-spy 上表现为
+  `EngineCore_DP0 -> stateless_init_dp_group -> _create_c10d_store`）。
+- dp>1 时 worker 也不再用 `MASTER_PORT` 判断"master 掉线"（那个端口本来就还没起），
+  只按 `current_model`/`DONE_ALL` 标记 + rank1 进程存活收尾。
+
 日志目录约定：
 
 | 任务 | 日志目录 | 说明 |

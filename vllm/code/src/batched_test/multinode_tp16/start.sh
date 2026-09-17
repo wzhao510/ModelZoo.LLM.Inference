@@ -65,11 +65,18 @@ if pgrep -f "vllm serve ${MODEL_PATH}" >/dev/null 2>&1; then
   exit 3
 fi
 
+# 两机 DP(dp>1): 显式固定 DP group rendezvous 端口, 保证两机用同一个端口,
+# 也让 luwu_worker.sh 知道该等哪个端口(vLLM 默认 29550, 这里用 MASTER_PORT+1)
+DP_ARGS=()
+if (( DP_M > 1 )); then
+  DP_ARGS=(--data-parallel-rpc-port "$DP_RPC_PORT")
+fi
+
 CMD=(vllm serve "$MODEL_PATH" --trust-remote-code --distributed-executor-backend mp
      --max-model-len "$MAX_LEN_M" --gpu-memory-utilization "$GPU_MEM_M"
      -tp "$TP_M" -dp "$DP_M" -pp "$PP_M" --no-enable-prefix-caching
      --max-num-seqs "$MAX_SEQS_M"
-     --nnodes "$NNODES_M" --dtype "$DTYPE" "${RANK_ARGS[@]}")
+     --nnodes "$NNODES_M" --dtype "$DTYPE" "${DP_ARGS[@]}" "${RANK_ARGS[@]}")
 # EXTRA 已在 load_models.py 里按 shell 规则转义(含引号的 --speculative-config 等)
 if [ -n "$EXTRA" ]; then
   eval "CMD+=( $EXTRA )"

@@ -208,9 +208,21 @@ while true; do
     MODEL_RUN_DIR="$RUN_DIR/$MODEL_NAME"
     mkdir -p "$MODEL_RUN_DIR"
     echo "[luwu-worker] $(date '+%F %T') ============ 启动 rank1: $MODEL_NAME ============"
-    # 等 master 的 TCPStore(8801)就绪后再启动, 避免连接超时
+    # 等 master 侧的就绪端口后再启动 rank1, 避免连接超时。
+    # dp>1(两机 DP) 时 vLLM 先建 DP group 的 rendezvous store(DP_RPC_PORT),
+    # 主 TCPStore(MASTER_PORT) 要等 DP 组建好才起 —— 这时必须等 DP_RPC_PORT,
+    # 否则会白等 300s 才起 rank1, 期间 rank0 一直卡在 DP rendezvous。
+    DP_M_W="${MODEL_DP[$MODEL_NAME]:-1}"
+    if [ "$DP_M_W" -gt 1 ]; then
+      WAIT_PORT="$DP_RPC_PORT"
+      WAIT_DESC="master 的 DP rendezvous 端口 $DP_RPC_PORT (dp=$DP_M_W)"
+    else
+      WAIT_PORT="$MASTER_PORT"
+      WAIT_DESC="master 的 TCPStore $MASTER_PORT"
+    fi
+    echo "[luwu-worker] 等 $WAIT_DESC 就绪..."
     for i in {1..300}; do
-      if (echo > /dev/tcp/"$MASTER_ADDR"/"$MASTER_PORT") 2>/dev/null; then
+      if (echo > /dev/tcp/"$MASTER_ADDR"/"$WAIT_PORT") 2>/dev/null; then
         break
       fi
       sleep 1
@@ -227,7 +239,9 @@ while true; do
     fi
     echo "[luwu-worker] rank1 pid=${RANK1_PID:-unknown} log=$MODEL_RUN_DIR/rank1_serve.log"
 
-    # 监控: rank1 退出 / master 切换标记 / master store 掉线(视为 master 已停)时停止当前 rank1
+    # 监控: rank1 退出 / master 切换标记 / master store 掉线(视为 master 已停)时停止当前 rank1。
+    # 注意: dp>1 时 MASTER_PORT 要等 DP 组建好才起, 不能用它判"master 掉线"(会误杀 rank1),
+    #       DP 场景只按 current_model/DONE_ALL 标记 + rank1 进程存活来判断。
     store_down=0
     while rank1_alive; do
       cur2="$(cat "$SHARED" 2>/dev/null || true)"
@@ -239,14 +253,16 @@ while true; do
         echo "[luwu-worker] master 标记已切换($cur2), 停止当前 rank1"
         break
       fi
-      if (echo > /dev/tcp/"$MASTER_ADDR"/"$MASTER_PORT") 2>/dev/null; then
-        store_down=0
-      else
-        store_down=$((store_down + 1))
-        # 约 60s 不可达, 判定 master 已停止当前模型
-        if [ "$store_down" -ge 6 ]; then
-          echo "[luwu-worker] master TCPStore 掉线, 判定当前模型已结束"
-          break
+      if [ "$DP_M_W" -le 1 ]; then
+        if (echo > /dev/tcp/"$MASTER_ADDR"/"$MASTER_PORT") 2>/dev/null; then
+          store_down=0
+        else
+          store_down=$((store_down + 1))
+          # 约 60s 不可达, 判定 master 已停止当前模型
+          if [ "$store_down" -ge 6 ]; then
+            echo "[luwu-worker] master TCPStore 掉线, 判定当前模型已结束"
+            break
+          fi
         fi
       fi
       sleep 10
