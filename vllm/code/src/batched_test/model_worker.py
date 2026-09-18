@@ -46,6 +46,9 @@ class Worker(abc.ABC):
         # Track remote headless rank pids (keyed by node index).
         self.remote_rank_pids: dict[int, int] = {}
         self.related_gpu_ids = []
+        # 真正开始跑(拿到 GPU)的时间; launch.py 的 per-model 超时从这时算起,
+        # 排队/等 GPU 的时间不计入(否则等着自己的卡还没轮到的模型会被判 TIMEOUT)
+        self.started_at: float | None = None
 
     @abc.abstractmethod
     def run(self, stop_event: threading.Event):
@@ -72,6 +75,7 @@ class Worker(abc.ABC):
                     f"[{self.model_cfg['name']}] Allocated resources: {occupied_gpus}"
                 )
                 self.related_gpu_ids = occupied_gpus
+                self.started_at = time.time()
                 return
             time.sleep(10)
 
@@ -507,7 +511,12 @@ class InferWorker(Worker):
             self._cleanup()
 
     def _post_client_test(self):
-        timeout = self.model_cfg.get("timeout", 1200)
+        # 服务就绪(权重加载完)等待时间: 默认 3600s, 大模型加载慢时可在 YAML 里写
+        # timeout: <秒> 单独调, 或用环境变量 MODEL_READY_TIMEOUT 全局覆盖
+        timeout = int(
+            os.environ.get("MODEL_READY_TIMEOUT")
+            or self.model_cfg.get("timeout", 3600)
+        )
         self._check_api_service_ready(timeout=timeout, blocking=True)
 
         correct_ratio = self._chat_completion()
@@ -674,7 +683,7 @@ class InferWorker(Worker):
             cmd=cmd, log_file=log_file, env={**os.environ, **extra_env}
         )
 
-    def _check_api_service_ready(self, blocking=True, timeout=1200):
+    def _check_api_service_ready(self, blocking=True, timeout=3600):
         """Block until the API service is healthy, or raise on error/timeout.
 
         Mirrors the shell ``wait_for_server()`` pattern:

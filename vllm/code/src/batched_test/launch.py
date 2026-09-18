@@ -38,7 +38,10 @@ class SchedularArgs:
     infer: bool = False
     perf: bool = False
     concurrency: int | None = None  # Max concurrent models. None=default(GPU count local, 1 on cluster)
-    model_timeout: int = 3600  # Hard per-model timeout in seconds (default: 1 hour)
+    # Hard per-model timeout in seconds(从拿到 GPU 开始跑算起);
+    # 默认 2 小时: 单模型"加载就绪"最长允许 1h(model_worker 的 timeout/MODEL_READY_TIMEOUT),
+    # 再留时间跑 case/压测
+    model_timeout: int = 7200
 
     gpus: str = None  # comma-separated GPU counts to run (e.g., '1,2,4,8')
     tag: str | None = (
@@ -207,8 +210,12 @@ class SchedularArgs:
         parser.add_argument(
             "--model-timeout",
             type=int,
-            default=3600,
-            help="Hard per-model timeout in seconds. If a model exceeds this, it is killed and marked as TIMEOUT. Default: 3600 (1 hour).",
+            default=7200,
+            help=(
+                "Hard per-model timeout in seconds, counted from when the model gets its "
+                "GPUs (waiting for GPU does not count). Exceeding it marks the model TIMEOUT. "
+                "Default: 7200 (2 hours)."
+            ),
         )
 
 stop_event = threading.Event()
@@ -238,15 +245,9 @@ class Scheduler:
             raise ValueError("--concurrency must be >= 1")
         self._gate = threading.BoundedSemaphore(limit)
 
-    def _run_with_gate(self, fn, *args, started_at: list | None = None, **kwargs):
-        """抢到并发闸门后执行 fn; started_at 用于记录"真正开始执行"的时间.
-
-        per-model 超时必须以这个时间为起点: 否则排在队列里(还没抢到 GPU)的模型
-        会被排队时间"熬"成 TIMEOUT.
-        """
+    def _run_with_gate(self, fn, *args, **kwargs):
+        """抢到并发闸门后执行 fn; per-model 超时以 worker.started_at(拿到 GPU)为准."""
         with self._gate:
-            if started_at is not None:
-                started_at.append(time_module.time())
             return fn(*args, **kwargs)
 
     def _load_yaml_config(self, config_yaml: str) -> list[dict]:
@@ -427,12 +428,13 @@ class Scheduler:
         all_results = []
         # future -> model_cfg (so we can build error rows for timeouts)
         future_map: dict[concurrent.futures.Future, dict] = {}
-        # 提交时间(算排队时长用) 与 真正开始执行的时间 分开记录:
-        # per-model 超时只从"开始执行"算起, 排队等待不计入, 否则还没轮到的模型会被
-        # 排队时间熬成 TIMEOUT (曾经一次跑 103 个模型, 94 个是这么被误判的)
+        # 提交时间(算排队时长用) 与 真正开始跑的时间(worker.started_at, 拿到 GPU 后由
+        # worker 自己记录) 分开: per-model 超时只从"拿到 GPU 开始跑"算起,
+        # 排队/等 GPU 的时间不计入(否则等着卡还没轮到的模型会被熬成 TIMEOUT)
         future_submit_time: dict[concurrent.futures.Future, float] = {}
-        future_start_time: dict[concurrent.futures.Future, list[float]] = {}
         next_wait_notice: dict[concurrent.futures.Future, float] = {}
+        # future -> worker 对象(取 worker.started_at 用)
+        worker_map: dict[concurrent.futures.Future, object] = {}
 
         assert os.path.exists(self.args.text_case), (
             f"Case file not found: {self.args.text_case}"
@@ -463,13 +465,12 @@ class Scheduler:
                 last_resume=self.args.resume_csv,
                 gpu_manager=self.gpu_manager,
             )
-            started_at: list[float] = []   # _run_with_gate 抢到闸门后写入
             future = self.executor.submit(
-                self._run_with_gate, worker.run, stop_event, started_at=started_at
+                self._run_with_gate, worker.run, stop_event
             )
             future_map[future] = cfg
+            worker_map[future] = worker
             future_submit_time[future] = time_module.time()
-            future_start_time[future] = started_at
             next_wait_notice[future] = future_submit_time[future] + 1800.0
 
         # --- helper: build a result row for a model that never returned ---
@@ -487,7 +488,7 @@ class Scheduler:
                 "Stage": "TIMEOUT",
                 "Reason": (
                     f"Exceeded per-model timeout "
-                    f"({self.args.model_timeout}s from model start, elapsed {elapsed:.0f}s)"
+                    f"({self.args.model_timeout}s from model start(拿到 GPU 后), elapsed {elapsed:.0f}s)"
                 ),
                 "Model Path": cfg.get("model_path", ""),
             }
@@ -558,21 +559,22 @@ class Scheduler:
                             f_csv.flush()
                             pbar.update(1)
 
-                        # --- kill overdue futures (按"开始执行"时间计时) ---
+                        # --- kill overdue futures (按"拿到 GPU 真正开始跑"时间计时) ---
                         now = time_module.time()
                         for f in list(remaining):
-                            started_at = future_start_time.get(f) or []
-                            if not started_at:
-                                # 还没轮到(排队/等 GPU): 不计 per-model 超时, 只定期提示等待时长
+                            worker = worker_map.get(f)
+                            started = getattr(worker, "started_at", None)
+                            if started is None:
+                                # 还没拿到 GPU(排队/被别的模型占着): 不计 per-model 超时, 只定期提示
                                 if now >= next_wait_notice.get(f, float("inf")):
                                     waited = now - future_submit_time[f]
                                     print(
-                                        f"\n[{future_map[f].get('name', '?')}] 排队等待执行 "
-                                        f"{waited / 60:.0f} 分钟(per-model 超时从开始执行算起)"
+                                        f"\n[{future_map[f].get('name', '?')}] 还在等 GPU 资源 "
+                                        f"{waited / 60:.0f} 分钟(per-model 超时从拿到 GPU 开始算)"
                                     )
                                     next_wait_notice[f] = now + 1800.0
                                 continue
-                            elapsed = now - started_at[0]
+                            elapsed = now - started
                             if elapsed > self.args.model_timeout:
                                 cfg = future_map[f]
                                 name = cfg.get("name", "?")
@@ -636,10 +638,10 @@ class Scheduler:
         """Run performance benchmarks for all selected models with per-model timeout."""
         all_results = []
         future_map: dict[concurrent.futures.Future, dict] = {}
-        # 提交时间(排队) vs 开始执行时间: per-model 超时从开始执行算起(理由同 run_inference)
+        # 提交时间(排队) vs worker.started_at(拿到 GPU): 超时从拿到 GPU 算起(理由同 run_inference)
         future_submit_time: dict[concurrent.futures.Future, float] = {}
-        future_start_time: dict[concurrent.futures.Future, list[float]] = {}
         next_wait_notice: dict[concurrent.futures.Future, float] = {}
+        worker_map: dict[concurrent.futures.Future, object] = {}
 
         bench_work_dir = os.path.join(self.work_dir, "performance")
         from model_worker import BenchSweepWorker
@@ -650,14 +652,12 @@ class Scheduler:
             )
             # GPU allocation timeout: shorter for serial, generous for parallel
             alloc_timeout = 3600 if self.args.concurrency == 1 else 14400
-            started_at: list[float] = []
             future = self.executor.submit(
-                self._run_with_gate, worker.run, stop_event, alloc_timeout,
-                started_at=started_at,
+                self._run_with_gate, worker.run, stop_event, alloc_timeout
             )
             future_map[future] = cfg
+            worker_map[future] = worker
             future_submit_time[future] = time_module.time()
-            future_start_time[future] = started_at
             next_wait_notice[future] = future_submit_time[future] + 1800.0
 
         POLL_SECONDS = 30
@@ -689,20 +689,21 @@ class Scheduler:
                     print(f"\n[{name}] Benchmark worker crashed: {type(exc).__name__}: {exc}")
                 all_results.append(result)
 
-            # Kill overdue futures(按"开始执行"时间计时)
+            # Kill overdue futures(按"拿到 GPU 真正开始跑"时间计时)
             now = time_module.time()
             for f in list(remaining):
-                started_at = future_start_time.get(f) or []
-                if not started_at:
+                worker = worker_map.get(f)
+                started = getattr(worker, "started_at", None)
+                if started is None:
                     if now >= next_wait_notice.get(f, float("inf")):
                         waited = now - future_submit_time[f]
                         print(
-                            f"\n[{future_map[f].get('name', '?')}] 排队等待执行 "
-                            f"{waited / 60:.0f} 分钟(per-model 超时从开始执行算起)"
+                            f"\n[{future_map[f].get('name', '?')}] 还在等 GPU 资源 "
+                            f"{waited / 60:.0f} 分钟(per-model 超时从拿到 GPU 开始算)"
                         )
                         next_wait_notice[f] = now + 1800.0
                     continue
-                elapsed = now - started_at[0]
+                elapsed = now - started
                 if elapsed > self.args.model_timeout:
                     cfg = future_map[f]
                     name = cfg.get("name", "?")

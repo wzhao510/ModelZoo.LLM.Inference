@@ -51,7 +51,7 @@
 - name: DeepSeek-R1-BF16-L12
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-L12-BF16/
   serve_config:
-    tp: 1
+    tp: 2
     dp: 1
     pp: 1
     extra_args:
@@ -83,22 +83,6 @@
     MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE: 1
     MACA_VLLM_ENABLE_MCTLASS_PYTHON_API: 1
 
-- name: DeepSeek-R1-L12-W4A16-AWQ
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-R1-L12-W4A16-AWQ/
-  timeout: 2400
-  serve_config:
-    tp: 4
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-    VLLM_DISABLE_SHARED_EXPERTS_STREAM: 1
-
 - name: DeepSeek-V4-Flash-W8A8-MTP
   timeout: 3600
   model_path: /mxstorage/pde_ai/models/model_quant_opt/DeepSeek/DeepSeek-V4-Flash_FlexSMQ-AWQ_W8A8/vllm_quant_model
@@ -116,43 +100,6 @@
   extra_env:
   tags:
   - moe
-
-# ---------- Baichuan ----------
-
-- name: Baichuan-7B-lora
-  timeout: 3600
-  model_path: /mxstorage/pde_ai/models/llm/Baichuan/Baichuan-7B
-  serve_config:
-    tp: 2
-    dp: 1
-    pp: 1
-    distributed_executor_backend: mp
-    extra_args:
-      --chat-template: chat_template/template_baichuan.jinja 
-      --enable-lora: 
-      --lora-modules: "sql-lora=/mxstorage/pde_ai/models/llm/lora/baichuan7b-text2sql-spider"
-      --max-lora-rank: 64 
-  infer_type:
-  - text-only 
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
-
-- name: Baichuan2-7B-Chat
-  model_path: /mxstorage/pde_ai/models/llm/Baichuan/Baichuan2-7B-Chat
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-      --chat-template: chat_template/template_baichuan.jinja
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
 
 # ---------- GLM ----------
 
@@ -176,7 +123,7 @@
 - name: GLM-4_6-W8A8-MTP_BF16
   model_path: /mxstorage/pde_ai/models/model_quant_opt/GLM/GLM-4_6-W8A8-MTP_BF16/vllm_quant_model
   serve_config:
-    tp: 4
+    tp: 8
     dp: 1
     pp: 1
     gpu_memory_utilization: 0.9
@@ -258,20 +205,6 @@
   extra_env:
 
 # ---------- Llama ----------
-
-- name: Llama-7B-hf
-  model_path: /mxstorage/pde_ai/models/llm/Llama/llama-7b-hf
-  serve_config:
-    tp: 1
-    dp: 1
-    pp: 1
-    extra_args:
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env:
 
 - name: Meta-Llama-3-70B
   model_path: /mxstorage/pde_ai/models/llm/Llama/Meta-Llama-3-70B
@@ -554,7 +487,7 @@
 
 - name: Qwen3.5-122B-A10B-W8A8
   model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3.5-122B-A10B-W8A8
-  timeout: 1200
+  timeout: 3600
   serve_config:
     tp: 8
     dp: 1
@@ -575,6 +508,7 @@
     tp: 8
     dp: 1
     pp: 1
+    gpu_memory_utilization: 0.9
     extra_args:
   infer_type:
   - text-only
@@ -586,7 +520,7 @@
   - moe
 
 - name: Qwen3-235B-A22B-w8a8
-  timeout: 1800
+  timeout: 3600
   model_path: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-235B-A22B.w8a8
   serve_config:
     tp: 8
@@ -701,7 +635,7 @@
 - name: Hunyuan-3
   model_path: /mxstorage/pde_ai/models/llm/Hunyuan/Hy3
   serve_config:
-    tp: 4
+    tp: 8
     dp: 1
     pp: 1
     extra_args:
@@ -800,22 +734,6 @@
   tags:
   - moe
 
-- name: Kimi-K3-BF16
-  model_path: /mxstorage/pde_ai/models/llm/Kimi/Kimi-K3-BF16
-  serve_config:
-    tp: 8
-    dp: 1
-    pp: 1
-    extra_args:
-      --dtype: bfloat16
-      --gpu-memory-utilization: 0.9
-  infer_type:
-  - text-only
-  benchmark:
-    bench_param: configs/bench_params/bench_default.json
-    sweep_num_runs: 1
-  extra_env: null
-
 # ---------- Mistral ----------
 
 - name: Mistral-8x7B-v0.1
@@ -826,8 +744,6 @@
     pp: 1
     extra_args:
       --chat-template: chat_template/tool_chat_template_mistral.jinja
-      --enable-auto-tool-choice: 
-      --tool-call-parser: mistral
   infer_type:
   - text-only
   benchmark:
@@ -838,7 +754,7 @@
   - moe
 
 - name: Mixtral-8x22B-Instruct-v0.1
-  timeout: 1200
+  timeout: 3600
   model_path: /mxstorage/pde_ai/models/llm/Mistral/Mixtral-8x22B-Instruct-v0.1
   serve_config:
     tp: 8
@@ -931,6 +847,7 @@
     tp: 8
     dp: 1
     pp: 1
+    gpu_memory_utilization: 0.9
     extra_args:
       --block-size: "128"
   infer_type:

@@ -181,6 +181,15 @@ RANK=0 bash start.sh
 rendezvous store**（`DP_RPC_PORT`，默认 `MASTER_PORT+1`，由 `start.sh` 显式传给
 `--data-parallel-rpc-port`），主 TCPStore（`MASTER_PORT`）要等 DP 组建好才监听。
 
+单机 daily test（`launch.py --infer`）的两个超时：
+
+| 超时 | 默认 | 说明 / 怎么调 |
+| --- | --- | --- |
+| 服务就绪(权重加载完) | 3600s | 模型条目里的 `timeout: <秒>`，或全局用环境变量 `MODEL_READY_TIMEOUT`；大模型加载慢就调它 |
+| 单模型硬超时 | 7200s | `--model-timeout <秒>`；**从模型拿到 GPU 开始跑**算起，排队/等 GPU 不计入；超时会被 kill 并记 `TIMEOUT` |
+
+（模型拿不到 GPU 时不会被计时杀掉，日志里每 30 分钟打印一次"还在等 GPU 资源 XX 分钟"。）
+
 - worker 脚本在 dp>1 时等的是 `DP_RPC_PORT`（而不是 `MASTER_PORT`），否则会白等
   300s 才起 rank1，而 rank0 一直卡在 DP rendezvous（py-spy 上表现为
   `EngineCore_DP0 -> stateless_init_dp_group -> _create_c10d_store`）。
