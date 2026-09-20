@@ -138,6 +138,211 @@
     sweep_num_runs: 1
   extra_env:
 
+# ---------- v0.28.0 新增模型 / 新特性覆盖 ----------
+# 与 vllm-metax 的 docs/releases/v0.28.0.md 第 4/5 节一一对应:
+#   DeepSeek-V4 sparse MLA 普通 decode        -> DeepSeek-V4-Flash-BF16
+#   DeepSeek-V4 sparse MLA + MTP              -> DeepSeek-V4-Flash-MTP-W8A8
+#   DeepSeek-V4 sparse MLA + DSpark 投机      -> DeepSeek-V4-Flash-DSpark-BF16
+#   DSpark 独立 speculator(自适应验证候选)     -> GLM-5.2-W8A8-DSpark
+#   多层 MTP KV cache(0.28 新平台接口)        -> 复用上面的 MiMo-V2-Flash-BF16_W8A8_WITH_MTP
+#   FP4(MXFP4) 稀疏 indexer 缓存              -> DeepSeek-V4-Flash-IdxFP4 (skip, 见条目注释)
+#   上游 v0.28 新增模型                        -> Ling-3.0-Flash / Dots3-NOTE / Intern-S2-Mobius
+#                                                (共享存储暂无权重, 先 skip: true 占位)
+#   Kimi-K3 性能栈(SiTU/DCP)                  -> 4 机清单 configs/model_distributed_4nodes.yaml
+
+- name: DeepSeek-V4-Flash-BF16
+  # v0.28 主线能力: DeepSeek-V4 sparse MLA 普通 decode(稀疏 indexer 默认强制启用)
+  timeout: 3600
+  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V4-Flash-BF16
+  serve_config:
+    tp: 16
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: bfloat16
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
+  - sparse-attn
+
+- name: DeepSeek-V4-Flash-MTP-W8A8
+  # sparse MLA + MTP: 量化权重(FlexSMQ AWQ W8A8)带 MTP 头, 与单机清单
+  # configs/model.yaml 的 DeepSeek-V4-Flash-W8A8-MTP 同一路径, 这里跑两机 tp16
+  timeout: 3600
+  model_path: /mxstorage/pde_ai/models/model_quant_opt/DeepSeek/DeepSeek-V4-Flash_FlexSMQ-AWQ_W8A8/vllm_quant_model
+  serve_config:
+    tp: 16
+    dp: 1
+    pp: 1
+    extra_args:
+      --speculative-config: '{"method": "deepseek_mtp", "num_speculative_tokens": 2}'
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
+  - sparse-attn
+  - mtp
+
+- name: DeepSeek-V4-Flash-DSpark-BF16
+  # sparse MLA + DSpark 投机(0.28 官方新特性: DSpark 自适应验证按 confidence head 裁剪验证 token)
+  # 自适应验证默认关闭, 打开需在 speculative-config 里加 "enable_adaptive_verification": true
+  # (要求 full cudagraph, 不支持 LoRA / PP / logprobs)
+  timeout: 3600
+  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V4-Flash-DSpark-BF16
+  serve_config:
+    tp: 16
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: bfloat16
+      --speculative-config: '{"method": "dspark", "model": "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V4-Flash-DSpark-BF16", "num_speculative_tokens": 8, "draft_sample_method": "probabilistic"}'
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
+  - sparse-attn
+  - dspark
+
+- name: GLM-5.2-W8A8-DSpark
+  # DSpark 独立 speculator: 目标模型仍是 GLM-5.2-W8A8, 草案模型用本地
+  # GLM-5.2-speculator.dspark(6.3G, DSparkDraftModel + confidence head)。
+  # 注意: 该 speculator 的 verifier 在 config 里写的是 GLM-5.2-NVFP4-FP8,
+  #       与本条目的目标权重不是同一个 checkpoint, 首次跑要确认能正常起服务;
+  #       起不来时对比 DeepSeek-V4-Flash-DSpark(草案与目标同源)那条。
+  timeout: 3600
+  model_path: /mxstorage/pde_ai/models/llm/ChatGLM/GLM-5_2-W8A8/
+  serve_config:
+    tp: 16
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: bfloat16
+      --speculative-config: '{"method": "dspark", "model": "/mxstorage/pde_ai/models/llm/ChatGLM/GLM-5.2-speculator.dspark", "num_speculative_tokens": 8}'
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    ignore_eos: true
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
+  - dspark
+
+- name: DeepSeek-V4-Flash-IdxFP4
+  # FP4(MXFP4) 稀疏 attention indexer 缓存: v0.28 起本仓库去掉了
+  # "MetaX FP4 indexer is not supported" 断言, 走 vllm_metax/models/deepseek_v4 的实现。
+  # 注意: 上游同一开关分两条路(use_fp4_indexer_cache 属性 vs indexer_kv_dtype),
+  #       插件代码读的是 use_fp4_indexer_cache, 这里用兼容别名;
+  #       先 skip, 确认走插件实现后再放进执行列表。
+  skip: true
+  timeout: 3600
+  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V4-Flash-BF16
+  serve_config:
+    tp: 16
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: bfloat16
+      --attention-config: '{"use_fp4_indexer_cache": true}'
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
+  - sparse-attn
+  - fp4
+
+# ---------- 上游 v0.28.0 新增模型(权重待同步, 占位不执行) ----------
+# 官方 v0.28.0 release notes 的 Model Support 段新增了下面 3 个架构, 随基线进入插件代码;
+# 共享存储上还没有对应权重, 也没有 MetaX 侧适配验证, 因此先以 skip: true 占位登记,
+# 权重到位后把 model_path 换成真实路径并去掉 skip。
+
+- name: Ling-3.0-Flash
+  # 上游新增 BailingMoeV3ForCausalLM(inclusionAI/Ling-3.0-flash): BF16 + MTP + parser,
+  # 另有 FP8 变体与 hybrid MXFP4 routed experts; 1T 级 MoE, 预计需要两机以上
+  skip: true
+  timeout: 3600
+  # TODO(权重): 共享存储暂无, 待同步后替换为实际路径
+  model_path: /mxstorage/pde_ai/models/llm/inclusionAI/Ling-3.0-flash
+  serve_config:
+    tp: 16
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: bfloat16
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
+
+- name: Dots3-NOTE
+  # 上游新增 Dots3NoteForCausalLM: 原生多模态(vision + audio tower 按 --limit-mm-per-prompt
+  # 按需加载), checkpoint 自带 1 层 MTP(head 用下面这行参数开启)
+  skip: true
+  timeout: 3600
+  # TODO(权重): 共享存储暂无, 待同步后替换为实际路径
+  model_path: /mxstorage/pde_ai/models/llm/dots3-note
+  serve_config:
+    tp: 16
+    dp: 1
+    pp: 1
+    extra_args:
+      --speculative-config: '{"method":"mtp","num_speculative_tokens":1}'
+  infer_type:
+  - single-image
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - multimodal
+  - mtp
+
+- name: Intern-S2-Mobius
+  # 上游新增 InternS2MobiusForConditionalGeneration(多模态, 与 Intern-S2-Preview 同族)
+  skip: true
+  timeout: 3600
+  # TODO(权重): 共享存储暂无, 待同步后替换为实际路径
+  model_path: /mxstorage/pde_ai/models/llm/Internlm/Intern-S2-Mobius
+  serve_config:
+    tp: 16
+    dp: 1
+    pp: 1
+    extra_args:
+      --dtype: bfloat16
+  infer_type:
+  - single-image
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - multimodal
+
 # ---------- EP / PP 专项(两机 16 卡) ----------
 
 - name: Qwen3-235B-A22B-W8A8-EP
