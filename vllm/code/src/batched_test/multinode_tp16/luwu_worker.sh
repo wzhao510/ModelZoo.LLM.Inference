@@ -34,7 +34,7 @@ exec > >("${TEE[@]}") 2>&1
 say() { echo "[luwu-worker] $(date '+%F %T') $*"; }
 
 say "启动 host=$(hostname) ip=$(hostname -I 2>/dev/null | tr -s ' ' ',')"
-say "JOB_ID=${JOB_ID:-<未注入>} cwd=$PWD MODEL_CONFIG=${MODEL_CONFIG:-<默认>} MODELS=${MODELS:-<默认>} LUWU_COMPILE=${LUWU_COMPILE:-0}"
+say "JOB_ID=${JOB_ID:-<未注入>} cwd=$PWD MODEL_CONFIG=${MODEL_CONFIG:-<默认>} MODELS=${MODELS:-<默认>} LUWU_COMPILE=${LUWU_COMPILE:-0} LUWU_TEST_MODE=${LUWU_TEST_MODE:-<默认 all>}"
 say "日志文件: $LOG ${LOG_FALLBACK:+(共享盘 $LUWU_LOG_DIR 不可写, 已退到 /tmp)}(拿到 master 的 run 目录后变成 run_*/luwu_worker.log)"
 
 say "step1/6 进入代码目录 $BASE"
@@ -51,6 +51,9 @@ if [ -z "${DIST_MODELS+x}" ]; then
   exit 1
 fi
 say "step2/6 OK: 清单 $(basename "$MODEL_CONFIG"), 共 ${#DIST_MODELS[@]} 个模型, 本次执行 ${#DIST_RUN_MODELS[@]} 个"
+# 精度/性能由 master 侧决定(client.sh/bench.sh 都在 rank0 上跑), worker 只负责起 rank1,
+# 所以这里只打印出来便于两机日志对照, 不改变行为
+say "step2/6 测试模式: $LUWU_TEST_MODE (精度 infer=$LUWU_RUN_INFER, 性能 perf=$LUWU_RUN_PERF; worker 只起 rank1)"
 
 # 单实例锁(按 JOB_ID 区分): 平台重复拉起时, 后启动的 worker 等待前一个完成
 say "step3/6 取单实例锁 $META_DIR/lock_worker_${JOB_TAG}"

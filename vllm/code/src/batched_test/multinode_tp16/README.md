@@ -12,14 +12,21 @@
 | --- | --- |
 | `docker_run.sh` | 创建容器（vllm 0.25.0-maca .103 镜像） |
 | `setup.sh` | 容器内初始化：compile_env + batched_test 依赖 |
-| `config.sh` | 通用配置：端口/全局默认参数/环境变量；模型清单从 YAML 加载 |
+| `config.sh` | 通用配置：端口/全局默认参数/环境变量/测试模式/汇总 CSV；模型清单从 YAML 加载 |
+| `luwu_mode.sh` | 测试模式解析（`LUWU_TEST_MODE` = infer/perf/all），单机与多机共用 |
 | `load_models.py` | 解析模型清单 YAML，生成 bash 数组供 `config.sh` 加载 |
+| `luwu_master.sh` | 陆吾 queue 模式主节点入口：按清单顺序跑完所有模型（启动 rank0 → 精度 → 性能 → 汇总 → 停止） |
+| `luwu_worker.sh` | 陆吾 queue 模式从节点入口：跟随 master 的模型标记起停 rank1（不区分精度/性能） |
+| `luwu_single.sh` | 陆吾 queue 模式单机入口：compile_env + pip + `launch.py`（同样支持 `LUWU_TEST_MODE`） |
+| `luwu_compile.sh` | 可选源码编译安装（mcoplib + vllm_metax），`LUWU_COMPILE=1` 时调用 |
 | `start.sh` | 启动本节点 vllm serve（`RANK=0`/`RANK=1`） |
 | `check.sh` | 轮询 rank0 `/health` 直到就绪 |
-| `bench.sh` | 对已启动的 rank0 服务跑 `vllm bench serve` 压测 |
+| `client.sh` / `client.py` | 精度：对已启动的 rank0 服务跑文本用例（含 long-text），类似单机 `launch.py --infer` |
+| `bench.sh` | 性能：对已启动的 rank0 服务跑 `vllm bench serve` 压测 |
+| `perf_summary.sh` / `perf_summary.py` | 把压测结果 JSON 汇总成一行行 CSV（每次跑完性能总结一次，供版本升级对比） |
 | `status.sh` | 查看本节点 serve 进程与 rank0 健康状态 |
 | `stop.sh` | 停止本节点 serve |
-| `run_all.sh` | rank0 侧一键流程：等待就绪 -> 压测 -> 停止 |
+| `run_all.sh` | rank0 侧一键流程：等待就绪 -> 精度/性能（按模式）-> 汇总 -> 停止 |
 | `pyspy_watch.sh` | 启动期抓栈看门狗（py-spy dump + /proc 快照），`start.sh` 里 `PYSPY_DUMP=1` 打开 |
 
 ## 启动慢 / 卡住时怎么定位（pyspy_watch.sh）
@@ -116,6 +123,79 @@ RANK=0 bash start.sh
 
 压测参数：`NUM_PROMPTS/MAX_CONCURRENCY/INPUT_LEN/OUTPUT_LEN/RESULT_DIR`。
 
+## 跑精度还是性能（LUWU_TEST_MODE）
+
+多机流程里"精度"= `client.sh`（文本用例 + long-text，等价单机 `launch.py --infer`），
+"性能"= `bench.sh`（`vllm bench serve`，等价单机 `launch.py --perf`）。用环境变量
+`LUWU_TEST_MODE` 选跑哪个（queue 任务把它写进 `env_vars` 即可，不用改脚本）：
+
+| `LUWU_TEST_MODE` | 跑什么 | 典型场景 |
+| --- | --- | --- |
+| `all` | 精度 + 性能（`luwu_master.sh` 的默认值，与加开关前一致） | 日常全量跑 |
+| `infer` | 只跑精度（`client.sh`；`luwu_single.sh` 的默认值） | 只关心用例是否通过 |
+| `perf` | 只跑性能（`bench.sh`）+ 自动汇总 CSV（`run_all.sh` 的默认值） | 版本升级只对比吞吐 |
+
+各脚本默认值不同只是为了"保持原有行为不变"（多机 queue 任务=精度+性能、单机日常=只测精度、
+手工 `run_all.sh`=只压测），想跑什么显式给 `LUWU_TEST_MODE` 即可。
+
+取值大小写不敏感，也接受 `acc/accuracy/precision`（= infer）、`bench/performance`
+（= perf）、`both`（= all），可以逗号组合（`perf,infer`）。写错只会告警并按默认值跑，
+不会让任务起不来。脚本也直接接受命令行参数 `--infer` / `--perf` / `--all`（优先级高于环境变量）：
+
+```bash
+# 多机 queue 任务（两节点分别跑 master/worker）
+start_script:        "LUWU_TEST_MODE=perf bash .../multinode_tp16/luwu_master.sh"
+start_script_worker: "LUWU_TEST_MODE=perf bash .../multinode_tp16/luwu_worker.sh"
+
+# 手工跑 rank0 一键流程
+MODEL_NAME=GLM-5.2-W8A8 LUWU_TEST_MODE=perf bash run_all.sh
+MODEL_NAME=GLM-5.2-W8A8 bash run_all.sh --infer        # 只跑精度
+
+# 单机（luwu_single.sh 默认只跑精度，与加开关前一致；要性能时显式指定）
+LUWU_TEST_MODE=perf  bash luwu_single.sh
+LUWU_TEST_MODE=all   bash luwu_single.sh               # 精度 + 性能
+```
+
+注意：模式只决定"跑不跑 client/bench"，服务照常按清单起停；worker 只负责起 rank1，
+不区分精度/性能（两机日志里都会打印本次模式，便于对照）。模式为 `perf` 时不会写
+`inference_summary.txt`，为 `infer` 时不会写压测结果 JSON。
+
+## 性能汇总 CSV（版本升级性能看护）
+
+每次跑完性能，`perf_summary.sh` 会把 vllm bench 的结果 JSON 解析成一行，追加到
+**同一个 CSV**（默认 `$BASE_LOG_DIR/perf_summary.csv`，即
+`/sw_home/lli/model_test/tp16_luwu/perf_summary.csv`；单机是 `tp8_luwu/perf_summary.csv`），
+于是版本升级时，同一个模型 + 同样的压测参数可以直接按行对比：
+
+- 触发时机：多机 master **每个模型压测完**汇总一次，整轮结束再汇总一次（覆盖所有模型）；
+  单机 `luwu_single.sh` 模式含 perf 时在 `launch.py` 结束后汇总一次。
+- 幂等：同一 run + 同一次 bench（按 bench 时间戳 + 并发 + 条数判定）只写一行，
+  整轮重复扫描不会写出重复行。
+- 表头（37 列，节选）：`run_id, bench_date, model, model_id, tp/dp/pp, nodes, gpus_per_node,
+  num_prompts, max_concurrency, in_len_avg, out_len_avg, completed, failed, duration_s,
+  request_throughput, output_throughput, total_token_throughput, max_output_tokens_per_s,
+  max_concurrent_requests, mean/p99 的 ttft/tpot/itl/e2el, vllm_version, vllm_metax_version,
+  torch_version, maca_version, image, host, result_json`。
+- 日志里会直接打印一张汇总表；同一模型 + 同样参数的**上一次 run** 结果会作为括号里的
+  涨跌百分比（`-5.0%` 表示相对上次回退 5%），这就是升级前后一眼能看出回退的视图。
+- 每次 run 的行还会单独留一份在 `$RUN_DIR/perf_summary.csv`（共享 CSV 是跨 run 累积的）。
+
+单独回看历史 / 手工汇总（容器内任意时候都能跑，只依赖 python 标准库）：
+
+```bash
+cd /sw_home/lli/ModelZoo.LLM.Inference/vllm/code/src/batched_test/multinode_tp16
+
+# 看这张 CSV 里所有历史行（含相对上一次 run 的涨跌）
+PERF_CSV=/sw_home/lli/model_test/tp16_luwu/perf_summary.csv bash perf_summary.sh --show
+
+# 手工补扫某个 run 目录（比如汇总脚本没跑成）
+bash perf_summary.sh --scan-dir /sw_home/lli/model_test/tp16_luwu/run_20260921_101010 \
+  --csv /sw_home/lli/model_test/tp16_luwu/perf_summary.csv --report
+```
+
+想让单机和多机共用一张对比表时，给两边都传同一个 `PERF_CSV` 即可（行里带 `nodes/tp/dp/pp`
+和 `host`，不会混淆）。
+
 ## 模型清单（YAML 驱动）
 
 模型列表放在 `../configs/models_distributed_2nodes.yaml`，格式与
@@ -202,6 +282,7 @@ rendezvous store**（`DP_RPC_PORT`，默认 `MASTER_PORT+1`，由 `start.sh` 显
 | --- | --- | --- |
 | 多机（tp16/tp32）| `/sw_home/lli/model_test/tp16_luwu/run_<时间戳>/` | 每次启动一个 run 目录：master 全程写 `luwu_master.log`（启动打点 + 各模型日志，一个文件），worker 全程写 `luwu_worker.log`，`compile_env.log`/`pip_requirements.log` 是两个节点环境初始化的输出，每个模型的 `rank*_serve.log` 也在里面 |
 | 单机 | `/sw_home/lli/model_test/tp8_luwu/run_<时间戳>/` | `luwu_single.log`；`launch.py --infer` 自己的产物仍在 `/sw_home/lli/model_test/<时间戳>/` |
+| 性能汇总 CSV | `/sw_home/lli/model_test/tp16_luwu/perf_summary.csv`（单机在 `tp8_luwu/` 下） | 跨 run/跨版本累积的性能记录，版本升级时对比用；每个 run 目录里还留一份 `perf_summary.csv`。可用 `PERF_CSV` 指定到同一个路径让单机/多机共用一张表 |
 
 （可用 `LUWU_LOG_DIR` 覆盖上面两个默认根目录。）
 

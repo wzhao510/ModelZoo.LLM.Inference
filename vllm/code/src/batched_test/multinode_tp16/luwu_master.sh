@@ -44,7 +44,7 @@ exec > >("${TEE[@]}") 2>&1
 say() { echo "[luwu-master] $(date '+%F %T') $*"; }
 
 say "启动 host=$(hostname) ip=$(hostname -I 2>/dev/null | tr -s ' ' ',')"
-say "JOB_ID=${JOB_ID:-<未注入>} cwd=$PWD MODEL_CONFIG=${MODEL_CONFIG:-<默认>} MODELS=${MODELS:-<默认>} LUWU_COMPILE=${LUWU_COMPILE:-0}"
+say "JOB_ID=${JOB_ID:-<未注入>} cwd=$PWD MODEL_CONFIG=${MODEL_CONFIG:-<默认>} MODELS=${MODELS:-<默认>} LUWU_COMPILE=${LUWU_COMPILE:-0} LUWU_TEST_MODE=${LUWU_TEST_MODE:-<默认 all>}"
 say "日志文件: $LOG ${LOG_FALLBACK:+(共享盘 $LUWU_LOG_DIR 不可写, 已退到 /tmp)}"
 say "环境: python3=$(command -v python3 2>/dev/null || echo 无) flock=$(command -v flock 2>/dev/null || echo 无)"
 
@@ -65,6 +65,12 @@ if [ -z "${DIST_MODELS+x}" ]; then
   exit 1
 fi
 say "step2/6 OK: 清单 $(basename "$MODEL_CONFIG"), 共 ${#DIST_MODELS[@]} 个模型, 本次执行 ${#DIST_RUN_MODELS[@]} 个"
+# 模式默认 all(精度+性能, 与加开关前一致); 也接受 start_script 里直接写 --infer/--perf/--all
+luwu_resolve_mode all "$@"
+say "step2/6 测试模式: $LUWU_TEST_MODE (精度 infer=$LUWU_RUN_INFER, 性能 perf=$LUWU_RUN_PERF); 可用 LUWU_TEST_MODE=infer|perf|all 切换"
+if [ "$LUWU_RUN_PERF" = "1" ]; then
+  say "step2/6 性能汇总 CSV: $PERF_CSV(每跑完一个模型的性能就会追加并打印一次)"
+fi
 
 # 单实例锁(按 JOB_ID 区分, 保证平台重复拉起时锁稳定): 后启动的实例等待前一个完成
 say "step3/6 取单实例锁 $META_DIR/lock_master_${JOB_TAG}"
@@ -171,17 +177,29 @@ for MODEL_NAME in "${MODELS[@]}"; do
 
   # 等待健康(每模型独立超时; Kimi bf16 加载约 25 分钟, 默认给 3600s)
   if bash check.sh "${CHECK_TIMEOUT:-3600}"; then
-    # 推理客户端(类似单机 launch.py --infer, 含 long-text)
-    MODEL_NAME="$MODEL_NAME" MODEL_RUN_DIR="$MODEL_RUN_DIR" bash client.sh
-    CLIENT_RC=$?
-    [ "$CLIENT_RC" -ne 0 ] && ALL_RC="$CLIENT_RC"
-    echo "[luwu-master] $MODEL_NAME client 推理完成 exit=$CLIENT_RC"
+    # 精度: 推理客户端(类似单机 launch.py --infer, 含 long-text)
+    # 模式只跑性能(LUWU_TEST_MODE=perf)时跳过这一段, 服务本身照常起/停
+    if [ "$LUWU_RUN_INFER" = "1" ]; then
+      MODEL_NAME="$MODEL_NAME" MODEL_RUN_DIR="$MODEL_RUN_DIR" bash client.sh
+      CLIENT_RC=$?
+      [ "$CLIENT_RC" -ne 0 ] && ALL_RC="$CLIENT_RC"
+      echo "[luwu-master] $MODEL_NAME client 精度推理完成 exit=$CLIENT_RC"
+    else
+      echo "[luwu-master] 模式 $LUWU_TEST_MODE: 跳过精度(client.sh)"
+    fi
 
-    # 性能压测
-    MODEL_NAME="$MODEL_NAME" MODEL_RUN_DIR="$MODEL_RUN_DIR" bash bench.sh
-    RC=$?
-    [ "$RC" -ne 0 ] && ALL_RC="$RC"
-    echo "[luwu-master] $MODEL_NAME bench 完成 exit=$RC"
+    # 性能: 压测 + 汇总 CSV(类似单机 launch.py --perf)
+    if [ "$LUWU_RUN_PERF" = "1" ]; then
+      MODEL_NAME="$MODEL_NAME" MODEL_RUN_DIR="$MODEL_RUN_DIR" bash bench.sh
+      RC=$?
+      [ "$RC" -ne 0 ] && ALL_RC="$RC"
+      echo "[luwu-master] $MODEL_NAME bench 完成 exit=$RC"
+      # 跑完一次性能就总结一次(幂等): 结果追加进 PERF_CSV 并打印本次汇总表
+      luwu_summarize_perf_model "$MODEL_NAME" "$MODEL_RUN_DIR" --report \
+        || say "WARN $MODEL_NAME 性能汇总失败(不影响压测结果, 可手动跑 perf_summary.sh)"
+    else
+      echo "[luwu-master] 模式 $LUWU_TEST_MODE: 跳过性能(bench.sh)"
+    fi
   else
     echo "[luwu-master] ERROR $MODEL_NAME 未在限时内就绪, 跳过"
     ALL_RC=1
@@ -208,6 +226,16 @@ for MODEL_NAME in "${MODELS[@]}"; do
   rm -f "$WORKER_READY"
   sleep 10
 done
+
+# 本次 run 的性能总览(整轮扫描: 幂等, 只补上还没写进 CSV 的行), 方便直接贴到升级对比里。
+# 放在 DONE_ALL 之前: 两机都还在时先汇总完, 再通知 worker 退出。
+if [ "$LUWU_RUN_PERF" = "1" ]; then
+  echo ""
+  say "本次 run($RUN_ID)性能汇总(逐模型明细见 $PERF_CSV):"
+  bash "$BASE/perf_summary.sh" --scan-dir "$RUN_DIR" --csv "$PERF_CSV" \
+    --run-id "$RUN_ID" --run-csv "$RUN_DIR/perf_summary.csv" --report \
+    || say "WARN 性能汇总失败, 可手动执行: bash $BASE/perf_summary.sh --scan-dir $RUN_DIR --report"
+fi
 
 echo "DONE_ALL" > "$SHARED"
 echo "[luwu-master] $(date '+%F %T') 全部模型执行完毕, exit=$ALL_RC"

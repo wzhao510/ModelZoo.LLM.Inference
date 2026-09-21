@@ -128,3 +128,53 @@ fi
 
 # ---------- 日志目录 (共享挂载, 双机可见) ----------
 BASE_LOG_DIR="${BASE_LOG_DIR:-/sw_home/lli/model_test/tp16}"
+
+# ---------- 测试模式: 精度(infer) / 性能(perf) ----------
+# 多机默认 all: 与加这个开关之前一致(先 client.sh 跑精度, 再 bench.sh 跑性能)。
+# 只需要其中一半时用环境变量切换(queue 任务写进 env_vars 里即可):
+#   LUWU_TEST_MODE=infer  -> 只跑精度(client.sh, 相当于单机 launch.py --infer)
+#   LUWU_TEST_MODE=perf   -> 只跑性能(bench.sh, 相当于单机 launch.py --perf) + 汇总 CSV
+#   LUWU_TEST_MODE=all    -> 两者都跑(默认)
+# 解析结果: LUWU_RUN_INFER / LUWU_RUN_PERF 为 0/1, 见 luwu_mode.sh
+source "$SCRIPT_DIR/luwu_mode.sh"
+luwu_resolve_mode all
+
+# ---------- 性能汇总 CSV(每次跑完性能总结一次, 跨 run/跨版本累积) ----------
+# 版本升级时看性能有没有回退, 直接对比这张表里同一个模型+同样压测参数的历史行。
+# 默认放在日志根目录下; 想让单机/多机共用一张表时用 PERF_CSV 指定同一个路径。
+PERF_CSV="${PERF_CSV:-$BASE_LOG_DIR/perf_summary.csv}"
+export PERF_CSV
+
+# 取某模型的并行度/节点数(给性能汇总 CSV 标注"这行是什么配置下跑的"),
+# 结果写到 LUWU_M_TP / LUWU_M_DP / LUWU_M_PP / LUWU_M_NODES / LUWU_M_GPUS_PER_NODE
+luwu_model_parallelism() {
+  local model="$1"
+  LUWU_M_TP="${MODEL_TP[$model]:-${TP:-1}}"
+  LUWU_M_DP="${MODEL_DP[$model]:-${DP:-1}}"
+  LUWU_M_PP="${MODEL_PP[$model]:-${PP:-1}}"
+  LUWU_M_GPUS_PER_NODE="${GPUS_PER_NODE:-8}"
+  local gpus=$((LUWU_M_TP * LUWU_M_DP * LUWU_M_PP))
+  local nodes=$(( (gpus + LUWU_M_GPUS_PER_NODE - 1) / LUWU_M_GPUS_PER_NODE ))
+  if [ "$nodes" -lt 1 ]; then
+    nodes=1
+  fi
+  LUWU_M_NODES="${NNODES:-$nodes}"
+}
+
+# 汇总某一次性能结果(通常就是刚才那个模型): 扫描 <scan 目录>(递归), 幂等地把新结果
+# 追加进 PERF_CSV 并打印汇总表。model 会写进 CSV, 并行度由 luwu_model_parallelism 取。
+# 用法: luwu_summarize_perf_model <model> <scan 目录> [额外参数...]
+luwu_summarize_perf_model() {
+  local model="$1"
+  local scan_dir="$2"
+  shift 2 2>/dev/null || true
+  luwu_model_parallelism "$model"
+  local -a args=(--scan-dir "$scan_dir" --csv "$PERF_CSV" --model "$model"
+                 --tp "$LUWU_M_TP" --dp "$LUWU_M_DP" --pp "$LUWU_M_PP"
+                 --nodes "$LUWU_M_NODES" --gpus-per-node "$LUWU_M_GPUS_PER_NODE")
+  if [ -n "${RUN_ID:-}" ]; then
+    args+=(--run-id "$RUN_ID")
+  fi
+  args+=("$@")
+  bash "$SCRIPT_DIR/perf_summary.sh" "${args[@]}"
+}
