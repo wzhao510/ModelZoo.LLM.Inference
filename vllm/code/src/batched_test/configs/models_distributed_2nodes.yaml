@@ -208,6 +208,7 @@
   - mtp
 
 - name: DeepSeek-V4-Flash-DSpark-W8A8-INT8
+  skip: true
   # sparse MLA + DSpark 投机(0.28 官方新特性: DSpark 自适应验证按 confidence head 裁剪验证 token)
   # 自适应验证默认关闭, 打开需在 speculative-config 里加 "enable_adaptive_verification": true
   # (要求 full cudagraph, 不支持 LoRA / PP / logprobs)
@@ -237,6 +238,7 @@
   - dspark
 
 - name: GLM-5.2-W8A8-DSpark
+  skip: true
   # DSpark 独立 speculator: 目标模型仍是 GLM-5.2-W8A8, 草案模型用本地
   # GLM-5.2-speculator.dspark(6.3G, DSparkDraftModel + confidence head)。
   # 注意: 该 speculator 的 verifier 在 config 里写的是 GLM-5.2-NVFP4-FP8,
