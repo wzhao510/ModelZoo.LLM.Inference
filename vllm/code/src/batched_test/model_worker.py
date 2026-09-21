@@ -25,6 +25,23 @@ CRITICAL_WORDS = [
     "ioctl create queue block timeout",
 ]
 
+# 压测子进程(纯 HTTP client)需要继承的环境变量: 与 vllm bench sweep 保持一致,
+# 只挑和 MACA/可见卡/VLLM 行为相关的, 避免把无关变量带进去。
+BENCH_ENV_KEYS = (
+    "MACA_SMALL_PAGESIZE_ENABLE", "MACA_DIRECT_DISPATCH",
+    "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES",
+    "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API",
+    "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE",
+    "CUDA_VISIBLE_DEVICES", "MACA_VISIBLE_DEVICES",
+    "VLLM_DISABLE_SHARED_EXPERTS_STREAM",
+    "PYTORCH_CUDA_ALLOC_CONF", "DISABLE_MAP2XPU",
+)
+
+
+def select_bench_env(env: dict) -> dict:
+    """从环境里挑出压测子进程需要的变量(逻辑同 BenchSweepWorker.select_envs)。"""
+    return {key: value for key, value in env.items() if key in BENCH_ENV_KEYS}
+
 
 class Worker(abc.ABC):
     def __init__(
@@ -915,6 +932,286 @@ class InferWorker(Worker):
         super()._cleanup()
 
 
+class InferPerfWorker(InferWorker):
+    """精度 + 性能合并跑: 一次模型加载, 两个 client 各跑一遍.
+
+    为什么需要: `--infer` 和 `--perf` 分别由 InferWorker / BenchSweepWorker 执行, 各自起
+    一次 vllm serve, 也就是各自把权重加载一遍(大模型单次 20+ 分钟, 纯浪费)。本 worker 在
+    同一次 serve 生命周期里:
+      1) 分配 GPU 并起一次 vllm serve(权重只加载这一次);
+      2) 等 service ready 后跑精度用例(与 --infer 完全同一套用例与日志);
+      3) 对**同一个 server** 直接跑 `vllm bench serve`(压测参数/目录结构同 vllm bench sweep);
+      4) 停服务。
+
+    产物与"分开跑"保持一致, 下游解析脚本(parse_all_tasks.py)不用改:
+      <infer_work_dir>/<model_tag>_text_only_inference.log + launch.py 写的 inference_results.csv
+      <perf_work_dir>/<bench_tag>_serve.log
+      <perf_work_dir>/<bench_tag>/BENCH--<params>/run=<n>.json + summary.json
+      <perf_work_dir>/<bench_tag>/summary.csv
+    其中 bench_tag = <name>_tp<tp>_pp<pp>_dp<dp>(与 BenchSweepWorker 的目录名一致,
+    parse_all_tasks.py 靠它解析模型名与 tp/pp/dp)。
+    """
+
+    def __init__(
+        self,
+        text_case: str,
+        image_case: str,
+        model_cfg: dict,
+        work_dir: str,
+        perf_work_dir: str,
+        long_text_case: str | None = None,
+        embedding_case: str | None = None,
+        last_resume: str | None = None,
+        gpu_manager: MPClusterManager | GPUManager = None,
+    ):
+        super().__init__(
+            text_case=text_case,
+            image_case=image_case,
+            model_cfg=model_cfg,
+            work_dir=work_dir,
+            long_text_case=long_text_case,
+            embedding_case=embedding_case,
+            last_resume=last_resume,
+            gpu_manager=gpu_manager,
+        )
+        self.perf_work_dir = perf_work_dir
+        serve_cfg = model_cfg.get("serve_config", {})
+        self.bench_tag = (
+            f"{model_cfg['name']}"
+            f"_tp{serve_cfg.get('tp', 1)}"
+            f"_pp{serve_cfg.get('pp', 1)}"
+            f"_dp{serve_cfg.get('dp', 1)}"
+        )
+        # 与 BenchSweepWorker 的日志路径一致: parse_all_tasks.py 用
+        # log_dir.parent/<stem 去掉最后一段> 去找 summary.csv, 路径变了就找不到
+        self.bench_log_file = net_utils.prepare_dir(
+            os.path.join(self.perf_work_dir, f"{self.bench_tag}_serve.log")
+        )
+        self.bench_client_cmds: list[str] = []
+        self.bench_elapsed: float = 0.0
+
+    # ---------- 压测部分(同一 server, 不再重新加载权重) ----------
+    def _bench_param_items(self) -> list[dict]:
+        """读 benchmark.bench_param(与 vllm bench sweep 支持的两种 JSON 格式一致)。"""
+        bench_cfg = self.model_cfg.get("benchmark", {})
+        param_file = bench_cfg.get("bench_param")
+        assert param_file, (
+            f"[{self.model_cfg['name']}] benchmark.bench_param 未配置, 无法跑性能"
+        )
+        param_file = os.path.abspath(param_file)
+        assert os.path.exists(param_file), (
+            f"Benchmark parameters file {param_file} does not exist."
+        )
+        with open(param_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            items = [{"_benchmark_name": name, **params} for name, params in data.items()]
+        else:
+            items = [dict(item) for item in data]
+        assert items, f"[{self.model_cfg['name']}] bench_param 里没有压测参数: {param_file}"
+        return items
+
+    @staticmethod
+    def _bench_combo_name(params: dict) -> str:
+        """组合目录名与 vllm bench sweep 保持一致: BENCH--input_len=...-max_concurrency=..."""
+        text = "-".join(
+            f"{key}={value}" for key, value in params.items() if key != "_benchmark_name"
+        )
+        return "BENCH--" + text
+
+    def _bench_cmd(self, params: dict, result_dir: str, run_number: int) -> list[str]:
+        """对已就绪的 server 跑一次 vllm bench serve(参数来自 bench_param 的一条组合)。"""
+        cmd = self.config_manager.prepare_bench_cmd(host="localhost", port=self.port)
+        for key, value in params.items():
+            if key == "_benchmark_name":
+                continue
+            cmd.append("--" + str(key).replace("_", "-"))
+            cmd.append(str(value))
+        cmd += [
+            "--percentile-metrics",
+            "ttft,tpot,itl,e2el",
+            "--save-result",
+            "--result-dir",
+            result_dir,
+            "--result-filename",
+            f"run={run_number}.json",
+        ]
+        return cmd
+
+    def _client_env(self) -> dict:
+        """压测子进程的环境(单机=本机可见卡; 多机=rank0 节点的 base env + 可见卡)。"""
+        if isinstance(self.gpu_manager, MPClusterManager):
+            nodes_list = self.related_gpu_ids
+            required_gpus = self.config_manager.calc_required_gpus()
+            use0 = min(self.gpu_manager.gpu_per_node, required_gpus)
+            return {
+                **os.environ,
+                **self.gpu_manager.get_base_env(nodes_list[0]),
+                **self.config_manager.prepare_extra_env(list(range(use0))),
+            }
+        return {
+            **os.environ,
+            **self.config_manager.prepare_extra_env(self.related_gpu_ids),
+        }
+
+    def _run_cmd_blocking(self, cmd: list[str], env: dict, log_file: str, desc: str) -> int:
+        """前台等一个子命令结束; stop_event(per-model 超时/打断)时杀掉它。"""
+        proc = net_utils.run_cmd(cmd=cmd, env=env, log_file=log_file)
+        while True:
+            returncode = proc.poll()
+            if returncode is not None:
+                return returncode
+            if self.stop_event.is_set():
+                proc.kill()
+                proc.wait()
+                raise KeyboardInterrupt(f"Stop event set, killing {desc}")
+            time.sleep(2)
+
+    def _run_bench_on_running_server(self) -> dict:
+        """对刚跑完精度用例的那个 server 逐组合压测, 并写 sweep 同款产物。"""
+        bench_cfg = self.model_cfg.get("benchmark", {})
+        experiment_dir = os.path.join(self.perf_work_dir, self.bench_tag)
+        os.makedirs(experiment_dir, exist_ok=True)
+        num_runs = int(bench_cfg.get("sweep_num_runs", 1) or 1)
+        env = self._client_env()
+
+        records: list[dict] = []
+        t0 = time.time()
+        for params in self._bench_param_items():
+            combo_dir = os.path.join(experiment_dir, self._bench_combo_name(params))
+            os.makedirs(combo_dir, exist_ok=True)
+            combo_records: list[dict] = []
+            for run_number in range(num_runs):
+                out_path = os.path.join(combo_dir, f"run={run_number}.json")
+                if os.path.exists(out_path):
+                    # 断点续跑: 已有结果不再压一遍(与 vllm bench sweep 的 skip 行为一致)
+                    print(f"[{self.model_cfg['name']}] 已有压测结果, 跳过: {out_path}")
+                    with open(out_path, "r", encoding="utf-8") as f:
+                        combo_records.append(json.load(f))
+                    continue
+
+                cmd = self._bench_cmd(params, combo_dir, run_number)
+                if run_number == 0:
+                    # 每组合只记一条命令(与 BenchSweepWorker.get_client_cmd 一致),
+                    # parse_all_tasks.py 用 input/output/bs 前缀把它解析成 dict
+                    self.bench_client_cmds.append(self._client_cmd_label(params, cmd))
+                print(
+                    f"[{self.model_cfg['name']}] benchmark({run_number + 1}/{num_runs}): "
+                    f"{shlex.join(cmd)}",
+                    flush=True,
+                )
+                returncode = self._run_cmd_blocking(
+                    cmd, env, self.bench_log_file, "vllm bench serve"
+                )
+                if returncode != 0:
+                    raise RuntimeError(
+                        f"vllm bench serve exited with code {returncode} "
+                        f"(log: {self.bench_log_file})"
+                    )
+                if not os.path.exists(out_path):
+                    raise RuntimeError(
+                        f"vllm bench serve 未产出结果文件: {out_path}"
+                    )
+
+                with open(out_path, "r", encoding="utf-8") as f:
+                    record = json.load(f)
+                # 与 vllm bench sweep 一致: 把 run 序号和压测参数并进结果,
+                # 下游 summary.csv 里要靠这些列(max_concurrency/input_len/output_len)
+                record["run_number"] = run_number
+                record.update(
+                    {k: v for k, v in params.items() if k != "_benchmark_name"}
+                )
+                with open(out_path, "w", encoding="utf-8") as f:
+                    json.dump(record, f, indent=4)
+                combo_records.append(record)
+
+            with open(os.path.join(combo_dir, "summary.json"), "w", encoding="utf-8") as f:
+                json.dump(combo_records, f, indent=4)
+            records.extend(combo_records)
+
+        self.bench_elapsed = time.time() - t0
+        try:
+            pd.DataFrame.from_records(records).to_csv(
+                os.path.join(experiment_dir, "summary.csv")
+            )
+        except Exception as e:  # 汇总表写不出来不影响测试结论, 只是少一份统计
+            print(f"[{self.model_cfg['name']}] WARN 写 summary.csv 失败: {e}")
+
+        print(
+            f"[{self.model_cfg['name']}] 性能完成: {len(records)} 条结果, "
+            f"{self.bench_elapsed:.0f}s -> {experiment_dir}"
+        )
+        return {
+            "task_name": self.bench_tag,
+            "status": "success",
+            "log_dir": self.bench_log_file,
+            "error": None,
+            "server_command": None,
+            "client_command": list(self.bench_client_cmds),
+            "env": {"type": "normal", "server_cmd_env": select_bench_env(env)},
+        }
+
+    @staticmethod
+    def _client_cmd_label(params: dict, cmd: list[str]) -> str:
+        """压测命令的可读标签: 前缀 input/output/bs 供 parse_all_tasks.py 解析。"""
+        return (
+            f"input={params.get('random_input_len', '')}; "
+            f"output={params.get('random_output_len', '')}; "
+            f"bs={params.get('max_concurrency', '')}; "
+            f"{shlex.join(cmd)}"
+        )
+
+    def _warp_bench_failure(self, e: str) -> dict:
+        reason = str(e).replace("\n", " | ").replace("\r", "")
+        if len(reason) > 500:
+            reason = reason[:500] + "..."
+        return {
+            "task_name": self.bench_tag,
+            "status": "error",
+            "log_dir": self.bench_log_file,
+            "error": reason,
+            "server_command": None,
+            "client_command": list(self.bench_client_cmds) or None,
+            "env": None,
+        }
+
+    def run(self, stop_event: threading.Event) -> dict:
+        """一次加载跑完精度 + 性能; 返回的 dict 同时带两个 client 的字段. """
+        self.stop_event = stop_event
+        infer_row: dict | None = None
+        try:
+            need_infer = self._need_run()
+            if not need_infer:
+                print(
+                    f"[{self.model_tag}] 断点续跑: 精度用例已全部通过, 本次只跑性能"
+                )
+
+            # Step 1. alloc GPU
+            self._wait_and_allocate_gpus()
+
+            # Step 2. launch serve(精度和性能共用这一次加载)
+            self._launch_vllm_serve()
+
+            # Step 3. 精度 client(与 --infer 完全一致)
+            if need_infer:
+                infer_row = self._post_client_test()
+            else:
+                infer_row = self._warp_skipped()
+
+            # Step 4. 性能 client: 对同一个 server 压测, 不再加载模型
+            perf_row = self._run_bench_on_running_server()
+
+            return {**infer_row, **perf_row}
+        except Exception as e:
+            print(f"[{self.model_cfg['name']}] Infer+Perf failed: {e}")
+            traceback.print_exc()
+            if infer_row is None:
+                infer_row = self._warp_failure(str(e))
+            return {**infer_row, **self._warp_bench_failure(str(e))}
+        finally:
+            self._cleanup()
+
+
 class BenchSweepWorker(Worker):
     def __init__(
         self,
@@ -980,21 +1277,7 @@ class BenchSweepWorker(Worker):
         return client_cmds
             
     def select_envs(self, env):
-        ref_env = (
-            "MACA_SMALL_PAGESIZE_ENABLE", "MACA_DIRECT_DISPATCH", 
-            "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES",
-            "MACA_VLLM_ENABLE_MCTLASS_PYTHON_API",
-            "MACA_VLLM_ENABLE_MCTLASS_FUSED_MOE",
-            "CUDA_VISIBLE_DEVICES", "MACA_VISIBLE_DEVICES",
-            "VLLM_DISABLE_SHARED_EXPERTS_STREAM",
-            "PYTORCH_CUDA_ALLOC_CONF", "DISABLE_MAP2XPU"
-        )
-        res_env = {}
-
-        for key, value in env.items():
-            if key in ref_env:
-                res_env[key] = value
-        return res_env
+        return select_bench_env(env)
 
     def run(self, stop_event: threading.Event, alloc_time_out: int = 14400):
         self.stop_event = stop_event

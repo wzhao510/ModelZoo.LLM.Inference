@@ -37,6 +37,8 @@ class SchedularArgs:
     cluster_config: str | None = None
     infer: bool = False
     perf: bool = False
+    # 精度 + 性能合并成一次模型加载(起一次 vllm serve, 先跑精度用例再压测)
+    infer_perf: bool = False
     concurrency: int | None = None  # Max concurrent models. None=default(GPU count local, 1 on cluster)
     # Hard per-model timeout in seconds(从拿到 GPU 开始跑算起);
     # 默认 2 小时: 单模型"加载就绪"最长允许 1h(model_worker 的 timeout/MODEL_READY_TIMEOUT),
@@ -72,6 +74,7 @@ class SchedularArgs:
             resume_csv=args.resume_csv,
             infer=args.infer,
             perf=args.perf,
+            infer_perf=args.infer_perf,
             concurrency=args.concurrency,
             model_timeout=args.model_timeout,
             gpus=args.gpus,
@@ -198,6 +201,18 @@ class SchedularArgs:
             "--perf",
             action="store_true",
             help="Specify this to run performance benchmark.",
+        )
+
+        parser.add_argument(
+            "--infer-perf",
+            action="store_true",
+            help=(
+                "Run inference and performance in ONE model load: start vllm serve once, "
+                "run the inference cases, then benchmark that same server. "
+                "--infer together with --perf is merged into this path as well, so the "
+                "weights are only loaded once. Use --perf alone if you want benchmark "
+                "numbers from a freshly started server."
+            ),
         )
 
         parser.add_argument(
@@ -603,6 +618,223 @@ class Scheduler:
         self._print_inference_summary(all_results)
         pprint(all_results)
 
+    # 精度结果 CSV 的列(与 run_inference 一致), 性能结果 CSV 的列(与 run_performance 一致)
+    INFER_CSV_FIELDS = ["Model", "Correct Ratio", "Stage", "Reason", "Model Path"]
+    BENCH_CSV_FIELDS = [
+        "task_name", "status", "log_dir", "error",
+        "server_command", "client_command", "env",
+    ]
+
+    def run_infer_perf(self):
+        """精度 + 性能: 一次模型加载, 两个 client 各跑一遍.
+
+        单机分开跑 ``--infer`` / ``--perf`` 会各起一次 vllm serve(各加载一遍权重, 大模型
+        一次 20+ 分钟); 这里用 InferPerfWorker 在同一次 serve 生命周期里先跑精度用例, 再对
+        同一个 server 跑压测。产物目录/文件名与分开跑一致:
+          <work>/inference/inference_results.csv
+          <work>/performance/bench_tasks_result.csv
+          <work>/performance/<model>_tpX_ppY_dpZ/{summary.csv, BENCH--.../run=N.json}
+        """
+        all_results: list[dict] = []
+        future_map: dict[concurrent.futures.Future, dict] = {}
+        future_submit_time: dict[concurrent.futures.Future, float] = {}
+        next_wait_notice: dict[concurrent.futures.Future, float] = {}
+        worker_map: dict[concurrent.futures.Future, object] = {}
+
+        assert os.path.exists(self.args.text_case), (
+            f"Case file not found: {self.args.text_case}"
+        )
+        assert os.path.exists(self.args.image_case), (
+            f"Case file not found: {self.args.image_case}"
+        )
+        if self.args.embedding_case:
+            assert os.path.exists(self.args.embedding_case), (
+                f"Embedding case file not found: {self.args.embedding_case}"
+            )
+        if self.args.long_text_case:
+            assert os.path.exists(self.args.long_text_case), (
+                f"Long text case file not found: {self.args.long_text_case}"
+            )
+
+        infer_work_dir = os.path.join(self.work_dir, "inference")
+        perf_work_dir = os.path.join(self.work_dir, "performance")
+        infer_csv_path = net_utils.prepare_dir(
+            os.path.join(infer_work_dir, "inference_results.csv")
+        )
+        os.makedirs(perf_work_dir, exist_ok=True)
+        bench_csv_path = os.path.join(perf_work_dir, "bench_tasks_result.csv")
+
+        from model_worker import InferPerfWorker
+
+        for cfg in self.model_list:
+            worker = InferPerfWorker(
+                work_dir=infer_work_dir,
+                perf_work_dir=perf_work_dir,
+                model_cfg=cfg,
+                text_case=self.args.text_case,
+                image_case=self.args.image_case,
+                long_text_case=self.args.long_text_case,
+                embedding_case=self.args.embedding_case,
+                last_resume=self.args.resume_csv,
+                gpu_manager=self.gpu_manager,
+            )
+            future = self.executor.submit(self._run_with_gate, worker.run, stop_event)
+            future_map[future] = cfg
+            worker_map[future] = worker
+            future_submit_time[future] = time_module.time()
+            next_wait_notice[future] = future_submit_time[future] + 1800.0
+
+        def _model_tag(cfg: dict) -> str:
+            serve_cfg = cfg.get("serve_config", {})
+            return (
+                f"{cfg.get('name', '?')}"
+                f"[tp{serve_cfg.get('tp', 1)}"
+                f"pp{serve_cfg.get('pp', 1)}"
+                f"dp{serve_cfg.get('dp', 1)}]"
+            )
+
+        def _bench_task_name(cfg: dict) -> str:
+            serve_cfg = cfg.get("serve_config", {})
+            return (
+                f"{cfg.get('name', '?')}"
+                f"_tp{serve_cfg.get('tp', 1)}"
+                f"_pp{serve_cfg.get('pp', 1)}"
+                f"_dp{serve_cfg.get('dp', 1)}"
+            )
+
+        def _crash_row(cfg: dict, reason: str, stage: str = "CRASH") -> dict:
+            """两个 CSV 都要能写: 精度列 + 性能列。"""
+            serve_cfg = cfg.get("serve_config", {})
+            bench_tag = _bench_task_name(cfg)
+            return {
+                "Model": _model_tag(cfg),
+                "Correct Ratio": "0%",
+                "Stage": stage,
+                "Reason": reason,
+                "Model Path": cfg.get("model_path", ""),
+                "task_name": bench_tag,
+                "status": "timeout" if stage == "TIMEOUT" else "error",
+                "log_dir": os.path.join(
+                    perf_work_dir, f"{bench_tag}_serve.log"
+                ),
+                "error": reason,
+                "server_command": None,
+                "client_command": None,
+                "env": None,
+            }
+
+        def _infer_view(row: dict) -> dict:
+            return {key: (row.get(key) if row.get(key) is not None else "")
+                    for key in self.INFER_CSV_FIELDS}
+
+        def _bench_view(row: dict) -> dict:
+            return {key: row.get(key) for key in self.BENCH_CSV_FIELDS}
+
+        POLL_SECONDS = 30
+        remaining = set(future_map.keys())
+
+        with open(infer_csv_path, mode="w", newline="", encoding="utf-8") as f_infer, \
+                open(bench_csv_path, mode="w", newline="", encoding="utf-8") as f_bench:
+            infer_writer = csv.DictWriter(
+                f_infer, fieldnames=self.INFER_CSV_FIELDS, restval=""
+            )
+            bench_writer = csv.DictWriter(
+                f_bench, fieldnames=self.BENCH_CSV_FIELDS, restval=""
+            )
+            infer_writer.writeheader()
+            bench_writer.writeheader()
+
+            with tqdm(
+                total=len(future_map),
+                desc="Infer+Perf",
+                unit="model",
+                mininterval=0.5,
+                maxinterval=2.0,
+            ) as pbar:
+                while remaining:
+                    done, remaining = concurrent.futures.wait(
+                        remaining,
+                        timeout=POLL_SECONDS,
+                        return_when=concurrent.futures.FIRST_COMPLETED,
+                    )
+
+                    # --- process completed futures ---
+                    for f in done:
+                        cfg = future_map[f]
+                        name = cfg.get("name", "?")
+                        try:
+                            result = f.result()
+                        except Exception as exc:
+                            result = _crash_row(cfg, f"{type(exc).__name__}: {exc}")
+                            print(f"\n[{name}] Worker crashed: {type(exc).__name__}: {exc}")
+                        all_results.append(result)
+                        infer_writer.writerow(_infer_view(result))
+                        bench_writer.writerow(_bench_view(result))
+                        f_infer.flush()
+                        f_bench.flush()
+                        pbar.update(1)
+
+                    # --- kill overdue futures(按"拿到 GPU 真正开始跑"时间计时) ---
+                    now = time_module.time()
+                    for f in list(remaining):
+                        worker = worker_map.get(f)
+                        started = getattr(worker, "started_at", None)
+                        if started is None:
+                            if now >= next_wait_notice.get(f, float("inf")):
+                                waited = now - future_submit_time[f]
+                                print(
+                                    f"\n[{future_map[f].get('name', '?')}] 还在等 GPU 资源 "
+                                    f"{waited / 60:.0f} 分钟(per-model 超时从拿到 GPU 开始算)"
+                                )
+                                next_wait_notice[f] = now + 1800.0
+                            continue
+                        elapsed = now - started
+                        if elapsed > self.args.model_timeout:
+                            cfg = future_map[f]
+                            name = cfg.get("name", "?")
+                            print(
+                                f"\n[{name}] TIMEOUT {elapsed:.0f}s after start "
+                                f"(limit: {self.args.model_timeout}s) — killing"
+                            )
+                            stop_event.set()
+                            f.cancel()
+                            remaining.discard(f)
+                            row = _crash_row(
+                                cfg,
+                                f"Exceeded per-model timeout "
+                                f"({self.args.model_timeout}s from model start"
+                                f"(拿到 GPU 后), elapsed {elapsed:.0f}s)",
+                                stage="TIMEOUT",
+                            )
+                            all_results.append(row)
+                            infer_writer.writerow(_infer_view(row))
+                            bench_writer.writerow(_bench_view(row))
+                            f_infer.flush()
+                            f_bench.flush()
+                            pbar.update(1)
+                            stop_event.clear()
+
+        self._print_inference_summary(all_results)
+        self._print_bench_summary(all_results)
+        pprint(all_results)
+
+    @staticmethod
+    def _print_bench_summary(results: list[dict]) -> None:
+        """Print a compact summary of the performance part(infer+perf mode)."""
+        if not results:
+            return
+        ok = sum(1 for r in results if r.get("status") == "success")
+        err = sum(1 for r in results if r.get("status") == "error")
+        to = sum(1 for r in results if r.get("status") == "timeout")
+        print(f"\n{'='*60}")
+        print(f"Performance Summary: {len(results)} total | "
+              f"{ok} OK | {err} ERROR | {to} TIMEOUT")
+        print(f"{'='*60}")
+        for r in results:
+            if r.get("status") != "success":
+                print(f"  [{(r.get('status') or '?').upper()}] {r.get('task_name', '?')}: "
+                      f"{(r.get('error') or '')[:120]}")
+
     @staticmethod
     def _print_inference_summary(results: list[dict]) -> None:
         """Print a compact summary of inference results."""
@@ -757,11 +989,23 @@ class Scheduler:
             self._print_selected_models()
             return
         try:
-            if self.args.infer:
-                self.run_inference()
+            # 精度 + 性能一起要时合并成"一次模型加载"(省掉第二次权重加载; 大模型一次 20+ 分钟):
+            # --infer-perf 是显式写法, --infer --perf 也会走这条路径。只要其中一项时行为不变。
+            combined = self.args.infer_perf or (self.args.infer and self.args.perf)
+            if combined:
+                if self.args.infer and self.args.perf and not self.args.infer_perf:
+                    print(
+                        "[Scheduler] --infer 与 --perf 同时指定: 合并为一次模型加载"
+                        "(先跑精度用例, 再对同一个 server 压测); "
+                        "需要冷启动(刚起服务)的压测数据时单独跑 --perf"
+                    )
+                self.run_infer_perf()
+            else:
+                if self.args.infer:
+                    self.run_inference()
 
-            if self.args.perf:
-                self.run_performance()
+                if self.args.perf:
+                    self.run_performance()
 
         except KeyboardInterrupt:
             print("Ctrl-C detected, terminating all tests...")

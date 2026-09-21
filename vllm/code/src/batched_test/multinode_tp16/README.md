@@ -153,8 +153,13 @@ MODEL_NAME=GLM-5.2-W8A8 bash run_all.sh --infer        # 只跑精度
 
 # 单机（luwu_single.sh 默认只跑精度，与加开关前一致；要性能时显式指定）
 LUWU_TEST_MODE=perf  bash luwu_single.sh
-LUWU_TEST_MODE=all   bash luwu_single.sh               # 精度 + 性能
+LUWU_TEST_MODE=all   bash luwu_single.sh               # 精度 + 性能(只加载一次模型)
 ```
+
+多机本来就是"一个模型只起一次服务"：master 起 rank0，`client.sh`(精度) 和 `bench.sh`(性能)
+都打同一个 server。单机 `all` 模式走 `launch.py --infer-perf`：同样只起一次 `vllm serve`，
+先跑精度用例，再对同一个 server 压测——否则 `--infer` 和 `--perf` 会各加载一遍权重
+（大模型一次 20+ 分钟）。需要"刚起服务"的冷启动压测数据时，单独用 `LUWU_TEST_MODE=perf`。
 
 注意：模式只决定"跑不跑 client/bench"，服务照常按清单起停；worker 只负责起 rank1，
 不区分精度/性能（两机日志里都会打印本次模式，便于对照）。模式为 `perf` 时不会写
@@ -168,7 +173,8 @@ LUWU_TEST_MODE=all   bash luwu_single.sh               # 精度 + 性能
 于是版本升级时，同一个模型 + 同样的压测参数可以直接按行对比：
 
 - 触发时机：多机 master **每个模型压测完**汇总一次，整轮结束再汇总一次（覆盖所有模型）；
-  单机 `luwu_single.sh` 模式含 perf 时在 `launch.py` 结束后汇总一次。
+  单机 `luwu_single.sh` 模式含 perf 时在 `launch.py` 结束后汇总一次
+  （`all` 模式的压测产物与 sweep 一致：`performance/<模型>_tpX_ppY_dpZ/BENCH--.../run=N.json`）。
 - 幂等：同一 run + 同一次 bench（按 bench 时间戳 + 并发 + 条数判定）只写一行，
   整轮重复扫描不会写出重复行。
 - 表头（37 列，节选）：`run_id, bench_date, model, model_id, tp/dp/pp, nodes, gpus_per_node,

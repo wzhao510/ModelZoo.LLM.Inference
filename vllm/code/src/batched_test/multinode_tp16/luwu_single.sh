@@ -8,7 +8,8 @@
 # 跑精度还是性能: 用环境变量 LUWU_TEST_MODE 切换(与多机 luwu_master.sh 完全一致)
 #   LUWU_TEST_MODE=infer -> launch.py --infer --long-text-case ...(默认, 精度)
 #   LUWU_TEST_MODE=perf  -> launch.py --perf(性能), 跑完自动汇总一次到 CSV
-#   LUWU_TEST_MODE=all   -> 精度 + 性能
+#   LUWU_TEST_MODE=all   -> launch.py --infer-perf: 只起一次服务(权重只加载一次),
+#                           先跑精度用例, 再对同一个 server 压测
 # 也可以直接给脚本传 --infer / --perf / --all(与 luwu_master.sh 的用法对齐)
 set -uo pipefail
 
@@ -50,12 +51,15 @@ cd "$BASE" || exit 1
 bash /sw_home/lli/compile_env.sh
 pip install -r "$BASE/requirements.txt"
 
-# 按模式组装 launch.py 参数: 精度 --infer(含 long-text 用例), 性能 --perf
+# 按模式组装 launch.py 参数:
+#   只精度 --infer(含 long-text 用例); 只性能 --perf;
+#   两个都要 --infer-perf: 一次模型加载跑完精度+性能(分开跑要各加载一次权重, 很耗时)
 LAUNCH_ARGS=()
-if [ "$LUWU_RUN_INFER" = "1" ]; then
+if [ "$LUWU_RUN_INFER" = "1" ] && [ "$LUWU_RUN_PERF" = "1" ]; then
+  LAUNCH_ARGS+=(--infer-perf --long-text-case configs/inference/long_text_case.yaml)
+elif [ "$LUWU_RUN_INFER" = "1" ]; then
   LAUNCH_ARGS+=(--infer --long-text-case configs/inference/long_text_case.yaml)
-fi
-if [ "$LUWU_RUN_PERF" = "1" ]; then
+else
   LAUNCH_ARGS+=(--perf)
 fi
 python launch.py "${LAUNCH_ARGS[@]}" --work-dir "$RUN_DIR" \

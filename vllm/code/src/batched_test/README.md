@@ -7,7 +7,7 @@ Used for batched e2e *inference* and *performance* benchmark.
 ## Basic Usage
 
 ```bash
-[UV=1] python launch.py [-h] [--work-dir WORK_DIR] [--model-config CONFIG_YAML_FILE] [--cluster-config CONFIG_YAML_FILE] [--infer] [--text-case LM_CASE_FILE] [--image-case IMAGE_CASE_FILE] [--resume-csv RESUME_CSV] [--perf] [--gpus] [--tag] [--dry-run] [--dump-selected] [--concurrency]
+[UV=1] python launch.py [-h] [--work-dir WORK_DIR] [--model-config CONFIG_YAML_FILE] [--cluster-config CONFIG_YAML_FILE] [--infer] [--text-case LM_CASE_FILE] [--image-case IMAGE_CASE_FILE] [--resume-csv RESUME_CSV] [--perf] [--infer-perf] [--gpus] [--tag] [--dry-run] [--dump-selected] [--concurrency]
 ```
 
 - `--work-dir`: 
@@ -41,6 +41,27 @@ Used for batched e2e *inference* and *performance* benchmark.
 
 - `--perf`
     Specify to run performance benchmark for all models in `--model-config`
+
+- `--infer-perf`
+    Run inference **and** performance in one model load: start `vllm serve` once, run the
+    inference cases, then benchmark that same server.
+
+    Why: `--infer` and `--perf` are two different workers, each starting its own server, so
+    the weights are loaded twice (20+ minutes per load for big models). Passing
+    `--infer` **and** `--perf` together is merged into this path as well, so
+    `--infer --perf` == `--infer-perf` (weights loaded once). Only the two flags *together*
+    are merged; `--infer` alone / `--perf` alone keep their old behaviour, and the produced
+    artifacts are the same:
+
+    ```
+    <work-dir>/<timestamp>/inference/inference_results.csv
+    <work-dir>/<timestamp>/performance/bench_tasks_result.csv
+    <work-dir>/<timestamp>/performance/<model>_tpN_ppN_dpN/summary.csv
+    ```
+
+    Note: in the merged run the benchmark hits a server that already served the inference
+    cases (warm process/allocator) instead of a freshly started one — use `--perf` alone
+    when you need "cold start" benchmark numbers (e.g. the daily-test baseline).
 
 - `--gpus`
     Filter Models by Required GPU Count
@@ -195,4 +216,3 @@ model_test
 ### --dry-run
 
 Selection preview only
-
