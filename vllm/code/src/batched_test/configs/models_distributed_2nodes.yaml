@@ -139,25 +139,37 @@
   extra_env:
 
 # ---------- v0.28.0 新增模型 / 新特性覆盖 ----------
-# 与 vllm-metax 的 docs/releases/v0.28.0.md 第 4/5 节一一对应:
+# 与 vllm-metax 的 docs/release/0.28.0/zh.md 第 4/5 节一一对应:
 #   DeepSeek-V4 sparse MLA 普通 decode        -> DeepSeek-V4-Flash-BF16
 #   DeepSeek-V4 sparse MLA + MTP              -> DeepSeek-V4-Flash-MTP-W8A8
-#   DeepSeek-V4 sparse MLA + DSpark 投机      -> DeepSeek-V4-Flash-DSpark-BF16
+#   DeepSeek-V4 sparse MLA + DSpark 投机      -> DeepSeek-V4-Flash-DSpark-W8A8-INT8
 #   DSpark 独立 speculator(自适应验证候选)     -> GLM-5.2-W8A8-DSpark
 #   多层 MTP KV cache(0.28 新平台接口)        -> 复用上面的 MiMo-V2-Flash-BF16_W8A8_WITH_MTP
 #   FP4(MXFP4) 稀疏 indexer 缓存              -> DeepSeek-V4-Flash-IdxFP4 (skip, 见条目注释)
 #   上游 v0.28 新增模型                        -> Ling-3.0-Flash / Dots3-NOTE / Intern-S2-Mobius
 #                                                (共享存储暂无权重, 先 skip: true 占位)
 #   Kimi-K3 性能栈(SiTU/DCP)                  -> 4 机清单 configs/model_distributed_4nodes.yaml
+#
+# ⚠️ DeepSeek-V4 的 tp 约束(踩过坑): 该架构有 o_groups=8, 插件按
+#   vllm_metax/models/deepseek_v4/attention.py 的 n_local_groups = o_groups // tp_size
+#   切分, 再由 metax/flashmla.py 算 heads_per_group = n_local_heads // n_local_groups。
+#   tp 必须整除 o_groups(即 1/2/4/8), tp16 会得到 n_local_groups=0, 启动 profile_run
+#   阶段直接 ZeroDivisionError(上游 vllm/models/deepseek_v4/attention.py 同一写法,
+#   只是 heads 有 assert、groups 没有)。所以两机 16 卡上 DeepSeek-V4 只有两条路:
+#   tp8×pp2(按层切) 或 tp8×dp2(按副本切); 选哪条取决于权重能不能塞进 8 卡。
 
 - name: DeepSeek-V4-Flash-BF16
-  # v0.28 主线能力: DeepSeek-V4 sparse MLA 普通 decode(稀疏 indexer 默认强制启用)
+  # v0.28 主线能力: DeepSeek-V4 sparse MLA 普通 decode(稀疏 indexer 默认强制启用)。
+  # 582GB BF16 -> tp8 单副本 73GB/卡放不下, 因此 tp8×pp2(36GB/卡, 按层切两片)。
+  # 注意: 这是本清单里 DeepSeek-V4 第一次走 PP; tp8×pp2 与其他模型(ERNIE-4.5-300B)
+  #       同款两机 PP 组合, 但 dsv4 的 sparse MLA + PP 组合首次跑要确认能起到就绪。
+  #       起不来时改用不带 PP 的量化版本: DeepSeek-V4-Flash-MTP-W8A8(tp8×dp2)。
   timeout: 3600
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V4-Flash-BF16
   serve_config:
-    tp: 16
+    tp: 8
     dp: 1
-    pp: 1
+    pp: 2
     extra_args:
       --dtype: bfloat16
   infer_type:
@@ -173,12 +185,13 @@
 
 - name: DeepSeek-V4-Flash-MTP-W8A8
   # sparse MLA + MTP: 量化权重(FlexSMQ AWQ W8A8)带 MTP 头, 与单机清单
-  # configs/model.yaml 的 DeepSeek-V4-Flash-W8A8-MTP 同一路径, 这里跑两机 tp16
+  # configs/model.yaml 的 DeepSeek-V4-Flash-W8A8-MTP 同一路径。
+  # 297GB -> tp8 单副本 37GB/卡, 16 卡用 tp8×dp2 起两个副本(不涉及 PP)。
   timeout: 3600
   model_path: /mxstorage/pde_ai/models/model_quant_opt/DeepSeek/DeepSeek-V4-Flash_FlexSMQ-AWQ_W8A8/vllm_quant_model
   serve_config:
-    tp: 16
-    dp: 1
+    tp: 8
+    dp: 2
     pp: 1
     extra_args:
       --speculative-config: '{"method": "deepseek_mtp", "num_speculative_tokens": 2}'
@@ -194,19 +207,23 @@
   - sparse-attn
   - mtp
 
-- name: DeepSeek-V4-Flash-DSpark-BF16
+- name: DeepSeek-V4-Flash-DSpark-W8A8-INT8
   # sparse MLA + DSpark 投机(0.28 官方新特性: DSpark 自适应验证按 confidence head 裁剪验证 token)
   # 自适应验证默认关闭, 打开需在 speculative-config 里加 "enable_adaptive_verification": true
   # (要求 full cudagraph, 不支持 LoRA / PP / logprobs)
+  # 307GB INT8 -> tp8×dp2(38GB/卡), 每个 DP 副本自带完整 draft。
+  # BF16 的 DSpark 权重(608GB)在 16 卡上放不下: tp8×dp2 是 76GB/卡,
+  # 而 tp8×pp2 + DSpark 又要跨 stage 取 target 层 hidden states, 那条在
+  # configs/model_distributed_4nodes.yaml 里(tp8×pp4)。
   timeout: 3600
-  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V4-Flash-DSpark-BF16
+  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V4-Flash-DSpark-W8A8-INT8
   serve_config:
-    tp: 16
-    dp: 1
+    tp: 8
+    dp: 2
     pp: 1
     extra_args:
       --dtype: bfloat16
-      --speculative-config: '{"method": "dspark", "model": "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V4-Flash-DSpark-BF16", "num_speculative_tokens": 8, "draft_sample_method": "probabilistic"}'
+      --speculative-config: '{"method": "dspark", "model": "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V4-Flash-DSpark-W8A8-INT8", "num_speculative_tokens": 8, "draft_sample_method": "probabilistic"}'
   infer_type:
   - text-only
   benchmark:
@@ -255,9 +272,9 @@
   timeout: 3600
   model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V4-Flash-BF16
   serve_config:
-    tp: 16
+    tp: 8
     dp: 1
-    pp: 1
+    pp: 2
     extra_args:
       --dtype: bfloat16
       --attention-config: '{"use_fp4_indexer_cache": true}'

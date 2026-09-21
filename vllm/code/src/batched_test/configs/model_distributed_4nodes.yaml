@@ -47,3 +47,27 @@
     bench_param: configs/bench_params/bench_default.json
     sweep_num_runs: 1
   extra_env: null
+
+- name: DeepSeek-V4-Flash-DSpark-BF16
+  # DeepSeek-V4 的 tp 必须整除 o_groups=8(见 configs/models_distributed_2nodes.yaml 里
+  # v0.28.0 段的说明), 所以 4 机用 tp8×pp4 而不是 tp32。
+  # 608GB BF16 -> tp8×pp4 = 19GB/卡; 16 卡(tp8×dp2 = 76GB/卡)放不下, 所以在 2 机清单里没有。
+  timeout: 3600
+  model_path: /mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V4-Flash-DSpark-BF16
+  serve_config:
+    tp: 8
+    dp: 1
+    pp: 4
+    extra_args:
+      --dtype: bfloat16
+      --speculative-config: '{"method": "dspark", "model": "/mxstorage/pde_ai/models/llm/DeepSeek/DeepSeek-V4-Flash-DSpark-BF16", "num_speculative_tokens": 8, "draft_sample_method": "probabilistic"}'
+  infer_type:
+  - text-only
+  benchmark:
+    bench_param: configs/bench_params/bench_default.json
+    sweep_num_runs: 1
+  extra_env:
+  tags:
+  - moe
+  - sparse-attn
+  - dspark
