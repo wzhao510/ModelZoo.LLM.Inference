@@ -7,7 +7,7 @@ Used for batched e2e *inference* and *performance* benchmark.
 ## Basic Usage
 
 ```bash
-[UV=1] python launch.py [-h] [--work-dir WORK_DIR] [--model-config CONFIG_YAML_FILE] [--cluster-config CONFIG_YAML_FILE] [--infer] [--text-case LM_CASE_FILE] [--image-case IMAGE_CASE_FILE] [--resume-csv RESUME_CSV] [--perf] [--infer-perf] [--gpus] [--tag] [--dry-run] [--dump-selected] [--concurrency]
+[UV=1] python launch.py [-h] [--work-dir WORK_DIR] [--model-config CONFIG_YAML_FILE] [--cluster-config CONFIG_YAML_FILE] [--infer] [--text-case LM_CASE_FILE] [--image-case IMAGE_CASE_FILE] [--resume-csv RESUME_CSV] [--perf] [--infer-perf] [--bench-param BENCH_PARAM_FILE] [--gpus] [--tag] [--dry-run] [--dump-selected] [--concurrency]
 ```
 
 - `--work-dir`: 
@@ -62,6 +62,14 @@ Used for batched e2e *inference* and *performance* benchmark.
     Note: in the merged run the benchmark hits a server that already served the inference
     cases (warm process/allocator) instead of a freshly started one — use `--perf` alone
     when you need "cold start" benchmark numbers (e.g. the daily-test baseline).
+
+- `--bench-param`
+    Benchmark parameter file used for **every** model of this run, overriding each model's
+    `benchmark.bench_param` (JSON list of `{max_concurrency, num_prompts, random_input_len,
+    random_output_len}`). Keeps one single benchmark point for the whole run so a version
+    upgrade can be compared row by row, e.g.
+    `--bench-param configs/bench_params/bench_batch8_in3k_out1k.json`
+    (batch 8 + input 3k + output 1k, the default point of the luwu single/multi-node flows).
 
 - `--gpus`
     Filter Models by Required GPU Count

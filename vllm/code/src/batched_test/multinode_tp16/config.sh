@@ -141,8 +141,9 @@ luwu_resolve_mode all
 
 # ---------- 性能汇总 CSV(每次跑完性能总结一次, 跨 run/跨版本累积) ----------
 # 版本升级时看性能有没有回退, 直接对比这张表里同一个模型+同样压测参数的历史行。
-# 默认放在日志根目录下; 想让单机/多机共用一张表时用 PERF_CSV 指定同一个路径。
-PERF_CSV="${PERF_CSV:-$BASE_LOG_DIR/perf_summary.csv}"
+# 默认单机/多机共用同一张表(放在 model_test 根目录), 这样 "跑单机" 和 "跑多机" 的记录
+# 在同一个视图里, 显式分开时用 PERF_CSV 指定别的路径。
+PERF_CSV="${PERF_CSV:-/sw_home/lli/model_test/perf_summary.csv}"
 export PERF_CSV
 
 # 取某模型的并行度/节点数(给性能汇总 CSV 标注"这行是什么配置下跑的"),

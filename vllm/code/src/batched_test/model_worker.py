@@ -989,6 +989,9 @@ class InferPerfWorker(InferWorker):
         )
         self.bench_client_cmds: list[str] = []
         self.bench_elapsed: float = 0.0
+        # 只用来打断"本模型"的压测: 别的模型超时(set stop_event)不该把本模型的压测也杀掉,
+        # 否则一次超时会让整批并发模型的性能数据一起丢失
+        self.abort_event = threading.Event()
 
     # ---------- 压测部分(同一 server, 不再重新加载权重) ----------
     def _bench_param_items(self) -> list[dict]:
@@ -1055,16 +1058,16 @@ class InferPerfWorker(InferWorker):
         }
 
     def _run_cmd_blocking(self, cmd: list[str], env: dict, log_file: str, desc: str) -> int:
-        """前台等一个子命令结束; stop_event(per-model 超时/打断)时杀掉它。"""
+        """前台等一个子命令结束; 本模型被超时/打断(abort_event)时杀掉它。"""
         proc = net_utils.run_cmd(cmd=cmd, env=env, log_file=log_file)
         while True:
             returncode = proc.poll()
             if returncode is not None:
                 return returncode
-            if self.stop_event.is_set():
+            if self.abort_event.is_set():
                 proc.kill()
                 proc.wait()
-                raise KeyboardInterrupt(f"Stop event set, killing {desc}")
+                raise KeyboardInterrupt(f"Aborted, killing {desc}")
             time.sleep(2)
 
     def _run_bench_on_running_server(self) -> dict:
@@ -1176,7 +1179,11 @@ class InferPerfWorker(InferWorker):
         }
 
     def run(self, stop_event: threading.Event) -> dict:
-        """一次加载跑完精度 + 性能; 返回的 dict 同时带两个 client 的字段. """
+        """一次加载跑完精度 + 性能; 返回的 dict 同时带两个 client 的字段.
+
+        精度与性能互不牵连: 精度用例失败/被别的模型超时打断时, 只要服务还活着就继续压测,
+        避免个别模型的精度问题把性能数据整行丢掉(版本升级看护最怕缺行)。
+        """
         self.stop_event = stop_event
         infer_row: dict | None = None
         try:
@@ -1192,13 +1199,29 @@ class InferPerfWorker(InferWorker):
             # Step 2. launch serve(精度和性能共用这一次加载)
             self._launch_vllm_serve()
 
-            # Step 3. 精度 client(与 --infer 完全一致)
-            if need_infer:
-                infer_row = self._post_client_test()
-            else:
-                infer_row = self._warp_skipped()
+            # Step 3. 精度 client(与 --infer 完全一致)。
+            # 精度和性能互不牵连: 精度用例失败/被别的模型超时打断, 只要服务还活着,
+            # 性能照样采样, 避免因为个别模型的精度问题把性能数据整行丢掉。
+            try:
+                if need_infer:
+                    infer_row = self._post_client_test()
+                else:
+                    infer_row = self._warp_skipped()
+            except (Exception, KeyboardInterrupt) as e:
+                reason = f"精度阶段失败/中断: {type(e).__name__}: {e}"
+                print(f"[{self.model_cfg['name']}] {reason}")
+                if not isinstance(e, KeyboardInterrupt):
+                    traceback.print_exc()
+                infer_row = self._warp_failure(reason)
 
             # Step 4. 性能 client: 对同一个 server 压测, 不再加载模型
+            if self.api_serve_process is not None:
+                serve_returncode = self.api_serve_process.poll()
+                if serve_returncode is not None:
+                    # 服务已经退出: 压测只会白等 ready-check-timeout, 直接记失败
+                    raise RuntimeError(
+                        f"vllm serve 已退出(code={serve_returncode}), 跳过压测"
+                    )
             perf_row = self._run_bench_on_running_server()
 
             return {**infer_row, **perf_row}

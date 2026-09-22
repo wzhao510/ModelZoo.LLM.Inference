@@ -37,6 +37,8 @@ class SchedularArgs:
     cluster_config: str | None = None
     infer: bool = False
     perf: bool = False
+    # 统一压测口径: 用这个参数文件覆盖清单里每个模型的 benchmark.bench_param
+    bench_param: str | None = None
     # 精度 + 性能合并成一次模型加载(起一次 vllm serve, 先跑精度用例再压测)
     infer_perf: bool = False
     concurrency: int | None = None  # Max concurrent models. None=default(GPU count local, 1 on cluster)
@@ -74,6 +76,7 @@ class SchedularArgs:
             resume_csv=args.resume_csv,
             infer=args.infer,
             perf=args.perf,
+            bench_param=args.bench_param,
             infer_perf=args.infer_perf,
             concurrency=args.concurrency,
             model_timeout=args.model_timeout,
@@ -216,6 +219,20 @@ class SchedularArgs:
         )
 
         parser.add_argument(
+            "--bench-param",
+            metavar="BENCH_PARAM_FILE",
+            type=str,
+            default=None,
+            help=(
+                "Benchmark parameter file (JSON list of {max_concurrency, num_prompts, "
+                "random_input_len, random_output_len}) used for EVERY model of this run, "
+                "overriding the per-model 'benchmark.bench_param'. Use it to keep one "
+                "single benchmark point for the whole run, e.g. "
+                "configs/bench_params/bench_batch8_in3k_out1k.json."
+            ),
+        )
+
+        parser.add_argument(
             "--concurrency",
             type=int,
             default=None,
@@ -242,6 +259,17 @@ class Scheduler:
         self.model_list = self._load_yaml_config(args.model_config)
         self.model_list = self._filter_model_list(self.model_list)
         self.work_dir = os.path.join(args.work_dir, net_utils.current_dt())
+
+        # --bench-param: 统一压测口径(例如单机/多机都只跑 batch8+input3k+output1k 一个点)。
+        # 覆盖(而不是合并)每个模型自己的 benchmark.bench_param, 避免一个 run 里出现多种压测点。
+        if args.bench_param:
+            bench_param = os.path.abspath(args.bench_param)
+            if not os.path.exists(bench_param):
+                raise FileNotFoundError(f"--bench-param 文件不存在: {args.bench_param}")
+            for cfg in self.model_list:
+                cfg["benchmark"] = {**cfg.get("benchmark", {}), "bench_param": bench_param}
+            print(f"[Scheduler] 本次所有模型的压测参数统一为: {bench_param}")
+
         if args.cluster_config:
             cluster_nodes_config = self._load_yaml_config(args.cluster_config)
             self.gpu_manager = MPClusterManager(cluster_nodes_config)
@@ -751,68 +779,80 @@ class Scheduler:
                 mininterval=0.5,
                 maxinterval=2.0,
             ) as pbar:
-                while remaining:
-                    done, remaining = concurrent.futures.wait(
-                        remaining,
-                        timeout=POLL_SECONDS,
-                        return_when=concurrent.futures.FIRST_COMPLETED,
-                    )
+                try:
+                    while remaining:
+                        done, remaining = concurrent.futures.wait(
+                            remaining,
+                            timeout=POLL_SECONDS,
+                            return_when=concurrent.futures.FIRST_COMPLETED,
+                        )
 
-                    # --- process completed futures ---
-                    for f in done:
-                        cfg = future_map[f]
-                        name = cfg.get("name", "?")
-                        try:
-                            result = f.result()
-                        except Exception as exc:
-                            result = _crash_row(cfg, f"{type(exc).__name__}: {exc}")
-                            print(f"\n[{name}] Worker crashed: {type(exc).__name__}: {exc}")
-                        all_results.append(result)
-                        infer_writer.writerow(_infer_view(result))
-                        bench_writer.writerow(_bench_view(result))
-                        f_infer.flush()
-                        f_bench.flush()
-                        pbar.update(1)
-
-                    # --- kill overdue futures(按"拿到 GPU 真正开始跑"时间计时) ---
-                    now = time_module.time()
-                    for f in list(remaining):
-                        worker = worker_map.get(f)
-                        started = getattr(worker, "started_at", None)
-                        if started is None:
-                            if now >= next_wait_notice.get(f, float("inf")):
-                                waited = now - future_submit_time[f]
-                                print(
-                                    f"\n[{future_map[f].get('name', '?')}] 还在等 GPU 资源 "
-                                    f"{waited / 60:.0f} 分钟(per-model 超时从拿到 GPU 开始算)"
-                                )
-                                next_wait_notice[f] = now + 1800.0
-                            continue
-                        elapsed = now - started
-                        if elapsed > self.args.model_timeout:
+                        # --- process completed futures ---
+                        for f in done:
                             cfg = future_map[f]
                             name = cfg.get("name", "?")
-                            print(
-                                f"\n[{name}] TIMEOUT {elapsed:.0f}s after start "
-                                f"(limit: {self.args.model_timeout}s) — killing"
-                            )
-                            stop_event.set()
-                            f.cancel()
-                            remaining.discard(f)
-                            row = _crash_row(
-                                cfg,
-                                f"Exceeded per-model timeout "
-                                f"({self.args.model_timeout}s from model start"
-                                f"(拿到 GPU 后), elapsed {elapsed:.0f}s)",
-                                stage="TIMEOUT",
-                            )
-                            all_results.append(row)
-                            infer_writer.writerow(_infer_view(row))
-                            bench_writer.writerow(_bench_view(row))
+                            try:
+                                result = f.result()
+                            except Exception as exc:
+                                result = _crash_row(cfg, f"{type(exc).__name__}: {exc}")
+                                print(f"\n[{name}] Worker crashed: {type(exc).__name__}: {exc}")
+                            all_results.append(result)
+                            infer_writer.writerow(_infer_view(result))
+                            bench_writer.writerow(_bench_view(result))
                             f_infer.flush()
                             f_bench.flush()
                             pbar.update(1)
-                            stop_event.clear()
+
+                        # --- kill overdue futures(按"拿到 GPU 真正开始跑"时间计时) ---
+                        now = time_module.time()
+                        for f in list(remaining):
+                            worker = worker_map.get(f)
+                            started = getattr(worker, "started_at", None)
+                            if started is None:
+                                if now >= next_wait_notice.get(f, float("inf")):
+                                    waited = now - future_submit_time[f]
+                                    print(
+                                        f"\n[{future_map[f].get('name', '?')}] 还在等 GPU 资源 "
+                                        f"{waited / 60:.0f} 分钟(per-model 超时从拿到 GPU 开始算)"
+                                    )
+                                    next_wait_notice[f] = now + 1800.0
+                                continue
+                            elapsed = now - started
+                            if elapsed > self.args.model_timeout:
+                                cfg = future_map[f]
+                                name = cfg.get("name", "?")
+                                print(
+                                    f"\n[{name}] TIMEOUT {elapsed:.0f}s after start "
+                                    f"(limit: {self.args.model_timeout}s) — killing"
+                                )
+                                stop_event.set()
+                                # 只打断"这个模型"的压测: 别的并发模型的服务还活着, 性能照采
+                                abort_event = getattr(worker_map.get(f), "abort_event", None)
+                                if abort_event is not None:
+                                    abort_event.set()
+                                f.cancel()
+                                remaining.discard(f)
+                                row = _crash_row(
+                                    cfg,
+                                    f"Exceeded per-model timeout "
+                                    f"({self.args.model_timeout}s from model start"
+                                    f"(拿到 GPU 后), elapsed {elapsed:.0f}s)",
+                                    stage="TIMEOUT",
+                                )
+                                all_results.append(row)
+                                infer_writer.writerow(_infer_view(row))
+                                bench_writer.writerow(_bench_view(row))
+                                f_infer.flush()
+                                f_bench.flush()
+                                pbar.update(1)
+                                stop_event.clear()
+                except KeyboardInterrupt:
+                    # Ctrl-C: 把还活着的 worker 的压测子进程也一并停掉, 再往上抛
+                    for w in worker_map.values():
+                        abort_event = getattr(w, "abort_event", None)
+                        if abort_event is not None:
+                            abort_event.set()
+                    raise
 
         self._print_inference_summary(all_results)
         self._print_bench_summary(all_results)

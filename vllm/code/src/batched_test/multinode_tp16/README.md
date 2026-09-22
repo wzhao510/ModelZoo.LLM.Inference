@@ -121,7 +121,7 @@ RANK=0 bash start.sh
 
 其他可覆盖项：`TP/DP/PP/NNODES/MAX_MODEL_LEN/GPU_MEM_UTIL/MAX_NUM_SEQS/DTYPE`。
 
-压测参数：`NUM_PROMPTS/MAX_CONCURRENCY/INPUT_LEN/OUTPUT_LEN/RESULT_DIR`。
+压测参数（默认单点 batch8/input3k/output1k）：`NUM_PROMPTS/MAX_CONCURRENCY/INPUT_LEN/OUTPUT_LEN/RESULT_DIR`。
 
 ## 跑精度还是性能（LUWU_TEST_MODE）
 
@@ -161,6 +161,12 @@ LUWU_TEST_MODE=all   bash luwu_single.sh               # 精度 + 性能(只加�
 先跑精度用例，再对同一个 server 压测——否则 `--infer` 和 `--perf` 会各加载一遍权重
 （大模型一次 20+ 分钟）。需要"刚起服务"的冷启动压测数据时，单独用 `LUWU_TEST_MODE=perf`。
 
+压测口径两边统一成**一个点**：`batch(并发) 8 + input 3k + output 1k`
+（`configs/bench_params/bench_batch8_in3k_out1k.json`）。单机通过
+`--bench-param` 覆盖清单里每个模型的压测参数（`BENCH_PARAM=<别的 json>` 可换）；多机
+`bench.sh` 的默认值就是 `MAX_CONCURRENCY=8 INPUT_LEN=3072 OUTPUT_LEN=1024`。这样 54 个模型
+每个只压一个点，一轮能跑完；以前单机按清单里的 12~16 个点跑，跑不完就只剩部分模型有性能数据。
+
 注意：模式只决定"跑不跑 client/bench"，服务照常按清单起停；worker 只负责起 rank1，
 不区分精度/性能（两机日志里都会打印本次模式，便于对照）。模式为 `perf` 时不会写
 `inference_summary.txt`，为 `infer` 时不会写压测结果 JSON。
@@ -168,8 +174,8 @@ LUWU_TEST_MODE=all   bash luwu_single.sh               # 精度 + 性能(只加�
 ## 性能汇总 CSV（版本升级性能看护）
 
 每次跑完性能，`perf_summary.sh` 会把 vllm bench 的结果 JSON 解析成一行，追加到
-**同一个 CSV**（默认 `$BASE_LOG_DIR/perf_summary.csv`，即
-`/sw_home/lli/model_test/tp16_luwu/perf_summary.csv`；单机是 `tp8_luwu/perf_summary.csv`），
+**同一个 CSV**（默认 `/sw_home/lli/model_test/perf_summary.csv`，单机/多机共用一张表，
+想分开就用 `PERF_CSV` 指定别的路径），
 于是版本升级时，同一个模型 + 同样的压测参数可以直接按行对比：
 
 - 触发时机：多机 master **每个模型压测完**汇总一次，整轮结束再汇总一次（覆盖所有模型）；
@@ -182,9 +188,14 @@ LUWU_TEST_MODE=all   bash luwu_single.sh               # 精度 + 性能(只加�
   request_throughput, output_throughput, total_token_throughput, max_output_tokens_per_s,
   max_concurrent_requests, mean/p99 的 ttft/tpot/itl/e2el, vllm_version, vllm_metax_version,
   torch_version, maca_version, image, host, result_json`。
+- 单机行的 `nodes` 自动补 1、`gpus_per_node` = `tp*pp*dp`（多机按实际传），所以单机/多机
+  行在同一张表里能直接对比。
 - 日志里会直接打印一张汇总表；同一模型 + 同样参数的**上一次 run** 结果会作为括号里的
   涨跌百分比（`-5.0%` 表示相对上次回退 5%），这就是升级前后一眼能看出回退的视图。
 - 每次 run 的行还会单独留一份在 `$RUN_DIR/perf_summary.csv`（共享 CSV 是跨 run 累积的）。
+- **缺行会点名**：扫描目录里"起了服务 / 进了压测、但没写进 CSV"的模型（起服务失败、被
+  per-model 超时打断、压测失败）会打印 `WARN 下面 N 个模型本次没有性能数据: ...`，
+  不会再出现"事后才发现 perf 只有部分模型"。
 
 单独回看历史 / 手工汇总（容器内任意时候都能跑，只依赖 python 标准库）：
 
@@ -288,7 +299,7 @@ rendezvous store**（`DP_RPC_PORT`，默认 `MASTER_PORT+1`，由 `start.sh` 显
 | --- | --- | --- |
 | 多机（tp16/tp32）| `/sw_home/lli/model_test/tp16_luwu/run_<时间戳>/` | 每次启动一个 run 目录：master 全程写 `luwu_master.log`（启动打点 + 各模型日志，一个文件），worker 全程写 `luwu_worker.log`，`compile_env.log`/`pip_requirements.log` 是两个节点环境初始化的输出，每个模型的 `rank*_serve.log` 也在里面 |
 | 单机 | `/sw_home/lli/model_test/tp8_luwu/run_<时间戳>/` | `luwu_single.log`；`launch.py --infer` 自己的产物仍在 `/sw_home/lli/model_test/<时间戳>/` |
-| 性能汇总 CSV | `/sw_home/lli/model_test/tp16_luwu/perf_summary.csv`（单机在 `tp8_luwu/` 下） | 跨 run/跨版本累积的性能记录，版本升级时对比用；每个 run 目录里还留一份 `perf_summary.csv`。可用 `PERF_CSV` 指定到同一个路径让单机/多机共用一张表 |
+| 性能汇总 CSV | `/sw_home/lli/model_test/perf_summary.csv` | 单机/多机共用的跨 run/跨版本性能记录，版本升级时对比用；每个 run 目录里还留一份 `perf_summary.csv`。可用 `PERF_CSV` 指定别的路径 |
 
 （可用 `LUWU_LOG_DIR` 覆盖上面两个默认根目录。）
 

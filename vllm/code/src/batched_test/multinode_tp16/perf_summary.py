@@ -23,6 +23,10 @@
 
 --report 会打印本次 run 的汇总表, 并在"同一模型 + 同一压测参数 + 同一并发/条数"时
 自动带上和上一次 run 的对比(吞吐涨跌百分比), 这就是版本升级时的性能看护视图。
+单机(sweep/合并模式)的目录名自带 tp/pp/dp 时, 会自动补 nodes=1 与 gpus_per_node = tp*pp*dp,
+所以单机行和多机行在同一张表里能直接对比。
+如果扫描目录里有"起了服务/进了压测、但没写进 CSV"的模型(起服务失败/超时/压测失败),
+会打印一行 WARN 把模型名点出来, 避免"perf 只有部分模型"这种事后才发现。
 """
 
 from __future__ import annotations
@@ -81,6 +85,8 @@ FIELDS = [
 # <model>_tp16_pp1_dp1 这类目录名: 单机 launch.py --perf 的 sweep 产物按并行度分目录,
 # 多机 bench.sh 的产物在 <run 目录>/<模型名> 下, 所以这里只是"能推出就用"的兜底
 _PARALLEL_DIR_RE = re.compile(r"^(?P<model>.+)_tp(?P<tp>\d+)_pp(?P<pp>\d+)_dp(?P<dp>\d+)$")
+# 单机精度侧日志名: <model>[tpXppYdpZ]_serve.log(用来发现"该跑性能但没跑成的模型")
+_MODEL_TAG_LOG_RE = re.compile(r"^(?P<model>.+)\[tp\d+pp\d+dp\d+\]_serve\.log$")
 
 
 def _repo_version(*names: str) -> str:
@@ -185,6 +191,19 @@ def _build_row(path: str, scan_root: str, data: dict, args, env_info: dict) -> d
     if not model and model_id:
         model = os.path.basename(str(model_id).rstrip("/"))
     completed = data.get("completed")
+    # 单机(sweep/合并模式)的目录名自带 tp/pp/dp, 而且模型全部在一台机器上:
+    # 补齐 nodes/gpus_per_node, 让单机行和多机行在表里长得一样
+    nodes = args.nodes or ""
+    gpus_per_node = args.gpus_per_node or ""
+    if not nodes and path_meta["tp"]:
+        nodes = "1"
+        if not gpus_per_node:
+            try:
+                gpus_per_node = str(
+                    int(path_meta["tp"]) * int(path_meta["pp"]) * int(path_meta["dp"])
+                )
+            except ValueError:
+                gpus_per_node = ""
     row = {
         "run_id": args.run_id or "",
         "scan_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -194,8 +213,8 @@ def _build_row(path: str, scan_root: str, data: dict, args, env_info: dict) -> d
         "tp": args.tp or path_meta["tp"],
         "dp": args.dp or path_meta["dp"],
         "pp": args.pp or path_meta["pp"],
-        "nodes": args.nodes or "",
-        "gpus_per_node": args.gpus_per_node or "",
+        "nodes": nodes,
+        "gpus_per_node": gpus_per_node,
         "num_prompts": _num(data.get("num_prompts"), 0),
         "max_concurrency": _num(data.get("max_concurrency"), 0),
         "in_len_avg": _ratio(data.get("total_input_tokens"), completed),
@@ -282,6 +301,29 @@ def _write_run_csv(csv_path: str, rows: list, run_id: str) -> str:
     return csv_path
 
 
+def _expected_models(scan_root: str) -> set:
+    """这次 run 里"本该有性能数据"的模型(单机/合并模式的目录结构)。
+
+    单机一件事就是: 起了服务(<inference>/<model>[tpXppYdpZ]_serve.log) 或者进了压测
+    (<performance>/<model>_tpX_ppY_dpZ/)。把它们和真正写进 CSV 的模型对一下, 就能直接
+    在日志里指出"哪些模型这次没有性能数据", 不用人工翻目录。
+    """
+    found: set = set()
+    for dirpath, dirnames, filenames in os.walk(scan_root):
+        base = os.path.basename(dirpath)
+        if base == "performance":
+            for name in dirnames:
+                match = _PARALLEL_DIR_RE.match(name)
+                if match:
+                    found.add(match.group("model"))
+        elif base == "inference":
+            for name in filenames:
+                match = _MODEL_TAG_LOG_RE.match(name)
+                if match:
+                    found.add(match.group("model"))
+    return found
+
+
 def _cell(value) -> str:
     return "" if value is None else str(value)
 
@@ -324,7 +366,7 @@ def _print_report(rows: list, run_id: str, csv_path: str) -> None:
             print(f"[perf-summary] 本次 run({run_id})在 CSV 里没有记录, 改为打印全部历史")
 
     header = [
-        "run_id", "model", "tp/dp/pp", "conc", "prompts", "in/out",
+        "run_id", "model", "nodes", "tp/dp/pp", "conc", "prompts", "in/out",
         "output tok/s", "总 tok/s", "mean TTFT", "p99 TTFT", "mean TPOT", "p99 E2EL", "date",
     ]
     table = [
@@ -342,6 +384,7 @@ def _print_report(rows: list, run_id: str, csv_path: str) -> None:
         table.append("| " + " | ".join([
             _cell(row.get("run_id", "")),
             _cell(row.get("model", "")),
+            _cell(row.get("nodes", "")),
             parallel,
             _cell(row.get("max_concurrency", "")),
             _cell(row.get("num_prompts", "")),
@@ -451,6 +494,24 @@ def main() -> int:
             print(f"[perf-summary] WARN 本次 run 的结果留档失败: {exc}", file=sys.stderr)
         if written:
             print(f"[perf-summary] 本次 run 的结果已单独留档: {written}")
+
+    # 缺行提示: 这次 run 里起了服务/进了压测、但最终没写进 CSV 的模型(起服务失败/被超时
+    # 打断/压测失败), 直接在日志里点名, 免得事后才发现"perf 只有部分模型"
+    if not args.quiet:
+        considered = {
+            str(row.get("model", ""))
+            for row in all_rows
+            if not args.run_id or str(row.get("run_id", "")) == args.run_id
+        }
+        for scan_root in args.scan_dir:
+            missing = sorted(_expected_models(scan_root) - considered - {""})
+            if missing:
+                print(
+                    f"[perf-summary] WARN 下面 {len(missing)} 个模型本次没有性能数据"
+                    f"(起服务失败/被超时打断/压测失败, 去 run 目录看它们的 *_serve.log):"
+                )
+                for name in missing:
+                    print(f"[perf-summary]   - {name}")
 
     if args.report or args.show:
         _print_report(all_rows, "" if args.show else args.run_id, csv_path)

@@ -1,0 +1,8 @@
+[
+    {
+        "max_concurrency": 8,
+        "num_prompts": 8,
+        "random_input_len": 3072,
+        "random_output_len": 1024
+    }
+]

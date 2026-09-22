@@ -25,8 +25,16 @@ LOG_DIR="${LUWU_LOG_DIR:-/sw_home/lli/model_test/tp8_luwu}"
 RUN_ID="run_$(date +%Y%m%d_%H%M%S)"
 RUN_DIR="$LOG_DIR/$RUN_ID"
 mkdir -p "$RUN_DIR" 2>/dev/null || { RUN_DIR="/tmp/luwu_logs/$RUN_ID"; mkdir -p "$RUN_DIR"; }
-# 性能汇总 CSV(跨 run/跨版本累积, 版本升级时看性能回退用); 想让单机/多机共用一张表时用 PERF_CSV 指定
-PERF_CSV="${PERF_CSV:-$LOG_DIR/perf_summary.csv}"
+# 压测口径: 默认只跑一个点(batch 8 + input 3k + output 1k), 与多机 bench.sh 一致, 可用
+# BENCH_PARAM 换成别的参数文件(相对路径按 batched_test 目录解析)
+BENCH_PARAM="${BENCH_PARAM:-configs/bench_params/bench_batch8_in3k_out1k.json}"
+case "$BENCH_PARAM" in
+  /*) ;;
+  *) BENCH_PARAM="$BASE/$BENCH_PARAM" ;;
+esac
+# 性能汇总 CSV(跨 run/跨版本累积, 版本升级时看性能回退用); 默认与多机共用同一张表,
+# 想分开就用 PERF_CSV 指定别的路径
+PERF_CSV="${PERF_CSV:-/sw_home/lli/model_test/perf_summary.csv}"
 export PERF_CSV LUWU_TEST_MODE LUWU_RUN_INFER LUWU_RUN_PERF
 LOG="$RUN_DIR/luwu_single.log"
 TEE=(tee -a "$LOG")
@@ -35,6 +43,7 @@ exec > >("${TEE[@]}") 2>&1
 
 echo "[luwu-single] $(date '+%F %T') 开始单机任务(模型清单 $MODEL_CONFIG, 模式 $LUWU_TEST_MODE: 精度=$LUWU_RUN_INFER 性能=$LUWU_RUN_PERF) 日志: $LOG"
 if [ "$LUWU_RUN_PERF" = "1" ]; then
+  echo "[luwu-single] 压测参数文件: $BENCH_PARAM(默认只跑一个点 batch8/input3k/output1k; 用 BENCH_PARAM 指定别的文件)"
   echo "[luwu-single] 性能汇总 CSV: $PERF_CSV(run=$RUN_ID)"
 fi
 
@@ -56,11 +65,11 @@ pip install -r "$BASE/requirements.txt"
 #   两个都要 --infer-perf: 一次模型加载跑完精度+性能(分开跑要各加载一次权重, 很耗时)
 LAUNCH_ARGS=()
 if [ "$LUWU_RUN_INFER" = "1" ] && [ "$LUWU_RUN_PERF" = "1" ]; then
-  LAUNCH_ARGS+=(--infer-perf --long-text-case configs/inference/long_text_case.yaml)
+  LAUNCH_ARGS+=(--infer-perf --long-text-case configs/inference/long_text_case.yaml --bench-param "$BENCH_PARAM")
 elif [ "$LUWU_RUN_INFER" = "1" ]; then
   LAUNCH_ARGS+=(--infer --long-text-case configs/inference/long_text_case.yaml)
 else
-  LAUNCH_ARGS+=(--perf)
+  LAUNCH_ARGS+=(--perf --bench-param "$BENCH_PARAM")
 fi
 python launch.py "${LAUNCH_ARGS[@]}" --work-dir "$RUN_DIR" \
   --model-config "$MODEL_CONFIG"
