@@ -266,8 +266,11 @@ class Scheduler:
             bench_param = os.path.abspath(args.bench_param)
             if not os.path.exists(bench_param):
                 raise FileNotFoundError(f"--bench-param 文件不存在: {args.bench_param}")
+            # 只覆盖本来就配了 benchmark 的模型: 清单里没有 benchmark 段的模型(只校验
+            # 精度的 embedding 模型)不进性能清单, 不要在这里凭空补一个出来。
             for cfg in self.model_list:
-                cfg["benchmark"] = {**cfg.get("benchmark", {}), "bench_param": bench_param}
+                if "benchmark" in cfg:
+                    cfg["benchmark"] = {**cfg["benchmark"], "bench_param": bench_param}
             print(f"[Scheduler] 本次所有模型的压测参数统一为: {bench_param}")
 
         if args.cluster_config:
@@ -919,6 +922,20 @@ class Scheduler:
         from model_worker import BenchSweepWorker
 
         for cfg in self.model_list:
+            if not cfg.get("benchmark"):
+                # 清单里没有 benchmark 段 = 只校验精度, 不进性能清单
+                name = cfg.get("name", "?")
+                print(f"[{name}] 清单里未配置 benchmark, 跳过性能压测")
+                all_results.append({
+                    "task_name": name,
+                    "status": "skip",
+                    "log_dir": None,
+                    "error": "benchmark 未配置(只跑精度)",
+                    "server_command": None,
+                    "client_command": None,
+                    "env": None,
+                })
+                continue
             worker = BenchSweepWorker(
                 work_dir=bench_work_dir, model_cfg=cfg, gpu_manager=self.gpu_manager
             )

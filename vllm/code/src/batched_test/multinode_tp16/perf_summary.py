@@ -309,6 +309,7 @@ def _expected_models(scan_root: str) -> set:
     在日志里指出"哪些模型这次没有性能数据", 不用人工翻目录。
     """
     found: set = set()
+    skipped: set = set()
     for dirpath, dirnames, filenames in os.walk(scan_root):
         base = os.path.basename(dirpath)
         if base == "performance":
@@ -316,12 +317,26 @@ def _expected_models(scan_root: str) -> set:
                 match = _PARALLEL_DIR_RE.match(name)
                 if match:
                     found.add(match.group("model"))
+            # harness 的 bench_tasks_result.csv 里 status=skip 的模型(清单里没配
+            # benchmark、只校验精度的模型)不算"缺性能数据"。
+            status_csv = os.path.join(dirpath, "bench_tasks_result.csv")
+            if os.path.exists(status_csv):
+                try:
+                    with open(status_csv, newline="", encoding="utf-8") as fh:
+                        for row in csv.DictReader(fh):
+                            if str(row.get("status", "")).strip().lower() != "skip":
+                                continue
+                            match = _PARALLEL_DIR_RE.match(str(row.get("task_name", "")))
+                            if match:
+                                skipped.add(match.group("model"))
+                except OSError:
+                    pass
         elif base == "inference":
             for name in filenames:
                 match = _MODEL_TAG_LOG_RE.match(name)
                 if match:
                     found.add(match.group("model"))
-    return found
+    return found - skipped
 
 
 def _cell(value) -> str:

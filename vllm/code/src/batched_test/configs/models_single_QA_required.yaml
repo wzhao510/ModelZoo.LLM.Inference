@@ -107,9 +107,9 @@
       --gpu-memory-utilization: 0.9
   infer_type:
   - embedding
-  benchmark:
-    bench_param: configs/bench_params/bench_common.json
-    sweep_num_runs: 1
+  # 只做精度校验, 不进性能清单: vllm bench serve 默认打 /v1/completions, 对
+  # pooling/embedding 服务必然 404(要压测需 --backend openai-embeddings-vlm2vec)。
+  # 没有 benchmark 段 = 不跑性能, 见 launch.py / model_worker.py。
   extra_env: null
 
 - name: Qwen3.5-2B

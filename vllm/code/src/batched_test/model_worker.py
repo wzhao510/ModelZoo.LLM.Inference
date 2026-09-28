@@ -1178,6 +1178,18 @@ class InferPerfWorker(InferWorker):
             "env": None,
         }
 
+    def _warp_bench_skipped(self) -> dict:
+        """清单里没配 benchmark 的模型只做精度校验, 性能侧写一行 skip 便于汇总区分。"""
+        return {
+            "task_name": self.bench_tag,
+            "status": "skip",
+            "log_dir": self.bench_log_file,
+            "error": "benchmark 未配置(只跑精度)",
+            "server_command": None,
+            "client_command": None,
+            "env": None,
+        }
+
     def run(self, stop_event: threading.Event) -> dict:
         """一次加载跑完精度 + 性能; 返回的 dict 同时带两个 client 的字段.
 
@@ -1215,14 +1227,22 @@ class InferPerfWorker(InferWorker):
                 infer_row = self._warp_failure(reason)
 
             # Step 4. 性能 client: 对同一个 server 压测, 不再加载模型
-            if self.api_serve_process is not None:
-                serve_returncode = self.api_serve_process.poll()
-                if serve_returncode is not None:
-                    # 服务已经退出: 压测只会白等 ready-check-timeout, 直接记失败
-                    raise RuntimeError(
-                        f"vllm serve 已退出(code={serve_returncode}), 跳过压测"
-                    )
-            perf_row = self._run_bench_on_running_server()
+            # 清单里没配 benchmark 的模型(例如 Qwen3-VL-Embedding)只校验精度, 不压测:
+            # vllm bench serve 默认打 /v1/completions, 对 pooling/embedding 服务必然 404。
+            if not self.model_cfg.get("benchmark"):
+                print(
+                    f"[{self.model_cfg['name']}] 清单里未配置 benchmark, 跳过性能压测"
+                )
+                perf_row = self._warp_bench_skipped()
+            else:
+                if self.api_serve_process is not None:
+                    serve_returncode = self.api_serve_process.poll()
+                    if serve_returncode is not None:
+                        # 服务已经退出: 压测只会白等 ready-check-timeout, 直接记失败
+                        raise RuntimeError(
+                            f"vllm serve 已退出(code={serve_returncode}), 跳过压测"
+                        )
+                perf_row = self._run_bench_on_running_server()
 
             return {**infer_row, **perf_row}
         except Exception as e:
