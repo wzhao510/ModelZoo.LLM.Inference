@@ -9,7 +9,7 @@ setsid vllm serve /mxstorage/pde_ai/models/llm/Qwen/Qwen2.5-7B-Instruct \
 	--distributed-executor-backend mp \
 	-tp 2 \
     --trust-remote-code \
-    --max-model-len 4096 > "$LOGFILE" 2>&1 &
+    --max-model-len 8192 > "$LOGFILE" 2>&1 &
 
 VLLM_PID=$!
 echo "vllm serve started with PID: $VLLM_PID"
