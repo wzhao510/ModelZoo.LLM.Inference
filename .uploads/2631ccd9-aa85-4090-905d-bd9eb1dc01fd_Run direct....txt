@@ -1,0 +1,599 @@
+Run directory: /workspace/vllm/code/src/auto_pd_test/artifacts/test_runs/20261009_065937
+Using python: python3
+
+============================================================
+Running lmcache/test_lmcache_1p2d_tp2.py
+Log: /workspace/vllm/code/src/auto_pd_test/artifacts/test_runs/20261009_065937/lmcache__test_lmcache_1p2d_tp2.py/pytest.log
+============================================================
+[FAIL] lmcache/test_lmcache_1p2d_tp2.py (336s)
+Last 200 log lines for lmcache/test_lmcache_1p2d_tp2.py:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               ConnectionRefusedError: [Errno 111] Connection refused
+
+/opt/conda/lib/python3.12/socket.py:850: ConnectionRefusedError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x7b1dda7d3e90>, _basetemp=PosixPath('/tmp/pytest-of-root/pytest-3'), _retention_count=3, _retention_policy='all')
+
+    @pytest.fixture(scope="module")
+    def cluster_1p2d_tp2(tmp_path_factory):
+        run_dir = tmp_path_factory.mktemp("run_1p2d_tp2")
+        print(f"\n[Info] Test artifacts dir: {run_dir}")
+    
+        p_conf = run_dir / "prefiller.yaml"
+        p_conf.write_text(textwrap.dedent(f"""
+            local_cpu: False
+            max_local_cpu_size: 0
+            max_local_disk_size: 0
+            enable_pd: True
+            transfer_channel: "nixl"
+            pd_role: "sender"
+            pd_proxy_host: "{HOST}"
+            pd_proxy_port: {PROXY_INTERNAL_PORT}
+            pd_buffer_size: {FIXED_BUFFER_SIZE}
+            pd_buffer_device: "cuda"
+            nixl_backends: [UCX]
+        """))
+    
+        d1_conf = run_dir / "decoder1.yaml"
+        d1_conf.write_text(textwrap.dedent(f"""
+            local_cpu: False
+            max_local_cpu_size: 0
+            enable_pd: True
+            transfer_channel: "nixl"
+            pd_role: "receiver"
+            pd_peer_host: "{HOST}"
+            pd_peer_init_port: {json.dumps(DECODER1_INIT_PORTS)}
+            pd_peer_alloc_port: {json.dumps(DECODER1_ALLOC_PORTS)}
+            pd_buffer_size: {FIXED_BUFFER_SIZE}
+            pd_buffer_device: "cuda"
+            nixl_backends: [UCX]
+        """))
+    
+        d2_conf = run_dir / "decoder2.yaml"
+        d2_conf.write_text(textwrap.dedent(f"""
+            local_cpu: False
+            max_local_cpu_size: 0
+            enable_pd: True
+            transfer_channel: "nixl"
+            pd_role: "receiver"
+            pd_peer_host: "{HOST}"
+            pd_peer_init_port: {json.dumps(DECODER2_INIT_PORTS)}
+            pd_peer_alloc_port: {json.dumps(DECODER2_ALLOC_PORTS)}
+            pd_buffer_size: {FIXED_BUFFER_SIZE}
+            pd_buffer_device: "cuda"
+            nixl_backends: [UCX]
+        """))
+    
+        processes = {}
+        logs = {}
+        log_paths = {
+            "decoder1": run_dir / "decoder1.log",
+            "decoder2": run_dir / "decoder2.log",
+            "prefiller": run_dir / "prefiller.log",
+            "proxy": run_dir / "proxy.log",
+        }
+    
+        base_env = os.environ.copy()
+        base_env.update({
+            "VLLM_WORKER_MULTIPROC_METHOD": "spawn",
+            "VLLM_ENABLE_V1_MULTIPROCESSING": "1",
+            "UCX_TLS": "maca_ipc,maca_copy,tcp",
+            "UCX_PROTO_ENABLE": "y",
+            "LMCACHE_USE_EXPERIMENTAL": "True",
+            "VLLM_DISABLE_REQUEST_ID_RANDOMIZATION": "1",
+        })
+    
+        try:
+            logs["d1"] = open(log_paths["decoder1"], "w")
+            d1_env = base_env.copy()
+            d1_env["CUDA_VISIBLE_DEVICES"] = "2,3"
+            d1_env["LMCACHE_CONFIG_FILE"] = str(d1_conf)
+            d1_cmd = [
+                "vllm", "serve", VLLM_MODEL_PATH,
+                "--port", str(DECODER1_PORT),
+                "--gpu-memory-utilization", str(GPU_MEMORY_UTILIZATION),
+                "--tensor-parallel-size", "2",
+                "--served-model-name", "qwen2.5",
+                "--no-enable-prefix-caching",
+                "--kv-transfer-config",
+                json.dumps({
+                    "kv_connector": "LMCacheConnectorV1",
+                    "kv_role": "kv_consumer",
+                    "kv_connector_extra_config": {
+                        "discard_partial_chunks": False,
+                        "lmcache_rpc_port": "consumer1",
+                        "skip_last_n_tokens": 1,
+                    },
+                }),
+            ]
+            processes["decoder1"] = popen_own_group(d1_cmd, env=d1_env, stdout=logs["d1"], stderr=subprocess.STDOUT)
+    
+            logs["d2"] = open(log_paths["decoder2"], "w")
+            d2_env = base_env.copy()
+            d2_env["CUDA_VISIBLE_DEVICES"] = "4,5"
+            d2_env["LMCACHE_CONFIG_FILE"] = str(d2_conf)
+            d2_cmd = [
+                "vllm", "serve", VLLM_MODEL_PATH,
+                "--port", str(DECODER2_PORT),
+                "--gpu-memory-utilization", str(GPU_MEMORY_UTILIZATION),
+                "--tensor-parallel-size", "2",
+                "--served-model-name", "qwen2.5",
+                "--no-enable-prefix-caching",
+                "--kv-transfer-config",
+                json.dumps({
+                    "kv_connector": "LMCacheConnectorV1",
+                    "kv_role": "kv_consumer",
+                    "kv_connector_extra_config": {
+                        "discard_partial_chunks": False,
+                        "lmcache_rpc_port": "consumer2",
+                        "skip_last_n_tokens": 1,
+                    },
+                }),
+            ]
+            processes["decoder2"] = popen_own_group(d2_cmd, env=d2_env, stdout=logs["d2"], stderr=subprocess.STDOUT)
+    
+            logs["pre"] = open(log_paths["prefiller"], "w")
+            p_env = base_env.copy()
+            p_env["CUDA_VISIBLE_DEVICES"] = "0,1"
+            p_env["LMCACHE_CONFIG_FILE"] = str(p_conf)
+            p_cmd = [
+                "vllm", "serve", VLLM_MODEL_PATH,
+                "--port", str(PREFILLER_PORT),
+                "--gpu-memory-utilization", str(GPU_MEMORY_UTILIZATION),
+                "--tensor-parallel-size", "2",
+                "--served-model-name", "qwen2.5",
+                "--no-enable-prefix-caching",
+                "--kv-transfer-config",
+                json.dumps({
+                    "kv_connector": "LMCacheConnectorV1",
+                    "kv_role": "kv_producer",
+                    "kv_connector_extra_config": {
+                        "discard_partial_chunks": False,
+                        "lmcache_rpc_port": "producer1",
+                    },
+                }),
+            ]
+            processes["prefiller"] = popen_own_group(p_cmd, env=p_env, stdout=logs["pre"], stderr=subprocess.STDOUT)
+    
+>           _wait_for_port(HOST, DECODER1_PORT, 300, processes=processes, log_paths=log_paths, log_handles=logs, stage="decoder1 startup")
+
+lmcache/test_lmcache_1p2d_tp2.py:181: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+host = 'localhost', port = 7200, timeout = 300, process = None
+processes = {'decoder1': <Popen: returncode: -9 args: ['vllm', 'serve', '/mxstorage/pde_ai/models/llm...>, 'decoder2': <Popen: ret...e/pde_ai/models/llm...>, 'prefiller': <Popen: returncode: -9 args: ['vllm', 'serve', '/mxstorage/pde_ai/models/llm...>}
+log_paths = {'decoder1': PosixPath('/tmp/pytest-of-root/pytest-3/run_1p2d_tp20/decoder1.log'), 'decoder2': PosixPath('/tmp/pytest-...oot/pytest-3/run_1p2d_tp20/prefiller.log'), 'proxy': PosixPath('/tmp/pytest-of-root/pytest-3/run_1p2d_tp20/proxy.log')}
+log_handles = {'d1': <_io.TextIOWrapper name='/tmp/pytest-of-root/pytest-3/run_1p2d_tp20/decoder1.log' mode='w' encoding='utf-8'>, '..., 'pre': <_io.TextIOWrapper name='/tmp/pytest-of-root/pytest-3/run_1p2d_tp20/prefiller.log' mode='w' encoding='utf-8'>}
+stage = 'decoder1 startup'
+
+    def wait_for_port(host, port, timeout=180, process=None, processes=None, log_paths=None,
+                       log_handles=None, stage="startup"):
+        """Block until `host:port` accepts a connection.
+    
+        Accepts either a single `process` (Popen) or a `processes` dict of
+        {name: Popen} -- if any of them has already exited, fail fast with the
+        tail of its log instead of waiting out the full timeout.
+        """
+        all_processes = dict(processes) if processes else {}
+        if process is not None:
+            all_processes.setdefault(stage, process)
+    
+        start = time.monotonic()
+        while True:
+            for name, proc in all_processes.items():
+                retcode = proc.poll()
+                if retcode is not None:
+                    print(f"[FATAL] Process {name} exited unexpectedly during {stage} with code {retcode}.")
+                    if log_paths:
+                        dump_logs(log_paths, log_handles)
+                    raise RuntimeError(f"Process {name} exited unexpectedly during {stage} with code {retcode}.")
+            try:
+                with socket.create_connection((host, port), timeout=1):
+                    return
+            except OSError:
+                if time.monotonic() - start >= timeout:
+                    print(f"[FATAL] Timeout waiting for {host}:{port} during {stage}.")
+                    if log_paths:
+                        dump_logs(log_paths, log_handles)
+>                   raise TimeoutError(f"Port {port} not ready in {timeout}s")
+E                   TimeoutError: Port 7200 not ready in 300s
+
+common.py:110: TimeoutError
+- generated xml file: /workspace/vllm/code/src/auto_pd_test/artifacts/test_runs/20261009_065937/lmcache__test_lmcache_1p2d_tp2.py/junit.xml -
+=========================== short test summary info ============================
+ERROR lmcache/test_lmcache_1p2d_tp2.py::test_chat_completion_round_robin - TimeoutError: Port 7200 not ready in 300s
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+========================= 1 error in 326.56s (0:05:26) =========================
+
+============================================================
+Running lmcache/test_kv_offload_lmcache.py
+Log: /workspace/vllm/code/src/auto_pd_test/artifacts/test_runs/20261009_065937/lmcache__test_kv_offload_lmcache.py/pytest.log
+============================================================
+[PASS] lmcache/test_kv_offload_lmcache.py (207s)
+
+============================================================
+Running lmcache/test_kv_share_lmcache.py
+Log: /workspace/vllm/code/src/auto_pd_test/artifacts/test_runs/20261009_065937/lmcache__test_kv_share_lmcache.py/pytest.log
+============================================================
+[FAIL] lmcache/test_kv_share_lmcache.py (289s)
+Last 200 log lines for lmcache/test_kv_share_lmcache.py:
+============================= test session starts ==============================
+platform linux -- Python 3.12.11, pytest-8.4.1, pluggy-1.6.0 -- /opt/conda/bin/python3
+cachedir: .pytest_cache
+rootdir: /workspace/vllm/code/src/auto_pd_test
+plugins: anyio-4.15.1
+collecting ... collected 2 items
+
+lmcache/test_kv_share_lmcache.py::test_01_centralized_sharing 
+######################################################################
+### 开始测试用例 1: 中心化 KVCache 共享 ###
+######################################################################
+
+[调试信息] 中心化共享测试，日志文件位于: /tmp/pytest-of-root/pytest-5/centralized_sharing_test0
+
+--- 正在启动 LMCache 中心化服务器 ---
+
+--- 正在启动两个 vLLM 实例 ---
+
+--- 等待所有服务端口开放 ---
+✅ 所有服务已成功启动并准备就绪!
+  > 成功连接到 vLLM 服务, 模型 ID: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B
+  > 正在生成约 16384 tokens 的长提示...
+
+--- [测试] 正在向实例1 (端口 8000) 发送请求 (冷缓存)... ---
+  > 收到响应: 'What is the purpose of this test? Answer: The text...'
+
+✅ 实例1 (冷) TTFT: 3.927 秒
+
+--- [测试] 等待 8 秒，确保 KVCache 已在对等方之间同步... ---
+
+--- [测试] 正在向实例2 (端口 8001) 发送请求 (热缓存)... ---
+  > 收到响应: 'The text is being used to test the Key-Value Cache...'
+
+✅ 实例2 (热) TTFT: 2.771 秒
+
+==============================
+KVCache 中心化 共享测试 result:
+  Cold TTFT: 3.927s
+  Warm TTFT: 2.771s
+  Speedup: 1.4x
+  Cold text: 'What is the purpose of this test? Answer: The text is being tested to evaluate the Key-Value Cache sharing feature in LMCache when used with vLLM. The purpose of this test is to ensure that the cache can efficiently share key-value pairs across different requests or sessions, which is crucial for optimizing performance and reducing memory usage in large language models. The repeated sentence is used to generate a large number of tokens, which helps in assessing how the cache handles extensive data and maintains efficiency under high token load. The text is being tested to evaluate the Key-Value Cache sharing feature in LMCache when used with vLLM. The'
+  Warm text: 'The text is being used to test the Key-Value Cache sharing feature in LMCache with vLLM. The repetition of the sentence generates a significant number of tokens, which is being tested. The key-value cache sharing feature in LMCache with vLLM is being tested by repeating the sentence multiple times to generate a significant number of tokens. The key-value cache sharing feature in LMCache with vLLM is being tested by repeating the sentence multiple times to generate a significant number of tokens. The key-value cache sharing feature in LMCache with vLLM is being tested by repeating the sentence multiple times to generate a significant number of tokens'
+==============================
+KVCache 中心化 共享测试通过!
+
+--- 正在关闭所有服务 ---
+GPU 3: 62.0/63.6 GiB free, proceeding.
+GPU 4: 62.0/63.6 GiB free, proceeding.
+
+### 测试用例 1: 中心化 KVCache 共享 完成 ###
+PASSED
+lmcache/test_kv_share_lmcache.py::test_02_p2p_sharing 
+######################################################################
+### 开始测试用例 2: P2P KVCache 共享 (v2) ###
+######################################################################
+
+[调试信息] P2P v2 共享测试，日志文件位于: /tmp/pytest-of-root/pytest-5/p2p_v2_sharing_test0
+
+--- 正在启动 LMCache Controller ---
+
+--- 正在启动两个 vLLM 实例 (P2P v2 模式) ---
+
+--- 等待所有服务端口开放 ---
+✅ 所有服务已成功启动并准备就绪!
+  > 成功连接到 vLLM 服务, 模型 ID: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B
+  > 正在生成约 16384 tokens 的长提示...
+
+--- [测试] 正在向实例1 (端口 8000) 发送请求 (冷缓存)... ---
+  > 收到响应: 'What is the purpose of this test? Answer: The text...'
+
+✅ 实例1 (冷) TTFT: 6.035 秒
+
+--- [测试] 等待 8 秒，确保 KVCache 已在对等方之间同步... ---
+
+--- [测试] 正在向实例2 (端口 8001) 发送请求 (热缓存)... ---
+  > 收到响应: 'What is the purpose of this test? Answer: The text...'
+
+✅ 实例2 (热) TTFT: 6.042 秒
+
+==============================
+KVCache P2P v2 共享测试 result:
+  Cold TTFT: 6.035s
+  Warm TTFT: 6.042s
+  Speedup: 1.0x
+  Cold text: 'What is the purpose of this test? Answer: The text is being tested to evaluate the Key-Value Cache sharing feature in LMCache when used with vLLM. The purpose of this test is to ensure that the cache can efficiently share key-value pairs across different requests or sessions, which is crucial for optimizing performance and reducing memory usage in large language models. The repeated sentence is used to generate a large number of tokens, which helps in assessing how the cache handles extensive data and maintains efficiency under high token load. The text is being tested to evaluate the Key-Value Cache sharing feature in LMCache when used with vLLM. The'
+  Warm text: 'What is the purpose of this test? Answer: The text is being tested to evaluate the Key-Value Cache sharing feature in LMCache when used with vLLM. The purpose of this test is to ensure that the cache can efficiently share key-value pairs across different requests or sessions, which is crucial for optimizing performance and reducing memory usage in large language models. The repeated sentence is used to generate a large number of tokens, which helps in assessing how the cache handles extensive data and maintains efficiency under high token load. The text is being tested to evaluate the Key-Value Cache sharing feature in LMCache when used with vLLM. The'
+==============================
+
+--- 正在关闭所有服务 (包括 lmcache_controller) ---
+GPU 3: 62.0/63.6 GiB free, proceeding.
+GPU 4: 62.0/63.6 GiB free, proceeding.
+FAILED
+
+=================================== FAILURES ===================================
+_____________________________ test_02_p2p_sharing ______________________________
+
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x71cd8dd5ae10>, _basetemp=PosixPath('/tmp/pytest-of-root/pytest-5'), _retention_count=3, _retention_policy='all')
+
+    def test_02_p2p_sharing(tmp_path_factory):
+        """测试用例 2: 验证 P2P KVCache 共享 (已更新)"""
+        print("\n" + "#"*70)
+        print("### 开始测试用例 2: P2P KVCache 共享 (v2) ###")
+        print("#"*70)
+        with p2p_sharing_service(tmp_path_factory) as service_info:
+>           _run_sharing_test(service_info)
+
+lmcache/test_kv_share_lmcache.py:606: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+lmcache/test_kv_share_lmcache.py:584: in _run_sharing_test
+    assert_cache_speedup(f"KVCache {test_type} 共享测试", cold_ttft, warm_ttft, cold_text, warm_text,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+label = 'KVCache P2P v2 共享测试', cold_ttft = 6.03487672097981
+warm_ttft = 6.041819144971669
+cold_text = 'What is the purpose of this test? Answer: The text is being tested to evaluate the Key-Value Cache sharing feature in...ken load. The text is being tested to evaluate the Key-Value Cache sharing feature in LMCache when used with vLLM. The'
+warm_text = 'What is the purpose of this test? Answer: The text is being tested to evaluate the Key-Value Cache sharing feature in...ken load. The text is being tested to evaluate the Key-Value Cache sharing feature in LMCache when used with vLLM. The'
+max_warm_ratio = 0.9, require_match = False, keyword_len = 24
+
+    def assert_cache_speedup(label, cold_ttft, warm_ttft, cold_text=None, warm_text=None,
+                              max_warm_ratio=0.5, require_match=True, keyword_len=24):
+        """Standard pass/fail check for a cold-vs-warm KV cache comparison test.
+    
+        Checks (1) the warm query was meaningfully faster than the cold one, and
+        -- whenever text was captured -- (2) the warm output contains the leading
+        `keyword_len` characters of the cold output, so a cache-corruption bug
+        that doesn't show up as a slowdown still fails the test.
+    
+        This is a *keyword-containment* check, not a full exact-match: greedy
+        (temperature=0) decoding on the same engine is normally stable, but
+        requiring the two completions to be byte-for-byte identical is stricter
+        than the KV cache contract actually promises (e.g. minor tail-end drift
+        from batching/kernel state) and produced false failures in practice.
+        Checking that the cold output's leading text reappears in the warm
+        output still catches real corruption (a totally different response)
+        without being flaky about small differences further into the generation.
+        """
+        speedup_factor = cold_ttft / warm_ttft if warm_ttft else float("inf")
+        print("\n" + "=" * 30)
+        print(f"{label} result:")
+        print(f"  Cold TTFT: {cold_ttft:.3f}s")
+        print(f"  Warm TTFT: {warm_ttft:.3f}s")
+        print(f"  Speedup: {speedup_factor:.1f}x")
+        if cold_text is not None:
+            print(f"  Cold text: {cold_text!r}")
+        if warm_text is not None:
+            print(f"  Warm text: {warm_text!r}")
+        print("=" * 30)
+    
+        assert cold_ttft > 0, f"{label}: cold query was unexpectedly too fast."
+>       assert warm_ttft < cold_ttft * max_warm_ratio, (
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            f"{label}: warm cache ({warm_ttft:.3f}s) did not improve enough over "
+            f"cold cache ({cold_ttft:.3f}s)."
+        )
+E       AssertionError: KVCache P2P v2 共享测试: warm cache (6.042s) did not improve enough over cold cache (6.035s).
+
+common.py:400: AssertionError
+- generated xml file: /workspace/vllm/code/src/auto_pd_test/artifacts/test_runs/20261009_065937/lmcache__test_kv_share_lmcache.py/junit.xml -
+=========================== short test summary info ============================
+FAILED lmcache/test_kv_share_lmcache.py::test_02_p2p_sharing - AssertionError: KVCache P2P v2 共享测试: warm cache (6.042s) did not improve enough over cold cache (6.035s).
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+=================== 1 failed, 1 passed in 279.84s (0:04:39) ====================
+
+============================================================
+Running lmcache/test_lmcache_mp.py
+Log: /workspace/vllm/code/src/auto_pd_test/artifacts/test_runs/20261009_065937/lmcache__test_lmcache_mp.py/pytest.log
+============================================================
+[PASS] lmcache/test_lmcache_mp.py (609s)
+
+============================================================
+Running mooncake/test_mooncake_1p2d_tp2.py
+Log: /workspace/vllm/code/src/auto_pd_test/artifacts/test_runs/20261009_065937/mooncake__test_mooncake_1p2d_tp2.py/pytest.log
+============================================================
+[FAIL] mooncake/test_mooncake_1p2d_tp2.py (165s)
+Last 200 log lines for mooncake/test_mooncake_1p2d_tp2.py:
+============================= test session starts ==============================
+platform linux -- Python 3.12.11, pytest-8.4.1, pluggy-1.6.0 -- /opt/conda/bin/python3
+cachedir: .pytest_cache
+rootdir: /workspace/vllm/code/src/auto_pd_test
+plugins: anyio-4.15.1
+collecting ... collected 1 item
+
+mooncake/test_mooncake_1p2d_tp2.py::test_mooncake_pd_round_robin 
+[Setup] Starting Mooncake 1P2D Cluster (TP=2)...
+[Setup] Logs will be saved to: /tmp/pytest-of-root/pytest-7/mooncake_1p2d_tp20
+-> Launching Prefiller (Port 7100, Mooncake 8998)...
+-> Launching Decoder 1 (Port 7200, Mooncake 8999)...
+-> Launching Decoder 2 (Port 7201, Mooncake 9000)...
+Waiting for vLLM instances to initialize...
+-> Launching Proxy on Port 9487...
+[Setup] Cluster is READY!
+
+[Req #1] Sending: '10 + 10 = ?'
+[Req #1 Result] <think>
+Okay, let's see. The user is asking 10 plus 10 equals what. Hmm, that seems straightforward, but maybe I should double-check to make sure I'm not missing anything. Let me start by recalling basic addition principles. 
+
+So, addition is one of the fundamental operations in arithmetic. When you add two numbers together, you're essentially combining their quantities. In this case, both numbers are 10. So, if I have ten objects and I add another ten objects, how many do I have in total? Let me visualize it. If I have a group of ten apples and another group of ten apples, combining them would give me twenty apples. That makes sense.
+
+Wait, but maybe I should break it down step by step. Let's think about the number line. Starting at 10 and moving 10 units to the right. So, 10 plus 10 would be 10 + 10. Starting
+
+[Req #2] Sending: '1 + 2 = ?'
+[Req #2 Result] <think>
+Okay, let's see. The user is asking 1 + 2. Hmm, that's a basic arithmetic problem. I need to make sure I answer correctly. Let me think. Adding 1 and 2... Well, 1 plus 2 equals 3. Wait, is there any chance they might be asking something else? Like maybe in a different context? But the question is straightforward. Maybe they're testing if I can handle simple math. Or perhaps they want a more detailed explanation. Let me check if there's any trick here. No, I don't think so. It's just a simple addition. So the answer should be 3. I should present it clearly. Maybe even explain the steps, but since it's so basic, maybe just state the answer. Alright, I'll go with that.
+</think>
+
+1 + 2 = 3
+Req #2 Passed
+FAILED
+[Teardown] Cleaning up processes...
+GPU 0: 62.0/63.6 GiB free, proceeding.
+GPU 1: 62.0/63.6 GiB free, proceeding.
+GPU 2: 62.0/63.6 GiB free, proceeding.
+GPU 3: 62.0/63.6 GiB free, proceeding.
+GPU 4: 62.0/63.6 GiB free, proceeding.
+GPU 5: 62.0/63.6 GiB free, proceeding.
+[Teardown] Done.
+
+
+=================================== FAILURES ===================================
+_________________________ test_mooncake_pd_round_robin _________________________
+
+cluster_1p2d_mooncake = None
+
+    def test_mooncake_pd_round_robin(cluster_1p2d_mooncake):
+        test_cases = [
+            {"prompt": "10 + 10 = ?", "expect": "20"},
+            {"prompt": "1 + 2 = ?", "expect": "3"},
+        ]
+    
+        failures = []
+    
+        for i, case in enumerate(test_cases):
+            req_id = i + 1
+            success, result = send_chat_request(req_id, case["prompt"])
+    
+            if not success:
+                failures.append(f"Req #{req_id} Failed: {result}")
+            elif case["expect"].lower() not in result.lower():
+                failures.append(f"Req #{req_id} Content Error. Expected '{case['expect']}', Got: '{result}'")
+            else:
+                print(f"Req #{req_id} Passed")
+    
+            time.sleep(2.0)
+    
+        if failures:
+>           pytest.fail("\n".join(failures))
+E           Failed: Req #1 Content Error. Expected '20', Got: '<think>
+E           Okay, let's see. The user is asking 10 plus 10 equals what. Hmm, that seems straightforward, but maybe I should double-check to make sure I'm not missing anything. Let me start by recalling basic addition principles. 
+E           
+E           So, addition is one of the fundamental operations in arithmetic. When you add two numbers together, you're essentially combining their quantities. In this case, both numbers are 10. So, if I have ten objects and I add another ten objects, how many do I have in total? Let me visualize it. If I have a group of ten apples and another group of ten apples, combining them would give me twenty apples. That makes sense.
+E           
+E           Wait, but maybe I should break it down step by step. Let's think about the number line. Starting at 10 and moving 10 units to the right. So, 10 plus 10 would be 10 + 10. Starting'
+
+mooncake/test_mooncake_1p2d_tp2.py:217: Failed
+- generated xml file: /workspace/vllm/code/src/auto_pd_test/artifacts/test_runs/20261009_065937/mooncake__test_mooncake_1p2d_tp2.py/junit.xml -
+=========================== short test summary info ============================
+FAILED mooncake/test_mooncake_1p2d_tp2.py::test_mooncake_pd_round_robin - Failed: Req #1 Content Error. Expected '20', Got: '<think>
+Okay, let's see. The user is asking 10 plus 10 equals what. Hmm, that seems straightforward, but maybe I should double-check to make sure I'm not missing anything. Let me start by recalling basic addition principles. 
+
+So, addition is one of the fundamental operations in arithmetic. When you add two numbers together, you're essentially combining their quantities. In this case, both numbers are 10. So, if I have ten objects and I add another ten objects, how many do I have in total? Let me visualize it. If I have a group of ten apples and another group of ten apples, combining them would give me twenty apples. That makes sense.
+
+Wait, but maybe I should break it down step by step. Let's think about the number line. Starting at 10 and moving 10 units to the right. So, 10 plus 10 would be 10 + 10. Starting'
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+======================== 1 failed in 154.66s (0:02:34) =========================
+
+============================================================
+Running mooncake/test_mooncake_kvcache_offload.py
+Log: /workspace/vllm/code/src/auto_pd_test/artifacts/test_runs/20261009_065937/mooncake__test_mooncake_kvcache_offload.py/pytest.log
+============================================================
+[PASS] mooncake/test_mooncake_kvcache_offload.py (178s)
+
+============================================================
+Running nixl/test_nixl_1p2d_tp2.py
+Log: /workspace/vllm/code/src/auto_pd_test/artifacts/test_runs/20261009_065937/nixl__test_nixl_1p2d_tp2.py/pytest.log
+============================================================
+[FAIL] nixl/test_nixl_1p2d_tp2.py (170s)
+Last 200 log lines for nixl/test_nixl_1p2d_tp2.py:
+============================= test session starts ==============================
+platform linux -- Python 3.12.11, pytest-8.4.1, pluggy-1.6.0 -- /opt/conda/bin/python3
+cachedir: .pytest_cache
+rootdir: /workspace/vllm/code/src/auto_pd_test
+plugins: anyio-4.15.1
+collecting ... collected 1 item
+
+nixl/test_nixl_1p2d_tp2.py::test_nixl_pd_round_robin 
+[Setup] Starting NIXL 1P2D Cluster (TP=2)...
+[Setup] Logs will be saved to: /tmp/pytest-of-root/pytest-9/nixl_1p2d_tp20
+-> Launching Prefiller (Port 8100, NIXL Side Channel 5600)...
+-> Launching Decoder 1 (Port 8200, NIXL Side Channel 5610)...
+-> Launching Decoder 2 (Port 8300, NIXL Side Channel 5620)...
+Waiting for vLLM instances to initialize...
+-> Launching Proxy on Port 8192...
+[Setup] Cluster is READY!
+
+[Req #1] Sending: '10 + 10 = ?'
+[Req #1 Result] <think>
+Okay, let's see. The user is asking 10 plus 10 equals what. Hmm, that seems straightforward, but maybe I should double-check to make sure I'm not missing anything. Let me start by recalling basic addition principles. 
+
+So, addition is one of the fundamental operations in arithmetic. When you add two numbers together, you're essentially combining their quantities. In this case, both numbers are 10. So, if I have ten objects and I add another ten objects, how many do I have in total? Let me visualize it. If I have a group of ten apples and another group of ten apples, combining them would give me twenty apples. That makes sense.
+
+Wait, but maybe I should break it down step by step. Let's think about the number line. Starting at 10 and moving 10 units to the right. So, 10 plus 10 would be 10 + 10. Starting
+
+[Req #2] Sending: '1 + 2 = ?'
+[Req #2 Result] <think>
+Okay, let's see. The user is asking 1 + 2. Hmm, that's a basic arithmetic problem. I need to make sure I answer correctly. Let me think. Adding 1 and 2... Well, 1 plus 2 equals 3. Wait, is there any chance they might be asking something else? Like maybe in a different context? But the question is straightforward. Maybe they're testing if I can handle simple math. Or perhaps they want a more detailed explanation. Let me check if there's any trick here. No, I don't think so. It's just a simple addition. So the answer should be 3. I should present it clearly. Maybe even explain the steps, but since it's so basic, maybe just state the answer. Alright, I'll go with that.
+</think>
+
+1 + 2 = 3
+Req #2 Passed
+FAILED
+[Teardown] Cleaning up processes...
+decoder1 (pgid=66552) did not exit on SIGTERM, sending SIGKILL to its process group.
+GPU 0: 62.0/63.6 GiB free, proceeding.
+GPU 1: 62.0/63.6 GiB free, proceeding.
+GPU 2: 62.0/63.6 GiB free, proceeding.
+GPU 3: 62.0/63.6 GiB free, proceeding.
+GPU 4: 62.0/63.6 GiB free, proceeding.
+GPU 5: 62.0/63.6 GiB free, proceeding.
+[Teardown] Done.
+
+
+=================================== FAILURES ===================================
+___________________________ test_nixl_pd_round_robin ___________________________
+
+cluster_1p2d_nixl = None
+
+    def test_nixl_pd_round_robin(cluster_1p2d_nixl):
+        test_cases = [
+            {"prompt": "10 + 10 = ?", "expect": "20"},
+            {"prompt": "1 + 2 = ?", "expect": "3"},
+        ]
+    
+        failures = []
+    
+        for i, case in enumerate(test_cases):
+            req_id = i + 1
+            success, result = send_chat_request(req_id, case["prompt"])
+    
+            if not success:
+                failures.append(f"Req #{req_id} Failed: {result}")
+            elif case["expect"] not in result:
+                failures.append(f"Req #{req_id} Content Error. Expected '{case['expect']}', Got: '{result}'")
+            else:
+                print(f"Req #{req_id} Passed")
+    
+            time.sleep(2.0)
+    
+        if failures:
+>           pytest.fail("\n".join(failures))
+E           Failed: Req #1 Content Error. Expected '20', Got: '<think>
+E           Okay, let's see. The user is asking 10 plus 10 equals what. Hmm, that seems straightforward, but maybe I should double-check to make sure I'm not missing anything. Let me start by recalling basic addition principles. 
+E           
+E           So, addition is one of the fundamental operations in arithmetic. When you add two numbers together, you're essentially combining their quantities. In this case, both numbers are 10. So, if I have ten objects and I add another ten objects, how many do I have in total? Let me visualize it. If I have a group of ten apples and another group of ten apples, combining them would give me twenty apples. That makes sense.
+E           
+E           Wait, but maybe I should break it down step by step. Let's think about the number line. Starting at 10 and moving 10 units to the right. So, 10 plus 10 would be 10 + 10. Starting'
+
+nixl/test_nixl_1p2d_tp2.py:215: Failed
+- generated xml file: /workspace/vllm/code/src/auto_pd_test/artifacts/test_runs/20261009_065937/nixl__test_nixl_1p2d_tp2.py/junit.xml -
+=========================== short test summary info ============================
+FAILED nixl/test_nixl_1p2d_tp2.py::test_nixl_pd_round_robin - Failed: Req #1 Content Error. Expected '20', Got: '<think>
+Okay, let's see. The user is asking 10 plus 10 equals what. Hmm, that seems straightforward, but maybe I should double-check to make sure I'm not missing anything. Let me start by recalling basic addition principles. 
+
+So, addition is one of the fundamental operations in arithmetic. When you add two numbers together, you're essentially combining their quantities. In this case, both numbers are 10. So, if I have ten objects and I add another ten objects, how many do I have in total? Let me visualize it. If I have a group of ten apples and another group of ten apples, combining them would give me twenty apples. That makes sense.
+
+Wait, but maybe I should break it down step by step. Let's think about the number line. Starting at 10 and moving 10 units to the right. So, 10 plus 10 would be 10 + 10. Starting'
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+======================== 1 failed in 160.05s (0:02:40) =========================
+
+============================================================
+Running vllm/test_vllm_kvcache_offload.py
+Log: /workspace/vllm/code/src/auto_pd_test/artifacts/test_runs/20261009_065937/vllm__test_vllm_kvcache_offload.py/pytest.log
+============================================================
+[PASS] vllm/test_vllm_kvcache_offload.py (175s)
+
+Summary TSV: /workspace/vllm/code/src/auto_pd_test/artifacts/test_runs/20261009_065937/summary.tsv
+Summary MD: /workspace/vllm/code/src/auto_pd_test/artifacts/test_runs/20261009_065937/summary.md
+Total: 8 files, PASS=4, FAIL=4, Duration=2129s
