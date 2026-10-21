@@ -138,6 +138,12 @@ def lmcache_mp_service(
             "--chunk-size", "256",
             "--l1-size-gb", "5",
             "--eviction-policy", "LRU",
+            # The default is `lmcache_driven` (zero-copy device IPC). This
+            # platform needs the engine-driven transfer module to be loaded as
+            # well, otherwise the worker's registration request has no handler
+            # on the server side and the engine hangs until the startup
+            # timeout. `auto` loads both modules.
+            "--supported-transfer-mode", "auto",
         ]
         if l2_base_path is not None:
             l2_base_path.mkdir(parents=True, exist_ok=True)
@@ -174,6 +180,15 @@ def lmcache_mp_service(
             "kv_connector_extra_config": {
                 "lmcache.mp.host": "tcp://localhost",
                 "lmcache.mp.port": slot["lmcache_port"],
+                # `auto` resolves to the `lmcache_driven` zero-copy IPC path
+                # on CUDA, which deadlocks here: the vLLM worker exports its
+                # KV-cache IPC handles fine ("Wrapping N KV cache tensors for
+                # IPC"), but the lmcache server never finishes opening them
+                # and never acks REGISTER_KV_CACHE, so engine init hangs until
+                # the startup timeout. Force the engine-driven path, where the
+                # worker gathers/scatters KV through host memory with plain
+                # torch ops (no cross-process device handles).
+                "lmcache.mp.mp_transfer_mode": "engine_driven",
             },
         }
         vllm_cmd = [
@@ -192,7 +207,12 @@ def lmcache_mp_service(
         print("Waiting for vLLM service to load the model...")
         _wait_for_port(
             VLLM_HOST, slot["vllm_port"], timeout=180,
-            process=vllm_process, log_paths=vllm_log,
+            # Monitor both processes and dump both logs: the failure this
+            # guards against is the lmcache server dying (or never acking)
+            # while vLLM sits in KV-cache registration, and the vLLM log
+            # alone shows nothing after the registration request.
+            processes={"vllm": vllm_process, "lmcache": lmcache_process},
+            log_paths={"vllm": vllm_log, "lmcache": lmcache_log},
             stage=f"{name} vllm startup",
         )
         print("vLLM service is ready.")
