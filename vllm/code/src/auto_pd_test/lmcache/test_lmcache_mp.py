@@ -119,9 +119,9 @@ def lmcache_mp_service(
     # cudaIpcOpenMemHandle, which requires both processes to agree on which
     # physical device is "device 0".
     env["CUDA_VISIBLE_DEVICES"] = slot["cuda_device"]
-    # Required on this MetaX (MACA) GPU platform: without it, the lmcache
-    # server and vLLM worker cannot share GPU memory across processes and
-    # the REGISTER_KV_CACHE handshake hangs indefinitely.
+    # Only relevant to the zero-copy `lmcache_driven` path, which is not used
+    # below (the MetaX/MACA IPC handshake deadlocks); kept because it is also
+    # harmless for engine-driven transfers and other tests may enable IPC.
     env["MACA_MPS_MODE"] = "1"
 
     lmcache_process = None
@@ -144,6 +144,14 @@ def lmcache_mp_service(
             # on the server side and the engine hangs until the startup
             # timeout. `auto` loads both modules.
             "--supported-transfer-mode", "auto",
+            # Engine-driven transfers use a pickle-over-ZMQ path by default,
+            # which pushes the whole ~4 GiB KV cache through Python for every
+            # store/retrieve -- slower than just re-running prefill. A named
+            # SHM pool makes the worker write KV straight into shared memory.
+            # Unique per slot and per pytest process so simultaneously running
+            # servers never collide, and a SIGKILLed previous run cannot leave
+            # a stale segment behind under the same name.
+            "--shm-name", f"lmcache_pool_{slot['lmcache_port']}_{os.getpid()}",
         ]
         if l2_base_path is not None:
             l2_base_path.mkdir(parents=True, exist_ok=True)
@@ -343,7 +351,10 @@ def test_01_kvcache_mp_l1_offload(tmp_path_factory):
         print(f"\nCold cache TTFT: {cold_ttft:.3f}s")
         assert cold_ttft > 0, "Cold cache query was unexpectedly too fast."
 
-        time.sleep(1)
+        # The store of the cold request's ~4 GiB KV cache runs asynchronously
+        # on the worker; on the engine-driven path it has to gather host-side
+        # data first, so 1s is not enough to make the warm query a sure hit.
+        time.sleep(5)
         print("\n--- Warm cache query (same lmcache server, same L1) ---")
         warm_ttft, warm_text = query_and_measure_ttft(client, model_id, prompt)
         print(f"\nWarm cache TTFT: {warm_ttft:.3f}s")
