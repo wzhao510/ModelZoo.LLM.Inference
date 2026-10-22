@@ -1,0 +1,384 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.11, pytest-8.4.1, pluggy-1.7.0 -- /opt/conda/bin/python3
+cachedir: .pytest_cache
+rootdir: /workspace/vllm/code/src/auto_pd_test
+plugins: platformdirs-4.13.5, anyio-4.15.1
+collecting ... collected 4 items
+
+lmcache/test_lmcache_mp.py::test_01_kvcache_mp_l1_offload 
+[Debug] KVCache MP 'l1' logs: /tmp/pytest-of-root/pytest-2/kv_mp_l10
+
+--- Starting lmcache server (l1) ---
+lmcache server command: lmcache server --host localhost --port 6555 --http-port 7555 --chunk-size 256 --l1-size-gb 5 --eviction-policy LRU
+lmcache server is ready.
+
+--- Starting vLLM (l1, LMCacheMPConnector) ---
+vLLM command: vllm serve /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B --port 8300 --max-model-len 32768 --no-enable-prefix-caching --enforce-eager --kv-transfer-config {"kv_connector": "LMCacheMPConnector", "kv_connector_module_path": "lmcache.integration.vllm.lmcache_mp_connector", "kv_role": "kv_both", "kv_connector_extra_config": {"lmcache.mp.host": "tcp://localhost", "lmcache.mp.port": 6555}}
+Waiting for vLLM service to load the model...
+vLLM service is ready.
+
+--- Testing KVCache MP L1 offload ---
+Connected to vLLM service, model ID: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B
+Loading tokenizer from /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B to build a long prompt...
+Generated prompt tokens: 28944
+First token: '<think>'
+Okay, the user is asking for the capital city of China. Let me think. I remember that Beijing is the capital. But wait, I should make sure. China's capital is indeed Beijing. The question says to answer with only the city name, no extra text. So the answer is Beijing.
+</think>
+
+Beijing
+Streaming response finished.
+
+Cold cache TTFT: 3.512s
+
+--- Warm cache query (same lmcache server, same L1) ---
+First token: '<think>'
+Okay, the user is asking for the capital city of China. Let me think. The question is straightforward. The capital of China is Beijing. I need to make sure there's no trick here. The user provided a lot of repeated text about the quick brown fox and LMCache, but that's just filler. The actual question is clear. So the answer should be Beijing. No need to consider any other options. Just confirm that Beijing is the correct capital. Yes, that's right.
+</think>
+
+Beijing
+Streaming response finished.
+
+Warm cache TTFT: 0.108s
+
+==============================
+KVCache MP L1 offload result:
+  Cold cache TTFT: 3.512s
+  Warm cache TTFT: 0.108s
+  TTFT improvement: 3.404s (32.6x faster)
+  Cold text: "<think>\nOkay, the user is asking for the capital city of China. Let me think. I remember that Beijing is the capital. But wait, I should make sure. China's capital is indeed Beijing. The question says to answer with only the city name, no extra text. So the answer is Beijing.\n</think>\n\nBeijing"
+  Warm text: "<think>\nOkay, the user is asking for the capital city of China. Let me think. The question is straightforward. The capital of China is Beijing. I need to make sure there's no trick here. The user provided a lot of repeated text about the quick brown fox and LMCache, but that's just filler. The actual question is clear. So the answer should be Beijing. No need to consider any other options. Just confirm that Beijing is the correct capital. Yes, that's right.\n</think>\n\nBeijing"
+==============================
+
+--- Stopping vLLM + lmcache server (l1) ---
+GPU 0: 62.1/63.6 GiB free, proceeding.
+PASSED
+lmcache/test_lmcache_mp.py::test_02_kvcache_mp_l2_offload 
+--- Testing KVCache MP L2 offload: cold phase (fresh L1 + L2) ---
+
+[Debug] KVCache MP 'l2-cold' logs: /tmp/pytest-of-root/pytest-2/kv_mp_l2-cold0
+
+--- Starting lmcache server (l2-cold) ---
+lmcache server command: lmcache server --host localhost --port 6555 --http-port 7555 --chunk-size 256 --l1-size-gb 5 --eviction-policy LRU --l2-adapter {"type": "fs", "base_path": "/tmp/pytest-of-root/pytest-2/kv_mp_l2_data0"}
+lmcache server is ready.
+
+--- Starting vLLM (l2-cold, LMCacheMPConnector) ---
+vLLM command: vllm serve /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B --port 8300 --max-model-len 32768 --no-enable-prefix-caching --enforce-eager --kv-transfer-config {"kv_connector": "LMCacheMPConnector", "kv_connector_module_path": "lmcache.integration.vllm.lmcache_mp_connector", "kv_role": "kv_both", "kv_connector_extra_config": {"lmcache.mp.host": "tcp://localhost", "lmcache.mp.port": 6555}}
+Waiting for vLLM service to load the model...
+vLLM service is ready.
+Connected to vLLM service, model ID: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B
+Loading tokenizer from /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B to build a long prompt...
+Generated prompt tokens: 28944
+First token: '<think>'
+Okay, the user is asking for the capital city of China. Let me think. I remember that Beijing is the capital. But wait, I should make sure. China's capital is indeed Beijing. The question says to answer with only the city name, no extra text. So the answer is Beijing.
+</think>
+
+Beijing
+Streaming response finished.
+
+Cold cache TTFT: 3.501s
+Waiting for the async L1->L2 flush to complete...
+
+--- Stopping vLLM + lmcache server (l2-cold) ---
+GPU 0: 62.1/63.6 GiB free, proceeding.
+
+--- Testing KVCache MP L2 offload: warm phase (fresh L1, same L2 dir) ---
+
+[Debug] KVCache MP 'l2-warm' logs: /tmp/pytest-of-root/pytest-2/kv_mp_l2-warm0
+
+--- Starting lmcache server (l2-warm) ---
+lmcache server command: lmcache server --host localhost --port 6555 --http-port 7555 --chunk-size 256 --l1-size-gb 5 --eviction-policy LRU --l2-adapter {"type": "fs", "base_path": "/tmp/pytest-of-root/pytest-2/kv_mp_l2_data0"}
+lmcache server is ready.
+
+--- Starting vLLM (l2-warm, LMCacheMPConnector) ---
+vLLM command: vllm serve /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B --port 8300 --max-model-len 32768 --no-enable-prefix-caching --enforce-eager --kv-transfer-config {"kv_connector": "LMCacheMPConnector", "kv_connector_module_path": "lmcache.integration.vllm.lmcache_mp_connector", "kv_role": "kv_both", "kv_connector_extra_config": {"lmcache.mp.host": "tcp://localhost", "lmcache.mp.port": 6555}}
+Waiting for vLLM service to load the model...
+vLLM service is ready.
+Connected to vLLM service, model ID: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B
+Loading tokenizer from /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B to build a long prompt...
+Generated prompt tokens: 28944
+First token: '<think>'
+</think>
+
+Beijing
+Streaming response finished.
+
+Warm cache TTFT: 1.061s
+
+==============================
+KVCache MP L2 offload result:
+  Cold cache TTFT: 3.501s
+  Warm cache TTFT: 1.061s
+  TTFT improvement: 2.439s (3.3x faster)
+  Cold text: "<think>\nOkay, the user is asking for the capital city of China. Let me think. I remember that Beijing is the capital. But wait, I should make sure. China's capital is indeed Beijing. The question says to answer with only the city name, no extra text. So the answer is Beijing.\n</think>\n\nBeijing"
+  Warm text: '<think>\n</think>\n\nBeijing'
+==============================
+
+--- Stopping vLLM + lmcache server (l2-warm) ---
+GPU 0: 62.1/63.6 GiB free, proceeding.
+PASSED
+lmcache/test_lmcache_mp.py::test_03_kvcache_mp_centralized_sharing 
+[Debug] KVCache MP 'central-a' logs: /tmp/pytest-of-root/pytest-2/kv_mp_central-a0
+
+--- Starting lmcache server (central-a) ---
+lmcache server command: lmcache server --host localhost --port 6555 --http-port 7555 --chunk-size 256 --l1-size-gb 5 --eviction-policy LRU --l2-adapter {"type": "fs", "base_path": "/tmp/pytest-of-root/pytest-2/kv_mp_centralized_l2_data0"}
+lmcache server is ready.
+
+--- Starting vLLM (central-a, LMCacheMPConnector) ---
+vLLM command: vllm serve /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B --port 8300 --max-model-len 32768 --no-enable-prefix-caching --enforce-eager --kv-transfer-config {"kv_connector": "LMCacheMPConnector", "kv_connector_module_path": "lmcache.integration.vllm.lmcache_mp_connector", "kv_role": "kv_both", "kv_connector_extra_config": {"lmcache.mp.host": "tcp://localhost", "lmcache.mp.port": 6555}}
+Waiting for vLLM service to load the model...
+vLLM service is ready.
+Connected to vLLM service, model ID: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B
+Loading tokenizer from /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B to build a long prompt...
+Generated prompt tokens: 28944
+
+--- Instance A: cold query, populates shared L2 ---
+First token: '<think>'
+Okay, the user is asking for the capital city of China. Let me think. I remember that Beijing is the capital. But wait, I should make sure. China's capital is indeed Beijing. The question says to answer with only the city name, no extra text. So the answer is Beijing.
+</think>
+
+Beijing
+Streaming response finished.
+
+Instance A cold TTFT: 3.492s
+Waiting for the async L1->L2 flush to complete...
+
+[Debug] KVCache MP 'central-b' logs: /tmp/pytest-of-root/pytest-2/kv_mp_central-b0
+
+--- Starting lmcache server (central-b) ---
+lmcache server command: lmcache server --host localhost --port 6556 --http-port 7556 --chunk-size 256 --l1-size-gb 5 --eviction-policy LRU --l2-adapter {"type": "fs", "base_path": "/tmp/pytest-of-root/pytest-2/kv_mp_centralized_l2_data0"}
+lmcache server is ready.
+
+--- Starting vLLM (central-b, LMCacheMPConnector) ---
+vLLM command: vllm serve /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B --port 8301 --max-model-len 32768 --no-enable-prefix-caching --enforce-eager --kv-transfer-config {"kv_connector": "LMCacheMPConnector", "kv_connector_module_path": "lmcache.integration.vllm.lmcache_mp_connector", "kv_role": "kv_both", "kv_connector_extra_config": {"lmcache.mp.host": "tcp://localhost", "lmcache.mp.port": 6556}}
+Waiting for vLLM service to load the model...
+vLLM service is ready.
+Connected to vLLM service, model ID: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B
+
+--- Instance B: same prompt, own L1 is empty, must hit shared L2 ---
+First token: '<think>'
+</think>
+
+Beijing
+Streaming response finished.
+
+Instance B TTFT (via shared L2): 1.086s
+
+==============================
+KVCache MP centralized-sharing offload result:
+  Cold cache TTFT: 3.492s
+  Warm cache TTFT: 1.086s
+  TTFT improvement: 2.407s (3.2x faster)
+  Cold text: "<think>\nOkay, the user is asking for the capital city of China. Let me think. I remember that Beijing is the capital. But wait, I should make sure. China's capital is indeed Beijing. The question says to answer with only the city name, no extra text. So the answer is Beijing.\n</think>\n\nBeijing"
+  Warm text: '<think>\n</think>\n\nBeijing'
+==============================
+
+--- Stopping vLLM + lmcache server (central-b) ---
+GPU 1: 62.1/63.6 GiB free, proceeding.
+
+--- Stopping vLLM + lmcache server (central-a) ---
+GPU 0: 62.1/63.6 GiB free, proceeding.
+PASSED
+lmcache/test_lmcache_mp.py::test_04_kvcache_mp_p2p_sharing 
+--- Starting lmcache coordinator ---
+lmcache coordinator --host localhost --port 9300
+lmcache coordinator is ready.
+
+[Debug] KVCache MP 'p2p-a' logs: /tmp/pytest-of-root/pytest-2/kv_mp_p2p-a0
+
+--- Starting lmcache server (p2p-a) ---
+lmcache server command: lmcache server --host 0.0.0.0 --port 6555 --http-port 7555 --chunk-size 256 --l1-size-gb 5 --eviction-policy LRU --l1-align-bytes 65536 --instance-id lmcache-a --coordinator-url http://localhost:9300 --coordinator-advertise-ip 127.0.0.1 --p2p-advertise-url 127.0.0.1:8555 --p2p-listen-url 0.0.0.0:8555
+[FATAL] Timeout waiting for localhost:7555 during p2p-a lmcache server startup.
+
+================================================================================
+STARTUP DEBUG LOG DUMP
+================================================================================
+
+--- log: /tmp/pytest-of-root/pytest-2/kv_mp_p2p-a0/lmcache_server.log ---
+[32;20m[2026-10-22 19:08:56,031] LMCache INFO:[0m torch_dev=<module 'torch.cuda' from '/opt/conda/lib/python3.12/site-packages/torch/cuda/__init__.py'>, torch_device_type=cuda [3m(_device_detect.py:312:lmcache.v1.platform._device_detect)[0m
+[32;20m[2026-10-22 19:08:56,032] LMCache INFO:[0m Auto-selected backend [cuda] for accelerator 'cuda' from candidate backends [cuda, rocm]. [3m(__init__.py:148:lmcache.v1.platform)[0m
+
+ _     __  __    ____           _          
+| |   |  \/  |  / ___|__ _  ___| |__   ___      LMCache vunknown
+| |   | |\/| | | |   / _` |/ __| '_ \ / _ \     Website:  https://lmcache.ai/
+| |___| |  | | | |__| (_| | (__| | | |  __/     Recipes:  https://docs.lmcache.ai/recipes
+|_____|_|  |_|  \____\__,_|\___|_| |_|\___|     LinkedIn: https://www.linkedin.com/company/lmcache-lab
+Set LMCACHE_DISABLE_BANNER=1 to hide this banner.
+
+[32;20m[2026-10-22 19:08:56,594] LMCache INFO:[0m multi_layer_block_kv_transfer mode: ptr [3m(base.py:95:lmcache.v1.multiprocess.transfer_context.base)[0m
+[32;20m[2026-10-22 19:08:59,122] LMCache INFO:[0m Discovered API module: cache_api [3m(router_discovery.py:53:lmcache.v1.utils.router_discovery)[0m
+[32;20m[2026-10-22 19:08:59,123] LMCache INFO:[0m Discovered API module: env_api [3m(router_discovery.py:53:lmcache.v1.utils.router_discovery)[0m
+[32;20m[2026-10-22 19:08:59,124] LMCache INFO:[0m Discovered API module: loglevel_api [3m(router_discovery.py:53:lmcache.v1.utils.router_discovery)[0m
+[32;20m[2026-10-22 19:08:59,125] LMCache INFO:[0m Discovered API module: metrics_api [3m(router_discovery.py:53:lmcache.v1.utils.router_discovery)[0m
+[32;20m[2026-10-22 19:08:59,127] LMCache INFO:[0m Discovered API module: periodic_thread_api [3m(router_discovery.py:53:lmcache.v1.utils.router_discovery)[0m
+[32;20m[2026-10-22 19:08:59,127] LMCache INFO:[0m Discovered API module: run_script_api [3m(router_discovery.py:53:lmcache.v1.utils.router_discovery)[0m
+[32;20m[2026-10-22 19:08:59,128] LMCache INFO:[0m Discovered API module: thread_api [3m(router_discovery.py:53:lmcache.v1.utils.router_discovery)[0m
+[32;20m[2026-10-22 19:08:59,131] LMCache INFO:[0m Discovered API module: common_api [3m(router_discovery.py:53:lmcache.v1.utils.router_discovery)[0m
+[32;20m[2026-10-22 19:08:59,131] LMCache INFO:[0m Discovered API module: config_api [3m(router_discovery.py:53:lmcache.v1.utils.router_discovery)[0m
+[32;20m[2026-10-22 19:08:59,134] LMCache INFO:[0m Discovered API module: info_api [3m(router_discovery.py:53:lmcache.v1.utils.router_discovery)[0m
+[32;20m[2026-10-22 19:08:59,136] LMCache INFO:[0m Discovered API module: quota_api [3m(router_discovery.py:53:lmcache.v1.utils.router_discovery)[0m
+[32;20m[2026-10-22 19:08:59,139] LMCache INFO:[0m Discovered API module: reconfigure_api [3m(router_discovery.py:53:lmcache.v1.utils.router_discovery)[0m
+[32;20m[2026-10-22 19:08:59,179] LMCache INFO:[0m CudaPinMemoryBackend: using torch cudart [3m(pin_memory.py:89:lmcache.v1.platform.cuda.pin_memory)[0m
+[32;20m[2026-10-22 19:08:59,180] LMCache INFO:[0m Starting LMCache HTTP server on http://0.0.0.0:7555 [3m(http_server.py:258:lmcache.v1.multiprocess.http_server)[0m
+INFO:     Started server process [393503]
+INFO:     Waiting for application startup.
+[32;20m[2026-10-22 19:08:59,195] LMCache INFO:[0m Starting LMCache HTTP server... (accelerator available: True) [3m(http_server.py:77:lmcache.v1.multiprocess.http_server)[0m
+[32;20m[2026-10-22 19:08:59,197] LMCache INFO:[0m OTel MeterProvider initialised with Prometheus fallback (standalone metrics HTTP server disabled; /metrics must be exposed by the caller), resource={'telemetry.sdk.language': 'python', 'telemetry.sdk.name': 'opentelemetry', 'telemetry.sdk.version': '1.40.0', 'service.instance.id': 'lmcache-a', 'service.name': 'unknown_service'} [3m(otel_init.py:114:lmcache.v1.mp_observability.otel_init)[0m
+[32;20m[2026-10-22 19:09:00,345] LMCache INFO:[0m Starting L1EvictionController... [3m(eviction_controller.py:53:lmcache.v1.distributed.storage_controllers.eviction_controller)[0m
+[32;20m[2026-10-22 19:09:00,345] LMCache INFO:[0m Starting L2EvictionController... [3m(eviction_controller.py:250:lmcache.v1.distributed.storage_controllers.eviction_controller)[0m
+[32;20m[2026-10-22 19:09:00,346] LMCache INFO:[0m Starting StoreController... [3m(store_controller.py:305:lmcache.v1.distributed.storage_controllers.store_controller)[0m
+[32;20m[2026-10-22 19:09:00,346] LMCache INFO:[0m Starting PrefetchController... [3m(prefetch_controller.py:596:lmcache.v1.distributed.storage_controllers.prefetch_controller)[0m
+[32;20m[2026-10-22 19:09:00,346] LMCache INFO:[0m Using blake3 hash function [3m(token_hasher.py:79:lmcache.v1.multiprocess.token_hasher)[0m
+[32;20m[2026-10-22 19:09:00,347] LMCache INFO:[0m Computed NONE_HASH=b"~>\xff\x9e\xf7a:P4\x0e\xb1&w\xee\x03\xb8:\xc7Y\xfc\xba\x9b\xb3'\x05\xf0rH\xd5mG;" using hash function [3m(token_hasher.py:180:lmcache.v1.multiprocess.token_hasher)[0m
+[32;20m[2026-10-22 19:09:00,348] LMCache INFO:[0m TokenHasher initialized: chunk_size=256, hash_algorithm=blake3 [3m(token_hasher.py:67:lmcache.v1.multiprocess.token_hasher)[0m
+[32;20m[2026-10-22 19:09:00,348] LMCache INFO:[0m PeriodicThread SessionManager-cleanup-thread-7fc6662bbd10 entering main loop (interval=60.0s) [3m(periodic_thread.py:304:lmcache.v1.periodic_thread)[0m
+[32;20m[2026-10-22 19:09:00,348] LMCache INFO:[0m Started PeriodicThread: SessionManager-cleanup-thread-7fc6662bbd10 (level=medium, interval=60.0s, init_wait=0.0s) [3m(periodic_thread.py:248:lmcache.v1.periodic_thread)[0m
+
+================================================================================
+
+--- Stopping vLLM + lmcache server (p2p-a) ---
+lmcache server (p2p-a) (pgid=393503) did not exit on SIGTERM, sending SIGKILL to its process group.
+FAILED
+
+=================================== FAILURES ===================================
+________________________ test_04_kvcache_mp_p2p_sharing ________________________
+
+host = 'localhost', port = 7555, timeout = 60
+process = <Popen: returncode: -9 args: ['lmcache', 'server', '--host', '0.0.0.0', '--p...>
+processes = None
+log_paths = PosixPath('/tmp/pytest-of-root/pytest-2/kv_mp_p2p-a0/lmcache_server.log')
+log_handles = None, stage = 'p2p-a lmcache server startup'
+
+    def wait_for_port(host, port, timeout=180, process=None, processes=None, log_paths=None,
+                       log_handles=None, stage="startup"):
+        """Block until `host:port` accepts a connection.
+    
+        Accepts either a single `process` (Popen) or a `processes` dict of
+        {name: Popen} -- if any of them has already exited, fail fast with the
+        tail of its log instead of waiting out the full timeout.
+        """
+        all_processes = dict(processes) if processes else {}
+        if process is not None:
+            all_processes.setdefault(stage, process)
+    
+        start = time.monotonic()
+        while True:
+            for name, proc in all_processes.items():
+                retcode = proc.poll()
+                if retcode is not None:
+                    print(f"[FATAL] Process {name} exited unexpectedly during {stage} with code {retcode}.")
+                    if log_paths:
+                        dump_logs(log_paths, log_handles)
+                    raise RuntimeError(f"Process {name} exited unexpectedly during {stage} with code {retcode}.")
+            try:
+>               with socket.create_connection((host, port), timeout=1):
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+common.py:103: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/conda/lib/python3.12/socket.py:865: in create_connection
+    raise exceptions[0]
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+address = ('localhost', 7555), timeout = 1, source_address = None
+
+    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,
+                          source_address=None, *, all_errors=False):
+        """Connect to *address* and return the socket object.
+    
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        A host of '' or port 0 tells the OS to use the default. When a connection
+        cannot be created, raises the last error if *all_errors* is False,
+        and an ExceptionGroup of all errors if *all_errors* is True.
+        """
+    
+        host, port = address
+        exceptions = []
+        for res in getaddrinfo(host, port, 0, SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket(af, socktype, proto)
+                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+>               sock.connect(sa)
+E               ConnectionRefusedError: [Errno 111] Connection refused
+
+/opt/conda/lib/python3.12/socket.py:850: ConnectionRefusedError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x7f239a8c0ef0>, _basetemp=PosixPath('/tmp/pytest-of-root/pytest-2'), _retention_count=3, _retention_policy='all')
+
+    def test_04_kvcache_mp_p2p_sharing(tmp_path_factory):
+        """A coordinator + two P2P-enabled (lmcache server, vLLM) pairs on two
+        GPUs, with NO shared L2 at all. Instance A populates only its own local
+        L1; instance B has no L2 fallback, so a hit can only come from a direct
+        P2P read of instance A's L1 over the transfer-channel (NIXL by default,
+        loopback/TCP on a single node -- functional check only, not a latency
+        benchmark; see docs/source/mp/p2p.rst for real RDMA-fabric numbers).
+        """
+        with lmcache_coordinator(tmp_path_factory):
+>           with lmcache_mp_service("p2p-a", tmp_path_factory, slot=SLOT_A, p2p_peer_slot=SLOT_B) as svc_a:
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+lmcache/test_lmcache_mp.py:412: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/conda/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+lmcache/test_lmcache_mp.py:162: in lmcache_mp_service
+    _wait_for_port(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+host = 'localhost', port = 7555, timeout = 60
+process = <Popen: returncode: -9 args: ['lmcache', 'server', '--host', '0.0.0.0', '--p...>
+processes = None
+log_paths = PosixPath('/tmp/pytest-of-root/pytest-2/kv_mp_p2p-a0/lmcache_server.log')
+log_handles = None, stage = 'p2p-a lmcache server startup'
+
+    def wait_for_port(host, port, timeout=180, process=None, processes=None, log_paths=None,
+                       log_handles=None, stage="startup"):
+        """Block until `host:port` accepts a connection.
+    
+        Accepts either a single `process` (Popen) or a `processes` dict of
+        {name: Popen} -- if any of them has already exited, fail fast with the
+        tail of its log instead of waiting out the full timeout.
+        """
+        all_processes = dict(processes) if processes else {}
+        if process is not None:
+            all_processes.setdefault(stage, process)
+    
+        start = time.monotonic()
+        while True:
+            for name, proc in all_processes.items():
+                retcode = proc.poll()
+                if retcode is not None:
+                    print(f"[FATAL] Process {name} exited unexpectedly during {stage} with code {retcode}.")
+                    if log_paths:
+                        dump_logs(log_paths, log_handles)
+                    raise RuntimeError(f"Process {name} exited unexpectedly during {stage} with code {retcode}.")
+            try:
+                with socket.create_connection((host, port), timeout=1):
+                    return
+            except OSError:
+                if time.monotonic() - start >= timeout:
+                    print(f"[FATAL] Timeout waiting for {host}:{port} during {stage}.")
+                    if log_paths:
+                        dump_logs(log_paths, log_handles)
+>                   raise TimeoutError(f"Port {port} not ready in {timeout}s")
+E                   TimeoutError: Port 7555 not ready in 60s
+
+common.py:110: TimeoutError
+- generated xml file: /workspace/vllm/code/src/auto_pd_test/artifacts/test_runs/20261022_190146/lmcache__test_lmcache_mp.py/junit.xml -
+=========================== short test summary info ============================
+FAILED lmcache/test_lmcache_mp.py::test_04_kvcache_mp_p2p_sharing - TimeoutError: Port 7555 not ready in 60s
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+=================== 1 failed, 3 passed in 505.77s (0:08:25) ====================
