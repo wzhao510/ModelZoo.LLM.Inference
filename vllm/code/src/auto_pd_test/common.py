@@ -281,7 +281,17 @@ def wait_for_free_gpu_memory(cuda_device, min_free_ratio=0.85, timeout=60):
     device_index = int(cuda_device)
     start = time.monotonic()
     while True:
-        free_bytes, total_bytes = torch.cuda.mem_get_info(device_index)
+        try:
+            free_bytes, total_bytes = torch.cuda.mem_get_info(device_index)
+        except RuntimeError as e:
+            print(
+                f"[FATAL] Cannot query GPU {cuda_device} memory: {e}\n"
+                "        'unrecognized error code' means the MACA driver has "
+                "reset the device (see the 'MX_EVENTTYPE_DRIVER ... ResetType=' "
+                "lines). Every later CUDA call will fail the same way -- the "
+                "container must be restarted before rerunning."
+            )
+            raise
         free_ratio = free_bytes / total_bytes
         free_gib = free_bytes / (1024**3)
         total_gib = total_bytes / (1024**3)

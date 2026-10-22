@@ -119,9 +119,9 @@ def lmcache_mp_service(
     # cudaIpcOpenMemHandle, which requires both processes to agree on which
     # physical device is "device 0".
     env["CUDA_VISIBLE_DEVICES"] = slot["cuda_device"]
-    # Only relevant to the zero-copy `lmcache_driven` path, which is not used
-    # below (the MetaX/MACA IPC handshake deadlocks); kept because it is also
-    # harmless for engine-driven transfers and other tests may enable IPC.
+    # Needed on this MetaX (MACA) platform for the lmcache server and the vLLM
+    # worker to share device memory across processes on the zero-copy
+    # (lmcache_driven) path.
     env["MACA_MPS_MODE"] = "1"
 
     lmcache_process = None
@@ -138,20 +138,6 @@ def lmcache_mp_service(
             "--chunk-size", "256",
             "--l1-size-gb", "5",
             "--eviction-policy", "LRU",
-            # The default is `lmcache_driven` (zero-copy device IPC). This
-            # platform needs the engine-driven transfer module to be loaded as
-            # well, otherwise the worker's registration request has no handler
-            # on the server side and the engine hangs until the startup
-            # timeout. `auto` loads both modules.
-            "--supported-transfer-mode", "auto",
-            # Engine-driven transfers use a pickle-over-ZMQ path by default,
-            # which pushes the whole ~4 GiB KV cache through Python for every
-            # store/retrieve -- slower than just re-running prefill. A named
-            # SHM pool makes the worker write KV straight into shared memory.
-            # Unique per slot and per pytest process so simultaneously running
-            # servers never collide, and a SIGKILLed previous run cannot leave
-            # a stale segment behind under the same name.
-            "--shm-name", f"lmcache_pool_{slot['lmcache_port']}_{os.getpid()}",
         ]
         if l2_base_path is not None:
             l2_base_path.mkdir(parents=True, exist_ok=True)
@@ -188,15 +174,6 @@ def lmcache_mp_service(
             "kv_connector_extra_config": {
                 "lmcache.mp.host": "tcp://localhost",
                 "lmcache.mp.port": slot["lmcache_port"],
-                # `auto` resolves to the `lmcache_driven` zero-copy IPC path
-                # on CUDA, which deadlocks here: the vLLM worker exports its
-                # KV-cache IPC handles fine ("Wrapping N KV cache tensors for
-                # IPC"), but the lmcache server never finishes opening them
-                # and never acks REGISTER_KV_CACHE, so engine init hangs until
-                # the startup timeout. Force the engine-driven path, where the
-                # worker gathers/scatters KV through host memory with plain
-                # torch ops (no cross-process device handles).
-                "lmcache.mp.mp_transfer_mode": "engine_driven",
             },
         }
         vllm_cmd = [
@@ -235,10 +212,14 @@ def lmcache_mp_service(
 
     finally:
         print(f"\n--- Stopping vLLM + lmcache server ({name}) ---")
-        # Stop the client (vLLM) before the server so it does not spend its
-        # shutdown window retrying a connection to an already-dead server.
-        _terminate(vllm_process, f"vLLM ({name})")
+        # On the zero-copy path the lmcache server is the IMPORTER of vLLM's
+        # KV-cache device memory (cudaIpcOpenMemHandle). It must be stopped
+        # first: killing the exporter while an importer still holds mappings
+        # leaves the MACA driver with dangling cross-process mappings, which
+        # surfaces later as "MX_EVENTTYPE_DRIVER ... ResetType=1" followed by
+        # "CUDA error: unrecognized error code" on the next vLLM startup.
         _terminate(lmcache_process, f"lmcache server ({name})")
+        _terminate(vllm_process, f"vLLM ({name})")
 
         if vllm_log_handle:
             vllm_log_handle.close()
@@ -352,8 +333,7 @@ def test_01_kvcache_mp_l1_offload(tmp_path_factory):
         assert cold_ttft > 0, "Cold cache query was unexpectedly too fast."
 
         # The store of the cold request's ~4 GiB KV cache runs asynchronously
-        # on the worker; on the engine-driven path it has to gather host-side
-        # data first, so 1s is not enough to make the warm query a sure hit.
+        # on the worker; wait so the warm query is a sure hit.
         time.sleep(5)
         print("\n--- Warm cache query (same lmcache server, same L1) ---")
         warm_ttft, warm_text = query_and_measure_ttft(client, model_id, prompt)

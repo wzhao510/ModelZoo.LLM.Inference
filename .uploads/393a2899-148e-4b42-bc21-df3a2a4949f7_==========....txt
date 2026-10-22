@@ -1,0 +1,559 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.11, pytest-8.4.1, pluggy-1.7.0 -- /opt/conda/bin/python3
+cachedir: .pytest_cache
+rootdir: /workspace/vllm/code/src/auto_pd_test
+plugins: platformdirs-4.13.5, anyio-4.15.1
+collecting ... collected 4 items
+
+lmcache/test_lmcache_mp.py::test_01_kvcache_mp_l1_offload 
+[Debug] KVCache MP 'l1' logs: /tmp/pytest-of-root/pytest-1/kv_mp_l10
+
+--- Starting lmcache server (l1) ---
+lmcache server command: lmcache server --host localhost --port 6555 --http-port 7555 --chunk-size 256 --l1-size-gb 5 --eviction-policy LRU
+lmcache server is ready.
+
+--- Starting vLLM (l1, LMCacheMPConnector) ---
+vLLM command: vllm serve /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B --port 8300 --max-model-len 32768 --no-enable-prefix-caching --enforce-eager --kv-transfer-config {"kv_connector": "LMCacheMPConnector", "kv_connector_module_path": "lmcache.integration.vllm.lmcache_mp_connector", "kv_role": "kv_both", "kv_connector_extra_config": {"lmcache.mp.host": "tcp://localhost", "lmcache.mp.port": 6555}}
+Waiting for vLLM service to load the model...
+vLLM service is ready.
+
+--- Testing KVCache MP L1 offload ---
+Connected to vLLM service, model ID: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B
+Loading tokenizer from /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B to build a long prompt...
+Generated prompt tokens: 28944
+First token: '<think>'
+Okay, the user is asking for the capital city of China. Let me think. I remember that Beijing is the capital. But wait, I should make sure. China's capital is indeed Beijing. The question says to answer with only the city name, no extra text. So the answer is Beijing.
+</think>
+
+Beijing
+Streaming response finished.
+
+Cold cache TTFT: 3.477s
+
+--- Warm cache query (same lmcache server, same L1) ---
+First token: '<think>'
+Okay, the user is asking for the capital city of China. Let me think. The previous messages were all about LMCache and the quick brown fox, which seems like some kind of test or example text. But the user is now asking a straightforward question.
+
+I need to make sure I answer correctly. The capital of China is Beijing. I should just provide the name without any extra information. Let me double-check to avoid mistakes. Yes, Beijing is the capital. No need for any additional details. Just the city name.
+</think>
+
+Beijing
+Streaming response finished.
+
+Warm cache TTFT: 0.112s
+
+==============================
+KVCache MP L1 offload result:
+  Cold cache TTFT: 3.477s
+  Warm cache TTFT: 0.112s
+  TTFT improvement: 3.365s (31.0x faster)
+  Cold text: "<think>\nOkay, the user is asking for the capital city of China. Let me think. I remember that Beijing is the capital. But wait, I should make sure. China's capital is indeed Beijing. The question says to answer with only the city name, no extra text. So the answer is Beijing.\n</think>\n\nBeijing"
+  Warm text: '<think>\nOkay, the user is asking for the capital city of China. Let me think. The previous messages were all about LMCache and the quick brown fox, which seems like some kind of test or example text. But the user is now asking a straightforward question.\n\nI need to make sure I answer correctly. The capital of China is Beijing. I should just provide the name without any extra information. Let me double-check to avoid mistakes. Yes, Beijing is the capital. No need for any additional details. Just the city name.\n</think>\n\nBeijing'
+==============================
+
+--- Stopping vLLM + lmcache server (l1) ---
+GPU 0: 62.1/63.6 GiB free, proceeding.
+PASSED
+lmcache/test_lmcache_mp.py::test_02_kvcache_mp_l2_offload 
+--- Testing KVCache MP L2 offload: cold phase (fresh L1 + L2) ---
+
+[Debug] KVCache MP 'l2-cold' logs: /tmp/pytest-of-root/pytest-1/kv_mp_l2-cold0
+
+--- Starting lmcache server (l2-cold) ---
+lmcache server command: lmcache server --host localhost --port 6555 --http-port 7555 --chunk-size 256 --l1-size-gb 5 --eviction-policy LRU --l2-adapter {"type": "fs", "base_path": "/tmp/pytest-of-root/pytest-1/kv_mp_l2_data0"}
+lmcache server is ready.
+
+--- Starting vLLM (l2-cold, LMCacheMPConnector) ---
+vLLM command: vllm serve /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B --port 8300 --max-model-len 32768 --no-enable-prefix-caching --enforce-eager --kv-transfer-config {"kv_connector": "LMCacheMPConnector", "kv_connector_module_path": "lmcache.integration.vllm.lmcache_mp_connector", "kv_role": "kv_both", "kv_connector_extra_config": {"lmcache.mp.host": "tcp://localhost", "lmcache.mp.port": 6555}}
+Waiting for vLLM service to load the model...
+vLLM service is ready.
+Connected to vLLM service, model ID: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B
+Loading tokenizer from /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B to build a long prompt...
+Generated prompt tokens: 28944
+First token: '<think>'
+Okay, the user is asking for the capital city of China. Let me think. I remember that Beijing is the capital. But wait, I should make sure. China's capital is indeed Beijing. The question says to answer with only the city name, no extra text. So the answer is Beijing.
+</think>
+
+Beijing
+Streaming response finished.
+
+Cold cache TTFT: 3.525s
+Waiting for the async L1->L2 flush to complete...
+
+--- Stopping vLLM + lmcache server (l2-cold) ---
+GPU 0: 62.1/63.6 GiB free, proceeding.
+
+--- Testing KVCache MP L2 offload: warm phase (fresh L1, same L2 dir) ---
+
+[Debug] KVCache MP 'l2-warm' logs: /tmp/pytest-of-root/pytest-1/kv_mp_l2-warm0
+
+--- Starting lmcache server (l2-warm) ---
+lmcache server command: lmcache server --host localhost --port 6555 --http-port 7555 --chunk-size 256 --l1-size-gb 5 --eviction-policy LRU --l2-adapter {"type": "fs", "base_path": "/tmp/pytest-of-root/pytest-1/kv_mp_l2_data0"}
+lmcache server is ready.
+
+--- Starting vLLM (l2-warm, LMCacheMPConnector) ---
+vLLM command: vllm serve /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B --port 8300 --max-model-len 32768 --no-enable-prefix-caching --enforce-eager --kv-transfer-config {"kv_connector": "LMCacheMPConnector", "kv_connector_module_path": "lmcache.integration.vllm.lmcache_mp_connector", "kv_role": "kv_both", "kv_connector_extra_config": {"lmcache.mp.host": "tcp://localhost", "lmcache.mp.port": 6555}}
+Waiting for vLLM service to load the model...
+vLLM service is ready.
+Connected to vLLM service, model ID: /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B
+Loading tokenizer from /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B to build a long prompt...
+Generated prompt tokens: 28944
+First token: '<think>'
+</think>
+
+Beijing
+Streaming response finished.
+
+Warm cache TTFT: 1.091s
+
+==============================
+KVCache MP L2 offload result:
+  Cold cache TTFT: 3.525s
+  Warm cache TTFT: 1.091s
+  TTFT improvement: 2.434s (3.2x faster)
+  Cold text: "<think>\nOkay, the user is asking for the capital city of China. Let me think. I remember that Beijing is the capital. But wait, I should make sure. China's capital is indeed Beijing. The question says to answer with only the city name, no extra text. So the answer is Beijing.\n</think>\n\nBeijing"
+  Warm text: '<think>\n</think>\n\nBeijing'
+==============================
+
+--- Stopping vLLM + lmcache server (l2-warm) ---
+GPU 0: 62.1/63.6 GiB free, proceeding.
+PASSED
+lmcache/test_lmcache_mp.py::test_03_kvcache_mp_centralized_sharing [17:55:24.453][MXC][E]MX_EVENTTYPE_DRIVER data: ResetType=1, ResetCause=1
+[17:55:53.125][MXC][E]MX_EVENTTYPE_DRIVER data: ResetType=1, ResetCause=1
+
+[Debug] KVCache MP 'central-a' logs: /tmp/pytest-of-root/pytest-1/kv_mp_central-a0
+
+--- Starting lmcache server (central-a) ---
+lmcache server command: lmcache server --host localhost --port 6555 --http-port 7555 --chunk-size 256 --l1-size-gb 5 --eviction-policy LRU --l2-adapter {"type": "fs", "base_path": "/tmp/pytest-of-root/pytest-1/kv_mp_centralized_l2_data0"}
+lmcache server is ready.
+
+--- Starting vLLM (central-a, LMCacheMPConnector) ---
+vLLM command: vllm serve /mxstorage/pde_ai/models/llm/Qwen/Qwen3-4B --port 8300 --max-model-len 32768 --no-enable-prefix-caching --enforce-eager --kv-transfer-config {"kv_connector": "LMCacheMPConnector", "kv_connector_module_path": "lmcache.integration.vllm.lmcache_mp_connector", "kv_role": "kv_both", "kv_connector_extra_config": {"lmcache.mp.host": "tcp://localhost", "lmcache.mp.port": 6555}}
+Waiting for vLLM service to load the model...
+[FATAL] Process central-a vllm startup exited unexpectedly during central-a vllm startup with code 1.
+
+================================================================================
+STARTUP DEBUG LOG DUMP
+================================================================================
+
+--- log: /tmp/pytest-of-root/pytest-1/kv_mp_central-a0/vllm_server.log ---
+(EngineCore pid=3939290) INFO 10-22 17:55:19 [platform.py:518] Some attention backends are not valid for maca with AttentionSelectorConfig(head_size=128, dtype=torch.bfloat16, kv_cache_dtype=auto, block_size=None, use_mla=False, has_sink=False, use_sparse=False, use_mm_prefix=False, use_per_head_quant_scales=False, attn_type=AttentionType.DECODER, has_sliding_window=False, use_non_causal=False, use_batch_invariant=False, use_kv_connector=True, use_adaptive_verification=False, use_pcp=False, use_dcp=False, use_rswa=False). Reasons: {TURBOQUANT: [kv_cache_dtype not supported]}.
+(EngineCore pid=3939290) INFO 10-22 17:55:19 [platform.py:530] Valid backends: ['FLASH_ATTN', 'FLASHINFER', 'TRITON_ATTN', 'FLEX_ATTENTION']
+(EngineCore pid=3939290) INFO 10-22 17:55:19 [platform.py:561] Using FLASH_ATTN attention backend out of potential backends: ('FLASH_ATTN', 'FLASHINFER', 'TRITON_ATTN', 'FLEX_ATTENTION')
+(EngineCore pid=3939290) INFO 10-22 17:55:19 [fa_utils.py:32] Using Maca version of flash attention, which only supports version 2.
+(EngineCore pid=3939290) INFO 10-22 17:55:19 [weight_utils.py:895] Filesystem type for checkpoints: DTFS. Checkpoint size: 7.49 GiB. Available RAM: 1927.46 GiB.
+(EngineCore pid=3939290) INFO 10-22 17:55:19 [weight_utils.py:918] Auto-prefetch is disabled because the filesystem (DTFS) is not a recognized network FS (NFS/Lustre). If you want to force prefetching, start vLLM with --safetensors-load-strategy=prefetch.
+(EngineCore pid=3939290) 
+Loading safetensors checkpoint shards:   0% Completed | 0/3 [00:00<?, ?it/s]
+(EngineCore pid=3939290) 
+Loading safetensors checkpoint shards:  33% Completed | 1/3 [00:01<00:03,  1.71s/it]
+(EngineCore pid=3939290) 
+Loading safetensors checkpoint shards:  67% Completed | 2/3 [00:03<00:01,  1.79s/it]
+(EngineCore pid=3939290) 
+Loading safetensors checkpoint shards: 100% Completed | 3/3 [00:03<00:00,  1.04s/it]
+(EngineCore pid=3939290) 
+Loading safetensors checkpoint shards: 100% Completed | 3/3 [00:03<00:00,  1.23s/it]
+(EngineCore pid=3939290) 
+(EngineCore pid=3939290) INFO 10-22 17:55:23 [default_loader.py:430] Loading weights took 3.71 seconds
+(EngineCore pid=3939290) INFO 10-22 17:55:24 [model_runner.py:428] Model loading took 7.56 GiB memory and 4.523565 seconds
+(EngineCore pid=3939290) [32;20m[2026-10-22 17:55:24,284] LMCache INFO:[0m torch_dev=<module 'torch.cuda' from '/opt/conda/lib/python3.12/site-packages/torch/cuda/__init__.py'>, torch_device_type=cuda [3m(_device_detect.py:312:lmcache.v1.platform._device_detect)[0m
+(EngineCore pid=3939290) [32;20m[2026-10-22 17:55:24,284] LMCache INFO:[0m Auto-selected backend [cuda] for accelerator 'cuda' from candidate backends [cuda, rocm]. [3m(__init__.py:148:lmcache.v1.platform)[0m
+(EngineCore pid=3939290) [32;20m[2026-10-22 17:55:24,358] LMCache INFO:[0m multi_layer_block_kv_transfer mode: ptr [3m(base.py:95:lmcache.v1.multiprocess.transfer_context.base)[0m
+(EngineCore pid=3939290) INFO 10-22 17:55:24 [utils.py:320] Using LBNHC KV cache layout.
+[17:55:24.453][MXC][E]MX_EVENTTYPE_DRIVER data: ResetType=1, ResetCause=1
+[17:55:24.453][MXC][E]MX_EVENTTYPE_DRIVER data: ResetType=1, ResetCause=1
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366] EngineCore failed to start.
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366] Traceback (most recent call last):
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1328, in run_engine_core
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]     engine_core = EngineCoreProc(*args, engine_index=dp_rank, **kwargs)
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]   File "/opt/conda/lib/python3.12/site-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]     return func(*args, **kwargs)
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1085, in __init__
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]     super().__init__(
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 145, in __init__
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]     kv_cache_config = self._initialize_kv_caches(vllm_config)
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]   File "/opt/conda/lib/python3.12/site-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]     return func(*args, **kwargs)
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 308, in _initialize_kv_caches
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]     available_gpu_memory = self.model_executor.determine_available_memory()
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/executor/abstract.py", line 149, in determine_available_memory
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]     return self.collective_rpc("determine_available_memory")
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/executor/uniproc_executor.py", line 103, in collective_rpc
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]     result = run_method(self.driver_worker, method, args, kwargs)
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/serial_utils.py", line 510, in run_method
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]     return func(*args, **kwargs)
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]   File "/opt/conda/lib/python3.12/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]     return func(*args, **kwargs)
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/worker/gpu_worker.py", line 568, in determine_available_memory
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]     with memory_profiling(
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]          ^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]   File "/opt/conda/lib/python3.12/contextlib.py", line 137, in __enter__
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]     return next(self.gen)
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]            ^^^^^^^^^^^^^^
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]   File "/opt/conda/lib/python3.12/site-packages/vllm/utils/mem_utils.py", line 294, in memory_profiling
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]     result.before_profile.measure()
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]   File "/opt/conda/lib/python3.12/site-packages/vllm/utils/mem_utils.py", line 142, in measure
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]     self.free_memory, self.total_memory = torch.accelerator.get_memory_info(device)
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]   File "/opt/conda/lib/python3.12/site-packages/torch/accelerator/memory.py", line 236, in get_memory_info
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]     return torch._C._accelerator_getMemoryInfo(device_index)
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366] torch.AcceleratorError: CUDA error: unrecognized error code
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366] ErrorCode: unrecognized error code
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366] CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366] For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366] Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+(EngineCore pid=3939290) ERROR 10-22 17:55:24 [core.py:1366] 
+(EngineCore pid=3939290) Process EngineCore:
+(EngineCore pid=3939290) Traceback (most recent call last):
+(EngineCore pid=3939290)   File "/opt/conda/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+(EngineCore pid=3939290)     self.run()
+(EngineCore pid=3939290)   File "/opt/conda/lib/python3.12/multiprocessing/process.py", line 108, in run
+(EngineCore pid=3939290)     self._target(*self._args, **self._kwargs)
+(EngineCore pid=3939290)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1370, in run_engine_core
+(EngineCore pid=3939290)     raise e
+(EngineCore pid=3939290)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1328, in run_engine_core
+(EngineCore pid=3939290)     engine_core = EngineCoreProc(*args, engine_index=dp_rank, **kwargs)
+(EngineCore pid=3939290)                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290)   File "/opt/conda/lib/python3.12/site-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(EngineCore pid=3939290)     return func(*args, **kwargs)
+(EngineCore pid=3939290)            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1085, in __init__
+(EngineCore pid=3939290)     super().__init__(
+(EngineCore pid=3939290)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 145, in __init__
+(EngineCore pid=3939290)     kv_cache_config = self._initialize_kv_caches(vllm_config)
+(EngineCore pid=3939290)                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290)   File "/opt/conda/lib/python3.12/site-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(EngineCore pid=3939290)     return func(*args, **kwargs)
+(EngineCore pid=3939290)            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 308, in _initialize_kv_caches
+(EngineCore pid=3939290)     available_gpu_memory = self.model_executor.determine_available_memory()
+(EngineCore pid=3939290)                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/executor/abstract.py", line 149, in determine_available_memory
+(EngineCore pid=3939290)     return self.collective_rpc("determine_available_memory")
+(EngineCore pid=3939290)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/executor/uniproc_executor.py", line 103, in collective_rpc
+(EngineCore pid=3939290)     result = run_method(self.driver_worker, method, args, kwargs)
+(EngineCore pid=3939290)              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/serial_utils.py", line 510, in run_method
+(EngineCore pid=3939290)     return func(*args, **kwargs)
+(EngineCore pid=3939290)            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290)   File "/opt/conda/lib/python3.12/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(EngineCore pid=3939290)     return func(*args, **kwargs)
+(EngineCore pid=3939290)            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/worker/gpu_worker.py", line 568, in determine_available_memory
+(EngineCore pid=3939290)     with memory_profiling(
+(EngineCore pid=3939290)          ^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290)   File "/opt/conda/lib/python3.12/contextlib.py", line 137, in __enter__
+(EngineCore pid=3939290)     return next(self.gen)
+(EngineCore pid=3939290)            ^^^^^^^^^^^^^^
+(EngineCore pid=3939290)   File "/opt/conda/lib/python3.12/site-packages/vllm/utils/mem_utils.py", line 294, in memory_profiling
+(EngineCore pid=3939290)     result.before_profile.measure()
+(EngineCore pid=3939290)   File "/opt/conda/lib/python3.12/site-packages/vllm/utils/mem_utils.py", line 142, in measure
+(EngineCore pid=3939290)     self.free_memory, self.total_memory = torch.accelerator.get_memory_info(device)
+(EngineCore pid=3939290)                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290)   File "/opt/conda/lib/python3.12/site-packages/torch/accelerator/memory.py", line 236, in get_memory_info
+(EngineCore pid=3939290)     return torch._C._accelerator_getMemoryInfo(device_index)
+(EngineCore pid=3939290)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=3939290) torch.AcceleratorError: CUDA error: unrecognized error code
+(EngineCore pid=3939290) ErrorCode: unrecognized error code
+(EngineCore pid=3939290) CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+(EngineCore pid=3939290) For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+(EngineCore pid=3939290) Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+(EngineCore pid=3939290) 
+[rank0]:[W1022 17:55:25.427912315 ProcessGroupNCCL.cpp:1559] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+(APIServer pid=3937143) INFO 10-22 17:55:35 [utils.py:632] [shutdown] Process manager: send sigterm to process EngineCore
+(APIServer pid=3937143) Traceback (most recent call last):
+(APIServer pid=3937143)   File "/opt/conda/bin/vllm", line 8, in <module>
+(APIServer pid=3937143)     sys.exit(main())
+(APIServer pid=3937143)              ^^^^^^
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/cli/main.py", line 106, in main
+(APIServer pid=3937143)     args.dispatch_function(args)
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/cli/serve.py", line 154, in cmd
+(APIServer pid=3937143)     uvloop.run(run_server(args))
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/site-packages/uvloop/__init__.py", line 96, in run
+(APIServer pid=3937143)     return __asyncio.run(
+(APIServer pid=3937143)            ^^^^^^^^^^^^^^
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/asyncio/runners.py", line 195, in run
+(APIServer pid=3937143)     return runner.run(main)
+(APIServer pid=3937143)            ^^^^^^^^^^^^^^^^
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/asyncio/runners.py", line 118, in run
+(APIServer pid=3937143)     return self._loop.run_until_complete(task)
+(APIServer pid=3937143)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=3937143)   File "uvloop/loop.pyx", line 1515, in uvloop.loop.Loop.run_until_complete
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/site-packages/uvloop/__init__.py", line 48, in wrapper
+(APIServer pid=3937143)     return await main
+(APIServer pid=3937143)            ^^^^^^^^^^
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/launchers/api_server/entry.py", line 176, in run_server
+(APIServer pid=3937143)     await run_server_worker(listen_address, sock, args, **uvicorn_kwargs)
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/launchers/api_server/entry.py", line 190, in run_server_worker
+(APIServer pid=3937143)     async with build_async_engine_client(
+(APIServer pid=3937143)                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/contextlib.py", line 210, in __aenter__
+(APIServer pid=3937143)     return await anext(self.gen)
+(APIServer pid=3937143)            ^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/launchers/api_server/entry.py", line 58, in build_async_engine_client
+(APIServer pid=3937143)     async with build_async_engine_client_from_engine_args(
+(APIServer pid=3937143)                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/contextlib.py", line 210, in __aenter__
+(APIServer pid=3937143)     return await anext(self.gen)
+(APIServer pid=3937143)            ^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/launchers/api_server/entry.py", line 94, in build_async_engine_client_from_engine_args
+(APIServer pid=3937143)     async_llm = AsyncLLM.from_vllm_config(
+(APIServer pid=3937143)                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/async_llm.py", line 235, in from_vllm_config
+(APIServer pid=3937143)     return cls(
+(APIServer pid=3937143)            ^^^^
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/async_llm.py", line 169, in __init__
+(APIServer pid=3937143)     self.engine_core = EngineCoreClient.make_async_mp_client(
+(APIServer pid=3937143)                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/site-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(APIServer pid=3937143)     return func(*args, **kwargs)
+(APIServer pid=3937143)            ^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core_client.py", line 163, in make_async_mp_client
+(APIServer pid=3937143)     return AsyncMPClient(
+(APIServer pid=3937143)            ^^^^^^^^^^^^^^
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/site-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(APIServer pid=3937143)     return func(*args, **kwargs)
+(APIServer pid=3937143)            ^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core_client.py", line 1060, in __init__
+(APIServer pid=3937143)     super().__init__(
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core_client.py", line 656, in __init__
+(APIServer pid=3937143)     with launch_core_engines(
+(APIServer pid=3937143)          ^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/contextlib.py", line 144, in __exit__
+(APIServer pid=3937143)     next(self.gen)
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/utils.py", line 1240, in launch_core_engines
+(APIServer pid=3937143)     wait_for_engine_startup(
+(APIServer pid=3937143)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/utils.py", line 1320, in wait_for_engine_startup
+(APIServer pid=3937143)     raise RuntimeError(
+(APIServer pid=3937143) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}
+
+================================================================================
+
+--- Stopping vLLM + lmcache server (central-a) ---
+FAILED
+
+=================================== FAILURES ===================================
+____________________ test_03_kvcache_mp_centralized_sharing ____________________
+
+name = 'central-a'
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x7efc934f2e10>, _basetemp=PosixPath('/tmp/pytest-of-root/pytest-1'), _retention_count=3, _retention_policy='all')
+
+    @contextlib.contextmanager
+    def lmcache_mp_service(
+        name,
+        tmp_path_factory,
+        *,
+        slot,
+        l2_base_path=None,
+        p2p_peer_slot=None,
+    ):
+        """Start one `lmcache server` + one vLLM (LMCacheMPConnector) pair.
+    
+        slot: one of SLOT_A / SLOT_B -- picks the GPU and the full set of ports
+            for this instance, so two instances can run at once without clashing.
+        l2_base_path: if set, registers a dependency-free `fs` L2 adapter here.
+            Pass the SAME path to two different slots/invocations to test
+            centralized (shared-L2) sharing.
+        p2p_peer_slot: if set (also requires a running lmcache_coordinator),
+            enables P2P on this server so it can read a peer's L1 directly.
+            Leave unset for the plain L1/L2/centralized tests.
+        """
+        test_run_path = tmp_path_factory.mktemp(f"kv_mp_{name}")
+        lmcache_log = test_run_path / "lmcache_server.log"
+        vllm_log = test_run_path / "vllm_server.log"
+    
+        print(f"\n[Debug] KVCache MP '{name}' logs: {test_run_path}")
+    
+        env = os.environ.copy()
+        # The lmcache server needs the same GPU visible as vLLM: on the default
+        # (CUDA IPC) transfer path it maps vLLM's KV cache memory directly via
+        # cudaIpcOpenMemHandle, which requires both processes to agree on which
+        # physical device is "device 0".
+        env["CUDA_VISIBLE_DEVICES"] = slot["cuda_device"]
+        # Required on this MetaX (MACA) GPU platform: without it, the lmcache
+        # server and vLLM worker cannot share GPU memory across processes and
+        # the REGISTER_KV_CACHE handshake hangs indefinitely.
+        env["MACA_MPS_MODE"] = "1"
+    
+        lmcache_process = None
+        vllm_process = None
+        lmcache_log_handle = None
+        vllm_log_handle = None
+        try:
+            print(f"\n--- Starting lmcache server ({name}) ---")
+            lmcache_cmd = [
+                "lmcache", "server",
+                "--host", "0.0.0.0" if p2p_peer_slot else "localhost",
+                "--port", str(slot["lmcache_port"]),
+                "--http-port", str(slot["lmcache_http_port"]),
+                "--chunk-size", "256",
+                "--l1-size-gb", "5",
+                "--eviction-policy", "LRU",
+            ]
+            if l2_base_path is not None:
+                l2_base_path.mkdir(parents=True, exist_ok=True)
+                lmcache_cmd += [
+                    "--l2-adapter",
+                    json.dumps({"type": "fs", "base_path": str(l2_base_path)}),
+                ]
+            if p2p_peer_slot is not None:
+                lmcache_cmd += [
+                    "--l1-align-bytes", "65536",
+                    "--instance-id", slot["instance_id"],
+                    "--coordinator-url", f"http://{COORDINATOR_HOST}:{COORDINATOR_PORT}",
+                    "--coordinator-advertise-ip", "127.0.0.1",
+                    "--p2p-advertise-url", f"127.0.0.1:{slot['p2p_port']}",
+                    "--p2p-listen-url", f"0.0.0.0:{slot['p2p_port']}",
+                ]
+            print(f"lmcache server command: {' '.join(lmcache_cmd)}")
+            lmcache_log_handle = open(lmcache_log, "w")
+            lmcache_process = _popen_own_group(
+                lmcache_cmd, env=env, stdout=lmcache_log_handle, stderr=subprocess.STDOUT
+            )
+            _wait_for_port(
+                "localhost", slot["lmcache_http_port"], timeout=60,
+                process=lmcache_process, log_paths=lmcache_log,
+                stage=f"{name} lmcache server startup",
+            )
+            print("lmcache server is ready.")
+    
+            print(f"\n--- Starting vLLM ({name}, LMCacheMPConnector) ---")
+            kv_transfer_config = {
+                "kv_connector": "LMCacheMPConnector",
+                "kv_connector_module_path": "lmcache.integration.vllm.lmcache_mp_connector",
+                "kv_role": "kv_both",
+                "kv_connector_extra_config": {
+                    "lmcache.mp.host": "tcp://localhost",
+                    "lmcache.mp.port": slot["lmcache_port"],
+                },
+            }
+            vllm_cmd = [
+                "vllm", "serve", VLLM_MODEL_PATH,
+                "--port", str(slot["vllm_port"]),
+                "--max-model-len", str(MAX_MODEL_LEN),
+                "--no-enable-prefix-caching",
+                "--enforce-eager",
+                "--kv-transfer-config", json.dumps(kv_transfer_config),
+            ]
+            print(f"vLLM command: {' '.join(vllm_cmd)}")
+            vllm_log_handle = open(vllm_log, "w")
+            vllm_process = _popen_own_group(
+                vllm_cmd, env=env, stdout=vllm_log_handle, stderr=subprocess.STDOUT
+            )
+            print("Waiting for vLLM service to load the model...")
+>           _wait_for_port(
+                VLLM_HOST, slot["vllm_port"], timeout=180,
+                process=vllm_process, log_paths=vllm_log,
+                stage=f"{name} vllm startup",
+            )
+
+lmcache/test_lmcache_mp.py:193: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+host = 'localhost', port = 8300, timeout = 180
+process = <Popen: returncode: 1 args: ['vllm', 'serve', '/mxstorage/pde_ai/models/llm/...>
+processes = None
+log_paths = PosixPath('/tmp/pytest-of-root/pytest-1/kv_mp_central-a0/vllm_server.log')
+log_handles = None, stage = 'central-a vllm startup'
+
+    def wait_for_port(host, port, timeout=180, process=None, processes=None, log_paths=None,
+                       log_handles=None, stage="startup"):
+        """Block until `host:port` accepts a connection.
+    
+        Accepts either a single `process` (Popen) or a `processes` dict of
+        {name: Popen} -- if any of them has already exited, fail fast with the
+        tail of its log instead of waiting out the full timeout.
+        """
+        all_processes = dict(processes) if processes else {}
+        if process is not None:
+            all_processes.setdefault(stage, process)
+    
+        start = time.monotonic()
+        while True:
+            for name, proc in all_processes.items():
+                retcode = proc.poll()
+                if retcode is not None:
+                    print(f"[FATAL] Process {name} exited unexpectedly during {stage} with code {retcode}.")
+                    if log_paths:
+                        dump_logs(log_paths, log_handles)
+>                   raise RuntimeError(f"Process {name} exited unexpectedly during {stage} with code {retcode}.")
+E                   RuntimeError: Process central-a vllm startup exited unexpectedly during central-a vllm startup with code 1.
+
+common.py:101: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x7efc934f2e10>, _basetemp=PosixPath('/tmp/pytest-of-root/pytest-1'), _retention_count=3, _retention_policy='all')
+
+    def test_03_kvcache_mp_centralized_sharing(tmp_path_factory):
+        """Two DIFFERENT, SIMULTANEOUSLY-running (lmcache server, vLLM) pairs on
+        two GPUs, both L2 adapters pointed at the SAME `fs` directory. Instance A
+        populates the cache; instance B -- which never saw this prompt and has an
+        empty L1 of its own -- must read it back through the shared L2, proving
+        genuine cross-instance centralized sharing (not just single-instance L2
+        persistence, which test_02 already covers).
+        """
+        l2_base_path = tmp_path_factory.mktemp("kv_mp_centralized_l2_data")
+    
+>       with lmcache_mp_service("central-a", tmp_path_factory, slot=SLOT_A, l2_base_path=l2_base_path) as svc_a:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+lmcache/test_lmcache_mp.py:381: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/conda/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+lmcache/test_lmcache_mp.py:221: in lmcache_mp_service
+    _wait_for_free_gpu_memory(slot["cuda_device"])
+common.py:284: in wait_for_free_gpu_memory
+    free_bytes, total_bytes = torch.cuda.mem_get_info(device_index)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 0
+
+    def mem_get_info(device: "Device" = None) -> tuple[int, int]:
+        r"""Return the global free and total GPU memory for a given device using cudaMemGetInfo.
+    
+        Args:
+            device (torch.device or int or str, optional): selected device. Returns
+                statistic for the current device, given by :func:`~torch.cuda.current_device`,
+                if :attr:`device` is ``None`` (default) or if the device index is not specified.
+    
+        .. note::
+            See :ref:`cuda-memory-management` for more
+            details about GPU memory management.
+        """
+        if device is None:
+            device = torch.cuda.current_device()
+        # optional=True allows `device = torch.device('cuda')` for which device.index is None
+        device = _get_device_index(device, optional=True)
+>       return torch.cuda.cudart().cudaMemGetInfo(device)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       torch.AcceleratorError: CUDA error: unrecognized error code
+E       ErrorCode: unrecognized error code
+E       CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+E       For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+E       Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+/opt/conda/lib/python3.12/site-packages/torch/cuda/memory.py:897: AcceleratorError
+- generated xml file: /workspace/vllm/code/src/auto_pd_test/artifacts/test_runs/20261022_174928/lmcache__test_lmcache_mp.py/junit.xml -
+=========================== short test summary info ============================
+FAILED lmcache/test_lmcache_mp.py::test_03_kvcache_mp_centralized_sharing - torch.AcceleratorError: CUDA error: unrecognized error code
+ErrorCode: unrecognized error code
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+=================== 1 failed, 2 passed in 386.02s (0:06:26) ====================
