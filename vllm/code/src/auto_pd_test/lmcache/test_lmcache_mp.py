@@ -2,6 +2,7 @@ import contextlib
 import json
 import os
 import subprocess
+import threading
 import time
 
 import pytest
@@ -87,6 +88,137 @@ def lmcache_coordinator(tmp_path_factory):
             log_handle.close()
 
 
+def _start_lmcache_server(name, tmp_path_factory, *, slot, l2_base_path=None, p2p_peer_slot=None):
+    """Start one `lmcache server` and wait for its HTTP port to come up.
+
+    Returns a dict with process/log/env handles needed by ``_start_vllm`` and
+    ``_stop_service``. The server is started in its own process group so that
+    ``_stop_service`` can kill the whole tree cleanly.
+    """
+    test_run_path = tmp_path_factory.mktemp(f"kv_mp_{name}")
+    lmcache_log = test_run_path / "lmcache_server.log"
+    print(f"\n[Debug] KVCache MP '{name}' logs: {test_run_path}")
+
+    env = os.environ.copy()
+    env["CUDA_VISIBLE_DEVICES"] = slot["cuda_device"]
+    # Needed on this MetaX (MACA) platform for the lmcache server and the vLLM
+    # worker to share device memory across processes on the zero-copy
+    # (lmcache_driven) path.
+    env["MACA_MPS_MODE"] = "1"
+
+    lmcache_cmd = [
+        "lmcache", "server",
+        "--host", "0.0.0.0" if p2p_peer_slot else "localhost",
+        "--port", str(slot["lmcache_port"]),
+        "--http-port", str(slot["lmcache_http_port"]),
+        "--chunk-size", "256",
+        "--l1-size-gb", "5",
+        "--eviction-policy", "LRU",
+    ]
+    if l2_base_path is not None:
+        l2_base_path.mkdir(parents=True, exist_ok=True)
+        lmcache_cmd += [
+            "--l2-adapter",
+            json.dumps({"type": "fs", "base_path": str(l2_base_path)}),
+        ]
+    if p2p_peer_slot is not None:
+        lmcache_cmd += [
+            "--l1-align-bytes", "65536",
+            "--instance-id", slot["instance_id"],
+            "--coordinator-url", f"http://{COORDINATOR_HOST}:{COORDINATOR_PORT}",
+            "--coordinator-advertise-ip", "127.0.0.1",
+            "--p2p-advertise-url", f"127.0.0.1:{slot['p2p_port']}",
+            "--p2p-listen-url", f"0.0.0.0:{slot['p2p_port']}",
+        ]
+    print(f"\n--- Starting lmcache server ({name}) ---")
+    print(f"lmcache server command: {' '.join(lmcache_cmd)}")
+    lmcache_log_handle = open(lmcache_log, "w")
+    lmcache_process = _popen_own_group(
+        lmcache_cmd, env=env, stdout=lmcache_log_handle, stderr=subprocess.STDOUT
+    )
+    _wait_for_port(
+        "localhost", slot["lmcache_http_port"], timeout=60,
+        process=lmcache_process, log_paths=lmcache_log,
+        stage=f"{name} lmcache server startup",
+    )
+    print("lmcache server is ready.")
+
+    return {
+        "name": name,
+        "slot": slot,
+        "env": env,
+        "process": lmcache_process,
+        "log": lmcache_log,
+        "log_handle": lmcache_log_handle,
+        "test_run_path": test_run_path,
+    }
+
+
+def _start_vllm(name, *, slot, env, lmcache_process, lmcache_log):
+    """Start a vLLM instance that talks to ``lmcache_process`` via MP.
+
+    Returns a dict with the vLLM process/log handles.
+    """
+    kv_transfer_config = {
+        "kv_connector": "LMCacheMPConnector",
+        "kv_connector_module_path": "lmcache.integration.vllm.lmcache_mp_connector",
+        "kv_role": "kv_both",
+        "kv_connector_extra_config": {
+            "lmcache.mp.host": "tcp://localhost",
+            "lmcache.mp.port": slot["lmcache_port"],
+        },
+    }
+    vllm_cmd = [
+        "vllm", "serve", VLLM_MODEL_PATH,
+        "--port", str(slot["vllm_port"]),
+        "--max-model-len", str(MAX_MODEL_LEN),
+        "--no-enable-prefix-caching",
+        "--enforce-eager",
+        "--kv-transfer-config", json.dumps(kv_transfer_config),
+    ]
+    print(f"\n--- Starting vLLM ({name}, LMCacheMPConnector) ---")
+    print(f"vLLM command: {' '.join(vllm_cmd)}")
+    vllm_log = lmcache_log.parent / "vllm_server.log"
+    vllm_log_handle = open(vllm_log, "w")
+    vllm_process = _popen_own_group(
+        vllm_cmd, env=env, stdout=vllm_log_handle, stderr=subprocess.STDOUT
+    )
+    print("Waiting for vLLM service to load the model...")
+    _wait_for_port(
+        VLLM_HOST, slot["vllm_port"], timeout=180,
+        processes={"vllm": vllm_process, "lmcache": lmcache_process},
+        log_paths={"vllm": vllm_log, "lmcache": lmcache_log},
+        stage=f"{name} vllm startup",
+    )
+    print("vLLM service is ready.")
+    return {
+        "process": vllm_process,
+        "log": vllm_log,
+        "log_handle": vllm_log_handle,
+    }
+
+
+def _stop_service(name, lmcache_info, vllm_info):
+    """Stop a (lmcache server, vLLM) pair in the safe order.
+
+    On the zero-copy path the lmcache server IMPORTS vLLM's KV-cache device
+    memory (cudaIpcOpenMemHandle). It must be stopped first: killing the
+    exporter while an importer still holds mappings leaves the MACA driver
+    with dangling cross-process mappings, surfacing later as driver resets.
+    """
+    print(f"\n--- Stopping vLLM + lmcache server ({name}) ---")
+    if lmcache_info is not None:
+        _terminate(lmcache_info["process"], f"lmcache server ({name})")
+    if vllm_info is not None:
+        _terminate(vllm_info["process"], f"vLLM ({name})")
+    if vllm_info is not None and vllm_info["log_handle"]:
+        vllm_info["log_handle"].close()
+    if lmcache_info is not None and lmcache_info["log_handle"]:
+        lmcache_info["log_handle"].close()
+    if lmcache_info is not None and vllm_info is not None:
+        _wait_for_free_gpu_memory(lmcache_info["slot"]["cuda_device"])
+
+
 @contextlib.contextmanager
 def lmcache_mp_service(
     name,
@@ -107,127 +239,26 @@ def lmcache_mp_service(
         enables P2P on this server so it can read a peer's L1 directly.
         Leave unset for the plain L1/L2/centralized tests.
     """
-    test_run_path = tmp_path_factory.mktemp(f"kv_mp_{name}")
-    lmcache_log = test_run_path / "lmcache_server.log"
-    vllm_log = test_run_path / "vllm_server.log"
-
-    print(f"\n[Debug] KVCache MP '{name}' logs: {test_run_path}")
-
-    env = os.environ.copy()
-    # The lmcache server needs the same GPU visible as vLLM: on the default
-    # (CUDA IPC) transfer path it maps vLLM's KV cache memory directly via
-    # cudaIpcOpenMemHandle, which requires both processes to agree on which
-    # physical device is "device 0".
-    env["CUDA_VISIBLE_DEVICES"] = slot["cuda_device"]
-    # Needed on this MetaX (MACA) platform for the lmcache server and the vLLM
-    # worker to share device memory across processes on the zero-copy
-    # (lmcache_driven) path.
-    env["MACA_MPS_MODE"] = "1"
-
-    lmcache_process = None
-    vllm_process = None
-    lmcache_log_handle = None
-    vllm_log_handle = None
+    lmcache_info = None
+    vllm_info = None
     try:
-        print(f"\n--- Starting lmcache server ({name}) ---")
-        lmcache_cmd = [
-            "lmcache", "server",
-            "--host", "0.0.0.0" if p2p_peer_slot else "localhost",
-            "--port", str(slot["lmcache_port"]),
-            "--http-port", str(slot["lmcache_http_port"]),
-            "--chunk-size", "256",
-            "--l1-size-gb", "5",
-            "--eviction-policy", "LRU",
-        ]
-        if l2_base_path is not None:
-            l2_base_path.mkdir(parents=True, exist_ok=True)
-            lmcache_cmd += [
-                "--l2-adapter",
-                json.dumps({"type": "fs", "base_path": str(l2_base_path)}),
-            ]
-        if p2p_peer_slot is not None:
-            lmcache_cmd += [
-                "--l1-align-bytes", "65536",
-                "--instance-id", slot["instance_id"],
-                "--coordinator-url", f"http://{COORDINATOR_HOST}:{COORDINATOR_PORT}",
-                "--coordinator-advertise-ip", "127.0.0.1",
-                "--p2p-advertise-url", f"127.0.0.1:{slot['p2p_port']}",
-                "--p2p-listen-url", f"0.0.0.0:{slot['p2p_port']}",
-            ]
-        print(f"lmcache server command: {' '.join(lmcache_cmd)}")
-        lmcache_log_handle = open(lmcache_log, "w")
-        lmcache_process = _popen_own_group(
-            lmcache_cmd, env=env, stdout=lmcache_log_handle, stderr=subprocess.STDOUT
+        lmcache_info = _start_lmcache_server(
+            name, tmp_path_factory, slot=slot,
+            l2_base_path=l2_base_path, p2p_peer_slot=p2p_peer_slot,
         )
-        _wait_for_port(
-            "localhost", slot["lmcache_http_port"], timeout=60,
-            process=lmcache_process, log_paths=lmcache_log,
-            stage=f"{name} lmcache server startup",
+        vllm_info = _start_vllm(
+            name, slot=slot, env=lmcache_info["env"],
+            lmcache_process=lmcache_info["process"], lmcache_log=lmcache_info["log"],
         )
-        print("lmcache server is ready.")
-
-        print(f"\n--- Starting vLLM ({name}, LMCacheMPConnector) ---")
-        kv_transfer_config = {
-            "kv_connector": "LMCacheMPConnector",
-            "kv_connector_module_path": "lmcache.integration.vllm.lmcache_mp_connector",
-            "kv_role": "kv_both",
-            "kv_connector_extra_config": {
-                "lmcache.mp.host": "tcp://localhost",
-                "lmcache.mp.port": slot["lmcache_port"],
-            },
-        }
-        vllm_cmd = [
-            "vllm", "serve", VLLM_MODEL_PATH,
-            "--port", str(slot["vllm_port"]),
-            "--max-model-len", str(MAX_MODEL_LEN),
-            "--no-enable-prefix-caching",
-            "--enforce-eager",
-            "--kv-transfer-config", json.dumps(kv_transfer_config),
-        ]
-        print(f"vLLM command: {' '.join(vllm_cmd)}")
-        vllm_log_handle = open(vllm_log, "w")
-        vllm_process = _popen_own_group(
-            vllm_cmd, env=env, stdout=vllm_log_handle, stderr=subprocess.STDOUT
-        )
-        print("Waiting for vLLM service to load the model...")
-        _wait_for_port(
-            VLLM_HOST, slot["vllm_port"], timeout=180,
-            # Monitor both processes and dump both logs: the failure this
-            # guards against is the lmcache server dying (or never acking)
-            # while vLLM sits in KV-cache registration, and the vLLM log
-            # alone shows nothing after the registration request.
-            processes={"vllm": vllm_process, "lmcache": lmcache_process},
-            log_paths={"vllm": vllm_log, "lmcache": lmcache_log},
-            stage=f"{name} vllm startup",
-        )
-        print("vLLM service is ready.")
-
         yield {
             "port": slot["vllm_port"],
             "host": VLLM_HOST,
-            "log_file": vllm_log,
-            "lmcache_log_file": lmcache_log,
+            "log_file": vllm_info["log"],
+            "lmcache_log_file": lmcache_info["log"],
             "type": name,
         }
-
     finally:
-        print(f"\n--- Stopping vLLM + lmcache server ({name}) ---")
-        # On the zero-copy path the lmcache server is the IMPORTER of vLLM's
-        # KV-cache device memory (cudaIpcOpenMemHandle). It must be stopped
-        # first: killing the exporter while an importer still holds mappings
-        # leaves the MACA driver with dangling cross-process mappings, which
-        # surfaces later as "MX_EVENTTYPE_DRIVER ... ResetType=1" followed by
-        # "CUDA error: unrecognized error code" on the next vLLM startup.
-        _terminate(lmcache_process, f"lmcache server ({name})")
-        _terminate(vllm_process, f"vLLM ({name})")
-
-        if vllm_log_handle:
-            vllm_log_handle.close()
-        if lmcache_log_handle:
-            lmcache_log_handle.close()
-
-        if vllm_process is not None:
-            _wait_for_free_gpu_memory(slot["cuda_device"])
+        _stop_service(name, lmcache_info, vllm_info)
 
 
 def _get_long_prompt():
@@ -418,10 +449,77 @@ def test_04_kvcache_mp_p2p_sharing(tmp_path_factory):
     P2P read of instance A's L1 over the transfer-channel (NIXL by default,
     loopback/TCP on a single node -- functional check only, not a latency
     benchmark; see docs/source/mp/p2p.rst for real RDMA-fabric numbers).
+
+    IMPLEMENTATION NOTE: the NIXL transfer channel does a blocking handshake
+    with its peer during lmcache server startup (it sends an init request and
+    blocks on recv() of the peer's response). If the two servers are started
+    sequentially the first one blocks forever because the peer doesn't exist
+    yet. We therefore launch both lmcache servers in parallel threads so they
+    come up at roughly the same time and can complete the handshake, then
+    start each vLLM against its already-ready lmcache server.
     """
     with lmcache_coordinator(tmp_path_factory):
-        with lmcache_mp_service("p2p-a", tmp_path_factory, slot=SLOT_A, p2p_peer_slot=SLOT_B) as svc_a:
-            client_a, model_id_a = _client_for(svc_a)
+        # --- Phase 1: start BOTH lmcache servers in parallel --------------
+        server_results = {}
+        server_errors = {}
+
+        def start_server(name, slot, peer_slot):
+            try:
+                server_results[name] = _start_lmcache_server(
+                    name, tmp_path_factory, slot=slot, p2p_peer_slot=peer_slot,
+                )
+            except Exception as e:
+                server_errors[name] = e
+
+        thread_a = threading.Thread(
+            target=start_server, args=("p2p-a", SLOT_A, SLOT_B),
+        )
+        thread_b = threading.Thread(
+            target=start_server, args=("p2p-b", SLOT_B, SLOT_A),
+        )
+        thread_a.start()
+        thread_b.start()
+        # Each _start_lmcache_server has a 60s port-wait timeout; give the
+        # parallel pair a bit more than that before giving up.
+        thread_a.join(timeout=120)
+        thread_b.join(timeout=120)
+
+        if server_errors or not server_results:
+            # Clean up whatever partially started
+            for info in server_results.values():
+                _stop_service(info["name"], info, None)
+            pytest.fail(
+                f"Parallel P2P lmcache server startup failed: {server_errors}"
+            )
+
+        svc_a = server_results["p2p-a"]
+        svc_b = server_results["p2p-b"]
+
+        # --- Phase 2: start vLLM on each slot -----------------------------
+        # vLLM startup does not depend on the peer, so we can start them in
+        # either order. We start A first, then B, to keep logs readable.
+        vllm_a = None
+        vllm_b = None
+        try:
+            vllm_a = _start_vllm(
+                "p2p-a", slot=SLOT_A, env=svc_a["env"],
+                lmcache_process=svc_a["process"], lmcache_log=svc_a["log"],
+            )
+            try:
+                vllm_b = _start_vllm(
+                    "p2p-b", slot=SLOT_B, env=svc_b["env"],
+                    lmcache_process=svc_b["process"], lmcache_log=svc_b["log"],
+                )
+            except Exception:
+                _stop_service("p2p-b", svc_b, None)
+                raise
+
+            # --- Phase 3: the actual test --------------------------------
+            client_a, model_id_a = _client_for({
+                "port": SLOT_A["vllm_port"], "host": VLLM_HOST,
+                "log_file": vllm_a["log"], "lmcache_log_file": svc_a["log"],
+                "type": "p2p-a",
+            })
             prompt, _ = _get_long_prompt()
 
             print("\n--- Instance A: cold query, populates only its own local L1 ---")
@@ -430,15 +528,30 @@ def test_04_kvcache_mp_p2p_sharing(tmp_path_factory):
             assert cold_ttft > 0, "Instance A's cold query was unexpectedly too fast."
 
             # Give the P2P controller a moment to discover the peer via the
-            # coordinator before instance B even starts (avoids racing the
-            # ~5s discovery poll interval against B's first lookup).
+            # coordinator before instance B's first lookup.
             time.sleep(6)
 
-            with lmcache_mp_service("p2p-b", tmp_path_factory, slot=SLOT_B, p2p_peer_slot=SLOT_A) as svc_b:
-                client_b, model_id_b = _client_for(svc_b)
+            client_b, model_id_b = _client_for({
+                "port": SLOT_B["vllm_port"], "host": VLLM_HOST,
+                "log_file": vllm_b["log"], "lmcache_log_file": svc_b["log"],
+                "type": "p2p-b",
+            })
 
-                print("\n--- Instance B: same prompt, no L2, must P2P-read from A ---")
-                warm_ttft, warm_text = query_and_measure_ttft(client_b, model_id_b, prompt)
-                print(f"\nInstance B TTFT (via P2P): {warm_ttft:.3f}s")
+            print("\n--- Instance B: same prompt, no L2, must P2P-read from A ---")
+            warm_ttft, warm_text = query_and_measure_ttft(client_b, model_id_b, prompt)
+            print(f"\nInstance B TTFT (via P2P): {warm_ttft:.3f}s")
 
-                _report_and_assert("p2p-sharing", cold_ttft, warm_ttft, cold_text, warm_text)
+            _report_and_assert("p2p-sharing", cold_ttft, warm_ttft, cold_text, warm_text)
+
+        finally:
+            # Tear down in reverse dependency order: vLLMs first, then their
+            # lmcache servers. _stop_service stops lmcache before vLLM inside
+            # each pair, which is the required ordering for the zero-copy path.
+            if vllm_b is not None:
+                _stop_service("p2p-b", svc_b, vllm_b)
+            else:
+                _stop_service("p2p-b", svc_b, None)
+            if vllm_a is not None:
+                _stop_service("p2p-a", svc_a, vllm_a)
+            else:
+                _stop_service("p2p-a", svc_a, None)
