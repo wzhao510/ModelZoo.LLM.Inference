@@ -1,0 +1,158 @@
+$ python3 -m pytest lmcache/test_lmcache_mp.py::test_04_kvcache_mp_p2p_sharing -s
+======================================================= test session starts =======================================================
+platform linux -- Python 3.12.11, pytest-8.4.1, pluggy-1.7.0
+rootdir: /workspace/vllm/code/src/auto_pd_test
+plugins: platformdirs-4.13.5, anyio-4.15.1
+collected 1 item                                                                                                                  
+
+lmcache/test_lmcache_mp.py 
+--- Starting lmcache coordinator ---
+lmcache coordinator --host localhost --port 9300
+lmcache coordinator is ready.
+
+[Debug] KVCache MP 'p2p-a' logs: /tmp/pytest-of-root/pytest-7/kv_mp_p2p-a0
+
+--- Starting lmcache server (p2p-a) ---
+lmcache server command: lmcache server --host 0.0.0.0 --port 6555 --http-port 7555 --chunk-size 256 --l1-size-gb 5 --eviction-policy LRU --l1-align-bytes 65536 --instance-id lmcache-a --coordinator-url http://localhost:9300 --coordinator-advertise-ip 127.0.0.1 --p2p-advertise-url 127.0.0.1:8555 --p2p-listen-url 0.0.0.0:8555 --p2p-transfer-engine py_socket
+[FATAL] Process p2p-a lmcache server startup exited unexpectedly during p2p-a lmcache server startup with code 3.
+
+================================================================================
+STARTUP DEBUG LOG DUMP
+================================================================================
+
+--- log: /tmp/pytest-of-root/pytest-7/kv_mp_p2p-a0/lmcache_server.log ---
+[2026-10-23 17:00:49,560] LMCache INFO: torch_dev=<module 'torch.cuda' from '/opt/conda/lib/python3.12/site-packages/torch/cuda/__init__.py'>, torch_device_type=cuda (_device_detect.py:312:lmcache.v1.platform._device_detect)
+[2026-10-23 17:00:49,561] LMCache INFO: Auto-selected backend [cuda] for accelerator 'cuda' from candidate backends [cuda, rocm]. (__init__.py:148:lmcache.v1.platform)
+
+ _     __  __    ____           _          
+| |   |  \/  |  / ___|__ _  ___| |__   ___      LMCache vunknown
+| |   | |\/| | | |   / _` |/ __| '_ \ / _ \     Website:  https://lmcache.ai/
+| |___| |  | | | |__| (_| | (__| | | |  __/     Recipes:  https://docs.lmcache.ai/recipes
+|_____|_|  |_|  \____\__,_|\___|_| |_|\___|     LinkedIn: https://www.linkedin.com/company/lmcache-lab
+Set LMCACHE_DISABLE_BANNER=1 to hide this banner.
+
+[2026-10-23 17:00:50,108] LMCache INFO: multi_layer_block_kv_transfer mode: ptr (base.py:95:lmcache.v1.multiprocess.transfer_context.base)
+[2026-10-23 17:00:52,407] LMCache INFO: Discovered API module: cache_api (router_discovery.py:53:lmcache.v1.utils.router_discovery)
+[2026-10-23 17:00:52,408] LMCache INFO: Discovered API module: env_api (router_discovery.py:53:lmcache.v1.utils.router_discovery)
+[2026-10-23 17:00:52,409] LMCache INFO: Discovered API module: loglevel_api (router_discovery.py:53:lmcache.v1.utils.router_discovery)
+[2026-10-23 17:00:52,410] LMCache INFO: Discovered API module: metrics_api (router_discovery.py:53:lmcache.v1.utils.router_discovery)
+[2026-10-23 17:00:52,411] LMCache INFO: Discovered API module: periodic_thread_api (router_discovery.py:53:lmcache.v1.utils.router_discovery)
+[2026-10-23 17:00:52,412] LMCache INFO: Discovered API module: run_script_api (router_discovery.py:53:lmcache.v1.utils.router_discovery)
+[2026-10-23 17:00:52,413] LMCache INFO: Discovered API module: thread_api (router_discovery.py:53:lmcache.v1.utils.router_discovery)
+[2026-10-23 17:00:52,415] LMCache INFO: Discovered API module: common_api (router_discovery.py:53:lmcache.v1.utils.router_discovery)
+[2026-10-23 17:00:52,416] LMCache INFO: Discovered API module: config_api (router_discovery.py:53:lmcache.v1.utils.router_discovery)
+[2026-10-23 17:00:52,418] LMCache INFO: Discovered API module: info_api (router_discovery.py:53:lmcache.v1.utils.router_discovery)
+[2026-10-23 17:00:52,420] LMCache INFO: Discovered API module: quota_api (router_discovery.py:53:lmcache.v1.utils.router_discovery)
+[2026-10-23 17:00:52,423] LMCache INFO: Discovered API module: reconfigure_api (router_discovery.py:53:lmcache.v1.utils.router_discovery)
+[2026-10-23 17:00:52,463] LMCache INFO: CudaPinMemoryBackend: using torch cudart (pin_memory.py:89:lmcache.v1.platform.cuda.pin_memory)
+[2026-10-23 17:00:52,464] LMCache INFO: Starting LMCache HTTP server on http://0.0.0.0:7555 (http_server.py:258:lmcache.v1.multiprocess.http_server)
+INFO:     Started server process [1061220]
+INFO:     Waiting for application startup.
+[2026-10-23 17:00:52,478] LMCache INFO: Starting LMCache HTTP server... (accelerator available: True) (http_server.py:77:lmcache.v1.multiprocess.http_server)
+[2026-10-23 17:00:52,480] LMCache INFO: OTel MeterProvider initialised with Prometheus fallback (standalone metrics HTTP server disabled; /metrics must be exposed by the caller), resource={'telemetry.sdk.language': 'python', 'telemetry.sdk.name': 'opentelemetry', 'telemetry.sdk.version': '1.40.0', 'service.instance.id': 'lmcache-a', 'service.name': 'unknown_service'} (otel_init.py:114:lmcache.v1.mp_observability.otel_init)
+[2026-10-23 17:00:53,742] LMCache INFO: Starting L1EvictionController... (eviction_controller.py:53:lmcache.v1.distributed.storage_controllers.eviction_controller)
+[2026-10-23 17:00:53,743] LMCache INFO: Starting L2EvictionController... (eviction_controller.py:250:lmcache.v1.distributed.storage_controllers.eviction_controller)
+[2026-10-23 17:00:53,743] LMCache INFO: Starting StoreController... (store_controller.py:305:lmcache.v1.distributed.storage_controllers.store_controller)
+[2026-10-23 17:00:53,743] LMCache INFO: Starting PrefetchController... (prefetch_controller.py:596:lmcache.v1.distributed.storage_controllers.prefetch_controller)
+[2026-10-23 17:00:53,744] LMCache INFO: Using blake3 hash function (token_hasher.py:79:lmcache.v1.multiprocess.token_hasher)
+[2026-10-23 17:00:53,745] LMCache INFO: Computed NONE_HASH=b"~>\xff\x9e\xf7a:P4\x0e\xb1&w\xee\x03\xb8:\xc7Y\xfc\xba\x9b\xb3'\x05\xf0rH\xd5mG;" using hash function (token_hasher.py:180:lmcache.v1.multiprocess.token_hasher)
+[2026-10-23 17:00:53,745] LMCache INFO: TokenHasher initialized: chunk_size=256, hash_algorithm=blake3 (token_hasher.py:67:lmcache.v1.multiprocess.token_hasher)
+[2026-10-23 17:00:53,745] LMCache INFO: PeriodicThread SessionManager-cleanup-thread-7fc397aaf6b0 entering main loop (interval=60.0s) (periodic_thread.py:304:lmcache.v1.periodic_thread)
+[2026-10-23 17:00:53,745] LMCache INFO: Started PeriodicThread: SessionManager-cleanup-thread-7fc397aaf6b0 (level=medium, interval=60.0s, init_wait=0.0s) (periodic_thread.py:248:lmcache.v1.periodic_thread)
+ERROR:    Traceback (most recent call last):
+  File "/opt/conda/lib/python3.12/site-packages/starlette/routing.py", line 656, in lifespan
+    async with self.lifespan_context(app) as maybe_state:
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/fastapi/routing.py", line 216, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/contextlib.py", line 210, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/lmcache/v1/multiprocess/http_server.py", line 84, in lifespan
+    result = run_cache_server(
+             ^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/lmcache/v1/multiprocess/server.py", line 416, in run_cache_server
+    modules = _build_modules(ctx, mp_config, coordinator_config)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/lmcache/v1/multiprocess/server.py", line 196, in _build_modules
+    p2p_controller = P2PController(
+                     ^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/lmcache/v1/multiprocess/modules/p2p_controller.py", line 132, in __init__
+    self._start_orchestration(coordinator_config)
+  File "/opt/conda/lib/python3.12/site-packages/lmcache/v1/multiprocess/modules/p2p_controller.py", line 142, in _start_orchestration
+    initialize_transfer_channel_context(
+  File "/opt/conda/lib/python3.12/site-packages/lmcache/v1/distributed/transfer_channel/__init__.py", line 77, in initialize_transfer_channel_context
+    _context = create_transfer_channel_context(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.12/site-packages/lmcache/v1/distributed/transfer_channel/factory.py", line 90, in create_transfer_channel_context
+    raise ValueError(
+ValueError: Unsupported transfer_channel_type: 'py_socket'. Registered types: ['nixl']
+
+ERROR:    Application startup failed. Exiting.
+
+================================================================================
+
+--- Stopping vLLM + lmcache server (p2p-a) ---
+F
+
+============================================================ FAILURES =============================================================
+_________________________________________________ test_04_kvcache_mp_p2p_sharing __________________________________________________
+
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x7f4ad9106b10>, _basetemp=PosixPath('/tmp/pytest-of-root/pytest-7'), _retention_count=3, _retention_policy='all')
+
+    def test_04_kvcache_mp_p2p_sharing(tmp_path_factory):
+        """A coordinator + two P2P-enabled (lmcache server, vLLM) pairs on two
+        GPUs, with NO shared L2 at all. Instance A populates only its own local
+        L1; instance B has no L2 fallback, so a hit can only come from a direct
+        P2P read of instance A's L1 over the transfer-channel (NIXL by default,
+        loopback/TCP on a single node -- functional check only, not a latency
+        benchmark; see docs/source/mp/p2p.rst for real RDMA-fabric numbers).
+        """
+        with lmcache_coordinator(tmp_path_factory):
+>           with lmcache_mp_service("p2p-a", tmp_path_factory, slot=SLOT_A, p2p_peer_slot=SLOT_B) as svc_a:
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+lmcache/test_lmcache_mp.py:413: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+/opt/conda/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+lmcache/test_lmcache_mp.py:163: in lmcache_mp_service
+    _wait_for_port(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+host = 'localhost', port = 7555, timeout = 60
+process = <Popen: returncode: 3 args: ['lmcache', 'server', '--host', '0.0.0.0', '--po...>, processes = None
+log_paths = PosixPath('/tmp/pytest-of-root/pytest-7/kv_mp_p2p-a0/lmcache_server.log'), log_handles = None
+stage = 'p2p-a lmcache server startup'
+
+    def wait_for_port(host, port, timeout=180, process=None, processes=None, log_paths=None,
+                       log_handles=None, stage="startup"):
+        """Block until `host:port` accepts a connection.
+    
+        Accepts either a single `process` (Popen) or a `processes` dict of
+        {name: Popen} -- if any of them has already exited, fail fast with the
+        tail of its log instead of waiting out the full timeout.
+        """
+        all_processes = dict(processes) if processes else {}
+        if process is not None:
+            all_processes.setdefault(stage, process)
+    
+        start = time.monotonic()
+        while True:
+            for name, proc in all_processes.items():
+                retcode = proc.poll()
+                if retcode is not None:
+                    print(f"[FATAL] Process {name} exited unexpectedly during {stage} with code {retcode}.")
+                    if log_paths:
+                        dump_logs(log_paths, log_handles)
+>                   raise RuntimeError(f"Process {name} exited unexpectedly during {stage} with code {retcode}.")
+E                   RuntimeError: Process p2p-a lmcache server startup exited unexpectedly during p2p-a lmcache server startup with code 3.
+
+common.py:101: RuntimeError
+===================================================== short test summary info =====================================================
+FAILED lmcache/test_lmcache_mp.py::test_04_kvcache_mp_p2p_sharing - RuntimeError: Process p2p-a lmcache server startup exited unexpectedly during p2p-a lmcache server startup with code 3.

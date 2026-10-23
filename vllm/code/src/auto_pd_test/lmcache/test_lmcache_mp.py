@@ -146,15 +146,6 @@ def lmcache_mp_service(
                 json.dumps({"type": "fs", "base_path": str(l2_base_path)}),
             ]
         if p2p_peer_slot is not None:
-            # NIXL's init protocol does a blocking recv() of the remote
-            # agent metadata (see lmcache.v1.transfer_channel.nixl_channel).
-            # On this P2P test the two servers are started sequentially, so
-            # the first one never sees a peer and the startup hangs until the
-            # 60s timeout. `py_socket` is a plain TCP server that listens for
-            # incoming connections instead of reaching out, so it starts
-            # immediately regardless of whether a peer exists yet. The test
-            # only needs a functional pass on loopback, so the speed gap is
-            # irrelevant.
             lmcache_cmd += [
                 "--l1-align-bytes", "65536",
                 "--instance-id", slot["instance_id"],
@@ -162,7 +153,6 @@ def lmcache_mp_service(
                 "--coordinator-advertise-ip", "127.0.0.1",
                 "--p2p-advertise-url", f"127.0.0.1:{slot['p2p_port']}",
                 "--p2p-listen-url", f"0.0.0.0:{slot['p2p_port']}",
-                "--p2p-transfer-engine", "py_socket",
             ]
         print(f"lmcache server command: {' '.join(lmcache_cmd)}")
         lmcache_log_handle = open(lmcache_log, "w")
